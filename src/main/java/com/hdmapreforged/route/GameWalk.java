@@ -39,7 +39,7 @@ public final class GameWalk
                 j++;
             }
             int[] piece = Tiles.z(points[j]) == Tiles.z(points[i]) ? path(map, out[n - 1], points[j]) : null;
-            if (piece == null || piece.length > j - i + 1)
+            if (piece == null || piece.length > j - i + 1 || newObstacle(map, piece, points, i, j))
             {
                 piece = Arrays.copyOfRange(points, i, j + 1);
             }
@@ -52,6 +52,20 @@ public final class GameWalk
             i = j;
         }
         return Arrays.copyOf(out, n);
+    }
+
+    /** Whether {@code piece} crosses an obstacle (vines, rocks) that {@code points[i..j]} kept clear of. */
+    private static boolean newObstacle(CollisionMap map, int[] piece, int[] points, int i, int j)
+    {
+        for (int t : piece)
+        {
+            if (map.isObstacle(Tiles.x(t), Tiles.y(t), t)
+                && Arrays.stream(points, i, j + 1).noneMatch(p -> p == t))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Both ends included, or null. */

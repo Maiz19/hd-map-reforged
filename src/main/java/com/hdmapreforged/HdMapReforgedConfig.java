@@ -238,33 +238,6 @@ public interface HdMapReforgedConfig extends Config
         return 256;
     }
 
-    @RequiredArgsConstructor
-    enum WholeMap
-    {
-        OFF("Off", null),
-        SURFACE("Surface (about 200 MB)", MapDownloader.Scope.SURFACE),
-        ALL("Surface and dungeons (about 500 MB)", MapDownloader.Scope.ALL);
-
-        private final String name;
-        final MapDownloader.Scope scope;
-
-        @Override
-        public String toString()
-        {
-            return name;
-        }
-    }
-
-    @ConfigItem(keyName = "wholeMap", name = "Download the whole map", position = 0, section = data,
-        description = "Keep the whole map on disk so every part shows at once, also offline. Downloads in the "
-            + "background, two tiles at a time, and continues after a restart. Downloaded once: after a wiki map update "
-            + "only the parts you look at are fetched again, the rest stays as it was. Turns on the disk cache and "
-            + "raises its size limit when needed")
-    default WholeMap wholeMap()
-    {
-        return WholeMap.OFF;
-    }
-
     @ConfigItem(keyName = "diskCache", name = "Cache tiles on disk", position = 1, section = data,
         description = "Keep downloaded map tiles in .runelite/hd-map-reforged so they load instantly next time")
     default boolean diskCache()
@@ -307,7 +280,14 @@ public interface HdMapReforgedConfig extends Config
         return UpdateCheck.WEEKLY;
     }
 
-    @ConfigItem(keyName = "mapVersion", name = "Map version", position = 4, section = data,
+    @ConfigItem(keyName = "checkMapNow", name = "Check for a new map now", position = 4, section = data,
+        description = "Tick to ask the wiki right away whether its map changed; it unticks itself")
+    default boolean checkMapNow()
+    {
+        return false;
+    }
+
+    @ConfigItem(keyName = "mapVersion", name = "Map version", position = 5, section = data,
         description = "Leave empty to use the version the wiki currently shows, such as 2026-08-12_a")
     default String mapVersion()
     {

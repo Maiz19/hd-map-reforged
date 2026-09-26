@@ -66,7 +66,8 @@ final class PartyMapRules
     /** Why "Hop" refuses a world, or null; risky or special worlds are left to the game's own world switcher. */
     static String hopRefusal(Collection<WorldType> types, boolean member)
     {
-        for (WorldType type : types == null ? Collections.<WorldType>emptyList() : types)
+        types = types == null ? Collections.emptyList() : types;
+        for (WorldType type : types)
         {
             switch (type)
             {

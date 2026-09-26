@@ -81,6 +81,17 @@ final class Poi
         nearby.add(poi);
     }
 
+    /** Moves what merged icons stood for up here: nearby icons have none of their own. */
+    void liftNearby()
+    {
+        for (int i = 0; i < nearby.size(); i++)
+        {
+            List<Poi> sub = nearby.get(i).nearby;
+            nearby.addAll(sub);
+            sub.clear();
+        }
+    }
+
     List<Poi> nearby()
     {
         return Collections.unmodifiableList(nearby);

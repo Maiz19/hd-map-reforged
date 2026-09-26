@@ -27,7 +27,6 @@ Scroll to zoom, drag to move, double-click to zoom in. The crosshair button foll
 
 ## Stays up to date by itself
 
-- **Download the whole map** (a setting under *Data and downloads*) keeps the surface, or also every dungeon, on disk, so nothing has to load any more. It runs in the background and continues after a restart.
 - The map, its list of maps and which map shows which area follow the wiki's current map version; nothing waits for a plugin update. The version is checked once a week (configurable); tiles stay on disk in between, and after a new version the old tiles show until the new ones have downloaded.
 - The list of the game's map icons is bundled (read from the game cache for this plugin version); icons Jagex adds later are clickable after a plugin update.
 - Teleports and transports are the plugin's own tables, built from the OSRS Wiki and the game cache for each release; new teleports appear after a plugin update. Nothing about them is downloaded while you play.

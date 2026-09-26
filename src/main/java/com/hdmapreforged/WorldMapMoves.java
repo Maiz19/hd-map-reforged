@@ -43,15 +43,15 @@ final class WorldMapMoves
     /** The last move that fits: whole map squares are listed before zones, so a zone's (finer) wins, as in the game. */
     private static Move last(Predicate<Move> fits)
     {
-        Move found = null;
-        for (Move move : MOVES)
+        for (int i = MOVES.size() - 1; i >= 0; i--)
         {
+            Move move = MOVES.get(i);
             if (fits.test(move))
             {
-                found = move;
+                return move;
             }
         }
-        return found;
+        return null;
     }
 
     static WorldPoint toWorld(int mapId, WorldPoint drawn)

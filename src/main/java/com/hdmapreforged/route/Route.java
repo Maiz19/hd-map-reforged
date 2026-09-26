@@ -112,7 +112,11 @@ public final class Route
             if (step.isJump())
             {
                 int landing = step.last();
-                if (sameLevel(player, landing) && Tiles.distance(player, landing) <= 2)
+                int from = step.first();
+                // Nearer where it starts (a gate, a door): not crossed yet.
+                boolean before = from >= 0 && !Tiles.isSea(from) && sameLevel(player, from)
+                    && Tiles.distance(player, from) < Tiles.distance(player, landing);
+                if (sameLevel(player, landing) && Tiles.distance(player, landing) <= 2 && !before)
                 {
                     bestStep = s + 1;
                     bestIndex = 0;

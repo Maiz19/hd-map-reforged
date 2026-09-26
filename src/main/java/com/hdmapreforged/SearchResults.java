@@ -49,6 +49,12 @@ final class SearchResults implements MapView.Overlay
     interface Card
     {
         void show(IntFunction<JComponent> section);
+
+        /** A background answer (a picture, a tile check): re-render only while this search is what is shown. */
+        default void update(IntFunction<JComponent> section)
+        {
+            show(section);
+        }
     }
 
     static final class Result
@@ -347,6 +353,10 @@ final class SearchResults implements MapView.Overlay
         loading = null;
         failed = null;
         placeMaps = Collections.emptyMap();
+        checkedCenters.clear();
+        tags.clear();
+        centers.clear();
+        groupBounds.clear();
         result = found;
         if (found.tab == null)
         {
@@ -362,21 +372,45 @@ final class SearchResults implements MapView.Overlay
                 if (result == found)
                 {
                     image = loaded;
-                    card.show(this::section);
+                    card.update(this::section);
                 }
             }));
         }
         refresh();
-        if (!found.groups.isEmpty())
+        checkListed();
+    }
+
+    /** Centres already sent to the tile check for the current result. */
+    private final java.util.Set<WorldPoint> checkedCenters = new java.util.HashSet<>();
+
+    /**
+     * Sends the listed places of the current result (the tab's first {@link #SHOWN}, or all once asked for) not yet
+     * checked to the tile check; an answer for a result no longer shown is dropped.
+     */
+    private void checkListed()
+    {
+        Result found = result;
+        if (found == null)
         {
-            regionCheck.accept(found.groups.stream().map(NpcSpawns.Group::center).collect(Collectors.toList()), maps -> {
-                if (result == found)
-                {
-                    placeMaps = maps;
-                    refresh();
-                }
-            });
+            return;
         }
+        List<WorldPoint> points = found.groups.stream().filter(found::shows).limit(allPlaces ? Long.MAX_VALUE : SHOWN)
+            .map(NpcSpawns.Group::center).filter(checkedCenters::add).collect(Collectors.toList());
+        if (points.isEmpty())
+        {
+            return;
+        }
+        int id = request;
+        regionCheck.accept(points, maps -> {
+            if (result == found && id == request && !maps.isEmpty())
+            {
+                Map<WorldPoint, BaseMap> merged = new HashMap<>(placeMaps);
+                merged.putAll(maps);
+                placeMaps = merged;
+                card.update(this::section);
+                view.repaint();
+            }
+        });
     }
 
     void clear()
@@ -386,6 +420,11 @@ final class SearchResults implements MapView.Overlay
         loading = null;
         failed = null;
         request++;
+        placeMaps = Collections.emptyMap();
+        checkedCenters.clear();
+        tags.clear();
+        centers.clear();
+        groupBounds.clear();
         card.show(null);
         view.repaint();
     }
@@ -448,6 +487,7 @@ final class SearchResults implements MapView.Overlay
         {
             result.tab = tab;
             refresh();
+            checkListed();
         }
     }
 
@@ -642,6 +682,7 @@ final class SearchResults implements MapView.Overlay
         add(panel, 4, link(text, () -> {
             all.run();
             card.show(this::section);
+            checkListed();
         }, width));
     }
 
@@ -799,6 +840,7 @@ final class SearchResults implements MapView.Overlay
                 allPlaces = false;
                 allDrops = false;
                 refresh();
+                checkListed();
             });
             group.add(button);
             row.add(button);

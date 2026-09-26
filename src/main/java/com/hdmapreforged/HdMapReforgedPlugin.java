@@ -126,9 +126,6 @@ public class HdMapReforgedPlugin extends Plugin
     private MapScreen fullScreen;
     private FullMapWindow fullMap;
     private MapIconLayer[] gameIcons = new MapIconLayer[0];
-    private MapDownloader downloader;
-    private MapDownloadControl downloadControl;
-    private volatile String downloadingVersion;
     private final HotkeyListener mapKey = new HotkeyListener(() -> config.openMapKey())
     {
         @Override
@@ -189,6 +186,27 @@ public class HdMapReforgedPlugin extends Plugin
     @Override
     protected void startUp() throws Exception
     {
+        try
+        {
+            start();
+        }
+        catch (Throwable failed)
+        {
+            // RuneLite does not call shutDown when startUp throws: undo what was registered before the failure.
+            try
+            {
+                shutDown();
+            }
+            catch (RuntimeException cleanup)
+            {
+                failed.addSuppressed(cleanup);
+            }
+            throw failed;
+        }
+    }
+
+    private void start() throws Exception
+    {
         int started = life.incrementAndGet();
         io = Executors.newFixedThreadPool(4, runnable -> daemon(runnable, "HD Map Reforged tiles"));
         dataIo = Executors.newSingleThreadExecutor(runnable -> daemon(runnable, "HD Map Reforged data"));
@@ -227,17 +245,14 @@ public class HdMapReforgedPlugin extends Plugin
         route.setSidebar(panel::showRoute, this::showOnMap);
         panel.setTours(route.sidebarTours(panel::refreshTours));
         gameIcons = new MapIconLayer[]{gameIconLayer(screen), gameIconLayer(fullScreen)};
-        downloader = new MapDownloader(tiles, this::tileLoaded);
-        downloadControl = new MapDownloadControl(downloader, this::refresh);
         for (MapScreen on : new MapScreen[]{screen, fullScreen})
         {
             on.view().setLinesChoice(value -> configManager.setConfiguration(HdMapReforgedConfig.GROUP, "linesOff", value));
             on.setRegionCheck(this::checkRegions);
-            on.view().addOverlay(downloadControl);
         }
 
         refreshData(bundledMaps, BUNDLED_VERSION);
-        resolveMapVersion();
+        resolveMapVersion(false);
         whenGameLoaded(started, () -> GameIconSprites.load(client), PoiIcons::clearCache);
     }
 
@@ -274,6 +289,7 @@ public class HdMapReforgedPlugin extends Plugin
         return thread;
     }
 
+    /** Also safe after a startUp that failed half-way: only what was made is undone. */
     @Override
     protected void shutDown()
     {
@@ -282,24 +298,40 @@ public class HdMapReforgedPlugin extends Plugin
         GameIconSprites.clear();
         PoiIcons.clearCache();
         PointMaps.clear();
-        downloader.stop();
-        if (downloadControl != null)
-        {
-            downloadControl.dispose();
-        }
         party.stop();
         route.stop();
-        clientToolbar.removeNavigation(button);
+        if (button != null)
+        {
+            clientToolbar.removeNavigation(button);
+        }
         dock();
         keyManager.unregisterKeyListener(escape);
         keyManager.unregisterKeyListener(mapKey);
-        fullMap.dispose();
+        if (fullMap != null)
+        {
+            fullMap.dispose();
+        }
         dataGeneration.incrementAndGet();
-        screen.stop();
-        fullScreen.stop();
-        io.shutdownNow();
-        dataIo.shutdownNow();
-        tiles.clear();
+        if (screen != null)
+        {
+            screen.stop();
+        }
+        if (fullScreen != null)
+        {
+            fullScreen.stop();
+        }
+        if (io != null)
+        {
+            io.shutdownNow();
+        }
+        if (dataIo != null)
+        {
+            dataIo.shutdownNow();
+        }
+        if (tiles != null)
+        {
+            tiles.clear();
+        }
         regionsPending.clear();
         lastPlayer = null;
         unlocks = null;
@@ -575,12 +607,16 @@ public class HdMapReforgedPlugin extends Plugin
         configureTiles();
         switch (event.getKey())
         {
-            case "wholeMap":
-            case "diskCache":
-                applyWholeMap();
-                break;
             case "mapVersion":
-                resolveMapVersion();
+                resolveMapVersion(false);
+                break;
+            case "checkMapNow":
+                if (!config.checkMapNow())
+                {
+                    return;
+                }
+                configManager.setConfiguration(HdMapReforgedConfig.GROUP, "checkMapNow", false);
+                resolveMapVersion(true);
                 break;
             case "followPlayer":
                 screens(s -> s.setFollowing(config.followPlayer()));
@@ -597,68 +633,7 @@ public class HdMapReforgedPlugin extends Plugin
 
     private void configureTiles()
     {
-        MapDownloader.Scope scope = config.wholeMap().scope;
-        // The chosen whole-map download always fits, so trimming never deletes it.
-        tiles.setDiskFloor(scope == null ? 0 : downloadRoom(scope));
         tiles.configure(config.diskCache(), config.memoryTiles(), config.diskCacheMb());
-    }
-
-    private static int downloadRoom(MapDownloader.Scope scope)
-    {
-        return scope.megabytes + 500;
-    }
-
-    private void applyWholeMap()
-    {
-        MapDownloader.Scope scope = config.wholeMap().scope;
-        if (scope == null)
-        {
-            downloader.stop();
-            downloader.clearMessage();
-            refreshLater();
-            return;
-        }
-        ensureDiskLimit(downloadRoom(scope));
-        if (!config.diskCache())
-        {
-            // Comes back here through onConfigChanged.
-            configManager.setConfiguration(HdMapReforgedConfig.GROUP, "diskCache", true);
-            return;
-        }
-        String version = tiles.version();
-        if (version != null && (!downloader.isRunning() || downloader.scope() != scope || !version.equals(downloadingVersion)))
-        {
-            download(scope, version, currentMaps);
-        }
-    }
-
-    private void resumeDownload(String version, BaseMaps maps)
-    {
-        MapDownloader.Scope scope = config.wholeMap().scope;
-        if (scope != null && config.diskCache() && downloader != null
-            && (!downloader.isRunning() || !version.equals(downloadingVersion) || maps != downloadingMaps))
-        {
-            ensureDiskLimit(downloadRoom(scope));
-            download(scope, version, maps);
-        }
-    }
-
-    private void download(MapDownloader.Scope scope, String version, BaseMaps maps)
-    {
-        downloadingVersion = version;
-        downloadingMaps = maps;
-        downloader.start(scope, version, maps);
-    }
-
-    private volatile BaseMaps downloadingMaps;
-
-    private void ensureDiskLimit(int megabytes)
-    {
-        if (config.diskCacheMb() < megabytes)
-        {
-            configManager.setConfiguration(HdMapReforgedConfig.GROUP, "diskCacheMb", Math.min(10000, megabytes));
-            configureTiles();
-        }
     }
 
     private void tileLoaded()
@@ -686,8 +661,11 @@ public class HdMapReforgedPlugin extends Plugin
         }
     }
 
-    /** The configured map version, else the wiki's current one (remembered), else the bundled one. */
-    private void resolveMapVersion()
+    /**
+     * The configured map version, else the wiki's current one (remembered), else the bundled one.
+     * {@code now}: ask the wiki even when the update check is not due.
+     */
+    private void resolveMapVersion(boolean now)
     {
         String configured = config.mapVersion().trim();
         if (!configured.isEmpty())
@@ -704,7 +682,7 @@ public class HdMapReforgedPlugin extends Plugin
         {
             useVersion(known.version, true);
         }
-        if (known != null && !known.due(config.mapUpdateCheck(), System.currentTimeMillis()))
+        if (!now && known != null && !known.due(config.mapUpdateCheck(), System.currentTimeMillis()))
         {
             return;
         }
@@ -735,7 +713,6 @@ public class HdMapReforgedPlugin extends Plugin
         if (version.equals(currentVersion))
         {
             tiles.setVersion(version, official);
-            resumeDownload(version, currentMaps);
             refreshLater();
             return;
         }
@@ -852,10 +829,6 @@ public class HdMapReforgedPlugin extends Plugin
         int started = life.get();
         currentMaps = maps;
         currentVersion = version;
-        if (version.equals(tiles.version()))
-        {
-            resumeDownload(version, maps);
-        }
         runData(() -> {
             MapData data = publish(maps, generation, started);
             if (data == null)

@@ -81,7 +81,14 @@ final class Unlocks
         }
         for (int id : varbitIds)
         {
-            unlocks.varbits.put(id, client.getVarbitValue(id));
+            try
+            {
+                unlocks.varbits.put(id, client.getVarbitValue(id));
+            }
+            catch (RuntimeException e)
+            {
+                // Gone after a game update: unknown, which counts as met.
+            }
         }
         return unlocks;
     }

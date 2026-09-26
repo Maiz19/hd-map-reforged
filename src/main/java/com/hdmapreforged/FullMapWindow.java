@@ -244,9 +244,19 @@ final class FullMapWindow implements MapView.WindowControls
             openInGameWindow(canvas);
             return;
         }
-        if (panel != null && panel.getParent() != null)
+        if (panel != null)
         {
-            panel.getParent().remove(panel);
+            // Switched to a window of its own while open in the game window: close it there properly first.
+            if (panel.isVisible())
+            {
+                close();
+            }
+            Container parent = panel.getParent();
+            if (parent != null)
+            {
+                parent.remove(panel);
+                parent.repaint();
+            }
         }
         panel = null;
         if (window == null)
@@ -283,6 +293,8 @@ final class FullMapWindow implements MapView.WindowControls
     @Override
     public void close()
     {
+        removeOutline();
+        pending = null;
         boolean hadKeys;
         if (panel != null && panel.isVisible())
         {
@@ -471,6 +483,10 @@ final class FullMapWindow implements MapView.WindowControls
      */
     private void dragTo(Rectangle bounds)
     {
+        if (panel != null && !panel.isVisible())
+        {
+            return;
+        }
         if (panel == null || panel.getParent() == null)
         {
             setFromScreen(bounds);
@@ -512,6 +528,17 @@ final class FullMapWindow implements MapView.WindowControls
 
     private void dragDone()
     {
+        removeOutline();
+        if (pending != null)
+        {
+            Rectangle to = pending;
+            pending = null;
+            setFromScreen(to);
+        }
+    }
+
+    private void removeOutline()
+    {
         if (outline != null)
         {
             for (JComponent edge : outline)
@@ -525,12 +552,6 @@ final class FullMapWindow implements MapView.WindowControls
                 }
             }
             outline = null;
-        }
-        if (pending != null)
-        {
-            Rectangle to = pending;
-            pending = null;
-            setFromScreen(to);
         }
     }
 

@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -31,6 +32,8 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -54,6 +57,7 @@ final class WikiClient
     private static final String NO_PAGE = "";
     static final int MAX_BODY_BYTES = 8 * 1024 * 1024;
     private static final int MAX_PICTURE_BYTES = 2_000_000;
+    private static final int MAX_PICTURE_SIDE = 2048;
 
     private final OkHttpClient http;
     private final Gson gson;
@@ -402,17 +406,21 @@ final class WikiClient
             BufferedImage image = null;
             try
             {
-                image = ImageIO.read(new ByteArrayInputStream(bytes));
+                image = decode(bytes);
+                if (image != null && pictures.size() < 2000)
+                {
+                    pictures.put(key, image);
+                }
             }
             catch (IOException | RuntimeException e)
             {
                 // Not a picture: none.
             }
-            if (image != null && pictures.size() < 2000)
+            finally
             {
-                pictures.put(key, image);
+                // Even after an Error, so the queue moves on.
+                loaded(callback, image);
             }
-            loaded(callback, image);
         }, () -> loaded(callback, null));
         synchronized (pictureQueue)
         {
@@ -429,6 +437,33 @@ final class WikiClient
             pictureBusy = true;
         }
         nextPicture();
+    }
+
+    /** Null for anything but a picture of sane size, checked before decoding. */
+    static BufferedImage decode(byte[] bytes) throws IOException
+    {
+        try (ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes)))
+        {
+            Iterator<ImageReader> readers = in == null ? null : ImageIO.getImageReaders(in);
+            if (readers == null || !readers.hasNext())
+            {
+                return null;
+            }
+            ImageReader reader = readers.next();
+            try
+            {
+                reader.setInput(in, true, true);
+                if (reader.getWidth(0) > MAX_PICTURE_SIDE || reader.getHeight(0) > MAX_PICTURE_SIDE)
+                {
+                    return null;
+                }
+                return reader.read(0);
+            }
+            finally
+            {
+                reader.dispose();
+            }
+        }
     }
 
     private void nextPicture()
@@ -451,16 +486,23 @@ final class WikiClient
         HttpUrl url = api("action", "query", "prop", "pageimages", "piprop", "thumbnail",
             "pithumbsize", Integer.toString(size), "redirects", "1", "format", "json", "formatversion", "2",
             "titles", title);
+        boolean[] answered = new boolean[1];
         get(url, body -> {
             JsonObject page = firstPage(body);
             HttpUrl image = page == null ? null : thumbnail(page);
+            answered[0] = true;
             if (image == null)
             {
                 callback.accept(null);
                 return;
             }
             picture("page:" + size + ":" + title, image, callback);
-        }, () -> callback.accept(null));
+        }, () -> {
+            if (!answered[0])
+            {
+                callback.accept(null);
+            }
+        });
     }
 
     /** Hands over a picture, then loads the next; never throws, so the request is not also called a failure. */

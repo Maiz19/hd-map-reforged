@@ -106,12 +106,14 @@ public final class ShortcutPassage
                     continue;
                 }
                 String[] cells = line.split("\t", -1);
+                String name = cell(header, cells, "Name");
                 int origin = Tiles.parse(cell(header, cells, "Origin"));
-                if (origin < 0)
+                // An empty object name would match every edge nearby.
+                if (origin < 0 || object(name).isEmpty())
                 {
                     continue;
                 }
-                list.add(new Shortcut(cell(header, cells, "Name"), origin, Tiles.parse(cell(header, cells, "Destination")),
+                list.add(new Shortcut(name, origin, Tiles.parse(cell(header, cells, "Destination")),
                     cell(header, cells, "Skills"), cell(header, cells, "Items"), cell(header, cells, "Quests"),
                     cell(header, cells, "Varbits")));
             }

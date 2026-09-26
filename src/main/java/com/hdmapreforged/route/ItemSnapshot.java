@@ -85,7 +85,8 @@ public final class ItemSnapshot
     {
         Set<Integer> runes = new HashSet<>();
         String n = name == null ? "" : name.toLowerCase(Locale.ROOT);
-        if (!n.contains("staff") && !n.contains("tome of") && !n.contains("wand"))
+        if (!n.contains("staff") && !n.contains("tome of") && !n.contains("wand") || n.contains("(empty)")
+            || n.contains("uncharged"))
         {
             return runes;
         }

@@ -244,7 +244,7 @@ final class FriendsWidget implements MapView.Widget
         }
         // Opens upwards, as many rows as fit; the last line then says how many more.
         int fit = Math.max(1, (int) ((tabTop - 60) / ROW_HEIGHT));
-        List<Row> shown = rows.size() > fit ? rows.subList(0, Math.max(0, fit - 1)) : rows;
+        List<Row> shown = rows.size() > fit ? rows.subList(0, Math.max(1, fit - 1)) : rows;
         int more = rows.size() - shown.size();
         int lines = shown.size() + (more > 0 ? 1 : 0);
         double listTop = tabTop - 4 - lines * ROW_HEIGHT - 6;

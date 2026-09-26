@@ -37,6 +37,8 @@ final class RejoinButton extends Overlay
     private volatile Rectangle joinArea = new Rectangle();
     private volatile Rectangle closeArea = new Rectangle();
     private volatile Point mouse;
+    private volatile boolean pressed;
+    private volatile boolean swallowClick;
 
     final MouseAdapter clicks = new MouseAdapter()
     {
@@ -44,23 +46,39 @@ final class RejoinButton extends Overlay
         public MouseEvent mousePressed(MouseEvent e)
         {
             Point at = at(e);
+            swallowClick = false;
             if (at != null && (joinArea.contains(at) || closeArea.contains(at)))
             {
                 e.consume();
+                pressed = true;
                 (joinArea.contains(at) ? rejoin : dismiss).run();
             }
             return e;
         }
 
+        /** The button hides on the press: its release and click are still ours. */
         @Override
         public MouseEvent mouseReleased(MouseEvent e)
         {
+            if (pressed && SwingUtilities.isLeftMouseButton(e))
+            {
+                pressed = false;
+                swallowClick = true;
+                e.consume();
+                return e;
+            }
             return onButton(e);
         }
 
         @Override
         public MouseEvent mouseClicked(MouseEvent e)
         {
+            if (swallowClick && SwingUtilities.isLeftMouseButton(e))
+            {
+                swallowClick = false;
+                e.consume();
+                return e;
+            }
             return onButton(e);
         }
 

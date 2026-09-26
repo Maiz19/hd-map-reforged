@@ -13,9 +13,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -24,7 +24,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
 import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,8 +56,6 @@ final class TileCache
     private static final int MAX_IN_FLIGHT = 10;
     /** The wiki's tiles are well under 200 KB. */
     static final int MAX_TILE_BYTES = 2 * 1024 * 1024;
-    /** The wiki adds tiles now and then. */
-    static final long NONE_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000L;
     /** Older half-written files were left by a crash; newer ones may still be being written. */
     private static final long PART_STALE_MS = 10 * 60 * 1000L;
     private static final long RETRY_AFTER_MS = 30_000;
@@ -88,12 +91,16 @@ final class TileCache
     private final Deque<Key> queue = new ArrayDeque<>();
     private final Set<Key> queued = new HashSet<>();
     private final Set<Key> loading = new HashSet<>();
+    /** Requests still running, of any generation: {@link #clear} empties {@code loading} but not the network. */
+    private int inFlight;
+    /** Bytes on disk as last counted, plus writes since; a trim runs once it passes the limit. */
+    private final AtomicLong diskBytes = new AtomicLong();
+    private final AtomicBoolean trimQueued = new AtomicBoolean();
+    private boolean configured;
     private volatile String version;
     private volatile boolean diskCache;
     private volatile int memoryLimit = 256;
     private volatile int diskLimitMb = 1000;
-    /** The whole-map download's size, so trimming never undoes it. */
-    private volatile int diskFloorMb;
     /** The memory cache never shrinks below this, or tiles in view would reload. */
     private int frameNeed;
     private int generation;
@@ -119,23 +126,28 @@ final class TileCache
 
     void configure(boolean diskCache, int memoryLimit, int diskLimitMb)
     {
-        this.diskCache = diskCache;
-        this.memoryLimit = memoryLimit;
-        this.diskLimitMb = diskLimitMb;
+        boolean wasOn;
+        boolean first;
+        int oldLimit;
         synchronized (this)
         {
+            wasOn = this.diskCache;
+            oldLimit = this.diskLimitMb;
+            first = !configured;
+            configured = true;
+            this.diskCache = diskCache;
+            this.memoryLimit = memoryLimit;
+            this.diskLimitMb = diskLimitMb;
             trim();
         }
-    }
-
-    void setDiskFloor(int megabytes)
-    {
-        diskFloorMb = Math.max(0, megabytes);
-    }
-
-    int diskLimitMb()
-    {
-        return Math.max(diskLimitMb, diskFloorMb);
+        if (!diskCache && (wasOn || first))
+        {
+            execute(this::deleteCachedTiles);
+        }
+        else if (diskCache && wasOn && diskLimitMb < oldLimit)
+        {
+            execute(this::limitDiskUse);
+        }
     }
 
     String version()
@@ -167,7 +179,7 @@ final class TileCache
         }
         if (official && fallback != null)
         {
-            // Older versions merge into the fallback, so a whole-map download is replaced tile by tile.
+            // Older versions merge into the fallback, so their tiles still show while this version's arrive.
             execute(() -> mergeOlder(version, fallback));
         }
         execute(this::limitDiskUse);
@@ -295,16 +307,18 @@ final class TileCache
 
     private void pump()
     {
-        while (loading.size() < MAX_IN_FLIGHT && !queue.isEmpty())
+        while (inFlight < MAX_IN_FLIGHT && !queue.isEmpty())
         {
             Key key = queue.pollFirst();
             queued.remove(key);
             loading.add(key);
+            inFlight++;
             int started = generation;
             String tileVersion = version;
             if (!execute(() -> load(key, tileVersion, started)))
             {
                 loading.remove(key);
+                inFlight--;
                 return;
             }
         }
@@ -329,60 +343,7 @@ final class TileCache
         return new File(versionFolder(tileVersion), key.path());
     }
 
-    /** An empty file saying the wiki has no such tile (empty sea or rock). */
-    private File noneMarker(String tileVersion, Key key)
-    {
-        return new File(versionFolder(tileVersion), key.path() + NONE_SUFFIX);
-    }
-
-    static final String NONE_SUFFIX = ".none";
     private static final String PART_SUFFIX = ".part";
-    private static final byte[] PNG_SIGNATURE = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
-
-    enum Fetch
-    {
-        SAVED,
-        /** Already on disk, or known missing: the wiki was not asked. */
-        HAD,
-        NONE
-    }
-
-    /** For the whole-map download: blocking, never on the Swing or client thread; does not decode. */
-    Fetch fetchToDisk(String tileVersion, Key key) throws IOException
-    {
-        File file = file(tileVersion, key);
-        File none = noneMarker(tileVersion, key);
-        if (file.isFile() || isFreshMarker(none))
-        {
-            return Fetch.HAD;
-        }
-        byte[] bytes = download(tileVersion, key);
-        if (bytes == null)
-        {
-            write(none, new byte[0]);
-            return Fetch.NONE;
-        }
-        if (!isPng(bytes))
-        {
-            throw new IOException("Not a PNG: " + key.path());
-        }
-        write(file, bytes);
-        return Fetch.SAVED;
-    }
-
-    /** An expired marker is removed, so the tile is asked for again. */
-    private static boolean isFreshMarker(File marker)
-    {
-        if (marker.isFile() && System.currentTimeMillis() - marker.lastModified() < NONE_EXPIRES_MS)
-        {
-            return true;
-        }
-        if (marker.isFile())
-        {
-            delete(marker);
-        }
-        return false;
-    }
 
     /** Refused over {@code max} bytes whether or not the server declared the length. */
     static byte[] readBody(ResponseBody body, int max) throws IOException
@@ -401,12 +362,6 @@ final class TileCache
             }
             return bytes;
         }
-    }
-
-    static boolean isPng(byte[] bytes)
-    {
-        int n = PNG_SIGNATURE.length;
-        return bytes.length >= n && Arrays.equals(bytes, 0, n, PNG_SIGNATURE, 0, n);
     }
 
     File versionFolder(String tileVersion)
@@ -433,16 +388,26 @@ final class TileCache
         return image;
     }
 
-    /** Unreadable files are removed so they download again. */
+    /** Files that are no tile are removed so they download again; a failed read leaves the file. */
     private BufferedImage readCached(File file)
     {
         if (!diskCache || !file.isFile())
         {
             return null;
         }
+        byte[] bytes;
         try
         {
-            BufferedImage image = decode(Files.readAllBytes(file.toPath()));
+            bytes = file.length() > MAX_TILE_BYTES ? null : Files.readAllBytes(file.toPath());
+        }
+        catch (IOException | RuntimeException e)
+        {
+            log.debug("Could not read cached tile {}", file, e);
+            return null;
+        }
+        try
+        {
+            BufferedImage image = bytes == null ? null : decode(bytes);
             if (image != null)
             {
                 // Trimming removes the least recently touched first.
@@ -472,11 +437,6 @@ final class TileCache
                 finish(key, started, cached, false, false);
                 return;
             }
-            if (diskCache && isFreshMarker(noneMarker(tileVersion, key)))
-            {
-                finish(key, started, null, true, false);
-                return;
-            }
             String previous = fallbackVersion;
             File old = previous == null ? null : file(previous, key);
             BufferedImage stale = old == null ? null : readCached(old);
@@ -496,6 +456,8 @@ final class TileCache
                 @Override
                 public void onResponse(Call call, Response response)
                 {
+                    BufferedImage image = null;
+                    boolean notFound = false;
                     try (ResponseBody body = response.body())
                     {
                         byte[] bytes = bytes(response, body);
@@ -503,21 +465,23 @@ final class TileCache
                         {
                             // Gone in this version: the stale copy must not linger.
                             forget(key, started);
-                            finish(key, started, null, true, false);
-                            return;
+                            notFound = true;
                         }
-                        BufferedImage image = keep(file(tileVersion, key), bytes);
-                        if (image != null && old != null && old.isFile())
+                        else
                         {
-                            delete(old);
+                            // Not an image although found: a passing fault, asked again later.
+                            image = keep(file(tileVersion, key), bytes);
+                            if (image != null && old != null && old.isFile())
+                            {
+                                delete(old);
+                            }
                         }
-                        finish(key, started, image, image == null, image != null);
                     }
                     catch (IOException | RuntimeException e)
                     {
                         log.debug("Unusable tile {}", key.path(), e);
-                        finish(key, started, null, false, false);
                     }
+                    finish(key, started, image, notFound, image != null);
                 }
             });
         }
@@ -558,8 +522,10 @@ final class TileCache
         boolean cleanup = false;
         synchronized (this)
         {
+            inFlight--;
             if (started != generation)
             {
+                pump();
                 return;
             }
             loading.remove(key);
@@ -608,17 +574,34 @@ final class TileCache
         }
     }
 
-    /** Into a type Java2D draws quickly; anything but 256x256 is refused. */
+    /** Into a type Java2D draws quickly; anything but 256x256 is refused before it is decoded. */
     static BufferedImage decode(byte[] bytes) throws IOException
     {
-        BufferedImage source = ImageIO.read(new ByteArrayInputStream(bytes));
-        if (source == null)
+        BufferedImage source;
+        // In memory: ImageIO's default stream would cache to a temporary file.
+        try (ImageInputStream in = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes)))
         {
-            return null;
-        }
-        if (source.getWidth() != TILE_SIZE || source.getHeight() != TILE_SIZE)
-        {
-            throw new IOException("Not a map tile: " + source.getWidth() + "x" + source.getHeight());
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
+            if (!readers.hasNext())
+            {
+                return null;
+            }
+            ImageReader reader = readers.next();
+            try
+            {
+                reader.setInput(in, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                if (width != TILE_SIZE || height != TILE_SIZE)
+                {
+                    throw new IOException("Not a map tile: " + width + "x" + height);
+                }
+                source = reader.read(0);
+            }
+            finally
+            {
+                reader.dispose();
+            }
         }
         BufferedImage image = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_RGB);
         Graphics2D g = image.createGraphics();
@@ -627,7 +610,7 @@ final class TileCache
         return image;
     }
 
-    private static void write(File file, byte[] bytes)
+    private void write(File file, byte[] bytes)
     {
         try
         {
@@ -637,7 +620,7 @@ final class TileCache
             {
                 return;
             }
-            // Own temp name: the map and the whole-map download may write the same tile at once.
+            // Own temp name: two threads may write the same tile at once.
             Path temp = Files.createTempFile(parent.toPath(), file.getName() + ".", PART_SUFFIX);
             try
             {
@@ -659,6 +642,12 @@ final class TileCache
         catch (IOException | RuntimeException e)
         {
             log.debug("Could not cache tile {}", file, e);
+            return;
+        }
+        if (diskBytes.addAndGet(bytes.length) > diskLimitMb * MB && trimQueued.compareAndSet(false, true)
+            && !execute(this::limitDiskUse))
+        {
+            trimQueued.set(false);
         }
     }
 
@@ -700,12 +689,6 @@ final class TileCache
         }
     }
 
-    boolean fallbackComplete(String marker)
-    {
-        String current = version;
-        return Arrays.stream(versionDirs()).anyMatch(dir -> !dir.getName().equals(current) && new File(dir, marker).isFile());
-    }
-
     private void removeOtherVersions(String keep, String fallback)
     {
         for (File dir : versionDirs())
@@ -735,6 +718,7 @@ final class TileCache
     /** Background thread: removes oldest tiles past the limit and stale half-written files. */
     void limitDiskUse()
     {
+        trimQueued.set(false);
         if (!diskCache || !cacheRoot.isDirectory())
         {
             return;
@@ -755,36 +739,40 @@ final class TileCache
             entries.add(entry);
             total += entry.size;
         }
-        long limit = diskLimitMb() * MB;
-        if (total <= limit)
+        long limit = diskLimitMb * MB;
+        if (total > limit)
         {
-            return;
-        }
-        entries.sort(Comparator.comparingLong((Entry e) -> e.modified));
-        boolean removed = false;
-        for (Entry entry : entries)
-        {
-            if (total <= limit * 8 / 10)
+            entries.sort(Comparator.comparingLong((Entry e) -> e.modified));
+            for (Entry entry : entries)
             {
-                break;
-            }
-            if (!entry.file.getName().startsWith("complete-") && entry.file.delete())
-            {
-                total -= entry.size;
-                removed = true;
-            }
-        }
-        if (removed)
-        {
-            // A downloaded whole map now has gaps: let the download check again.
-            for (File dir : versionDirs())
-            {
-                for (File marker : list(dir, file -> file.getName().startsWith("complete-")))
+                if (total <= limit * 8 / 10)
                 {
-                    delete(marker);
+                    break;
+                }
+                if (entry.file.delete())
+                {
+                    total -= entry.size;
                 }
             }
         }
+        diskBytes.set(total);
+    }
+
+    /** Background thread: the disk cache was switched off, so its tiles go. */
+    private void deleteCachedTiles()
+    {
+        if (diskCache || Files.isSymbolicLink(cacheRoot.toPath()))
+        {
+            return;
+        }
+        for (File dir : versionDirs())
+        {
+            if (WikiClient.isSafeVersion(dir.getName()))
+            {
+                deleteTree(dir);
+            }
+        }
+        diskBytes.set(0);
     }
 
     private File[] versionDirs()

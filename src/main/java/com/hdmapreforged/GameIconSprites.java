@@ -6,6 +6,7 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import net.runelite.api.Client;
+import net.runelite.api.GameState;
 import net.runelite.api.SpritePixels;
 import net.runelite.api.worldmap.MapElementConfig;
 
@@ -52,19 +53,14 @@ final class GameIconSprites
             {
                 continue;
             }
-            MapElementConfig config;
-            try
-            {
-                config = client.getMapElementConfig(id);
-            }
-            catch (RuntimeException e)
-            {
-                // An id the game no longer knows.
-                continue;
-            }
+            MapElementConfig config = config(client, id);
             if (config == null)
             {
-                return false;
+                if (waiting(client))
+                {
+                    return false;
+                }
+                continue;
             }
             BufferedImage image = icon(config);
             if (image != null)
@@ -73,6 +69,25 @@ final class GameIconSprites
             }
         }
         return true;
+    }
+
+    /** Null for an id the game does not know (or not yet). */
+    private static MapElementConfig config(Client client, int id)
+    {
+        try
+        {
+            return client.getMapElementConfig(id);
+        }
+        catch (RuntimeException e)
+        {
+            return null;
+        }
+    }
+
+    /** Still null once logged in: an id gone after a game update, not worth retrying every tick. */
+    private static boolean waiting(Client client)
+    {
+        return client.getGameState() != GameState.LOGGED_IN;
     }
 
     private static BufferedImage icon(MapElementConfig config)
@@ -108,10 +123,14 @@ final class GameIconSprites
     {
         for (Map.Entry<PoiType, Integer> entry : ELEMENTS.entrySet())
         {
-            MapElementConfig config = client.getMapElementConfig(entry.getValue());
+            MapElementConfig config = config(client, entry.getValue());
             if (config == null)
             {
-                return false;
+                if (waiting(client))
+                {
+                    return false;
+                }
+                continue;
             }
             BufferedImage image = icon(config);
             if (image != null)

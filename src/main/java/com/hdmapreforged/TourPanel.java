@@ -183,6 +183,8 @@ final class TourPanel
                 refresh();
             }
         });
+        // The fastest order's answer finds its route by name: renaming meanwhile would drop it.
+        name.setEnabled(!ordering);
         name.setMaximumSize(new Dimension(Math.max(100, width - 60), name.getPreferredSize().height));
         naming.add(name);
         naming.add(Box.createHorizontalStrut(4));

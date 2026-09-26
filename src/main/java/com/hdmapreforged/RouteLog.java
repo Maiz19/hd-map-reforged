@@ -6,12 +6,16 @@ import com.hdmapreforged.route.Tiles;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.function.BooleanSupplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -89,7 +93,14 @@ final class RouteLog
             all = String.join("\n", entries);
             number = ++added;
         }
-        io.execute(() -> write(number, all));
+        try
+        {
+            io.execute(() -> write(number, all));
+        }
+        catch (RejectedExecutionException e)
+        {
+            // Shutting down.
+        }
     }
 
     private void write(long number, String all)
@@ -108,7 +119,29 @@ final class RouteLog
                 {
                     return;
                 }
-                Files.write(file.toPath(), all.getBytes(StandardCharsets.UTF_8));
+                Path target = file.toPath();
+                if (Files.isSymbolicLink(target))
+                {
+                    log.debug("Not writing through a symbolic link: {}", file);
+                    return;
+                }
+                Path temp = Files.createTempFile(target.toAbsolutePath().getParent(), file.getName() + ".", ".part");
+                try
+                {
+                    Files.write(temp, all.getBytes(StandardCharsets.UTF_8));
+                    try
+                    {
+                        Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                    }
+                    catch (AtomicMoveNotSupportedException e)
+                    {
+                        Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                }
+                finally
+                {
+                    Files.deleteIfExists(temp);
+                }
             }
             catch (IOException e)
             {

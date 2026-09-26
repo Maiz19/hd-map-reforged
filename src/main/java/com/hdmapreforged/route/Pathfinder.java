@@ -7,7 +7,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -38,18 +37,18 @@ public final class Pathfinder
     static final int SNAP_RADIUS = 12;
     private static final int LONG_JUMP = 24;
     private static final int BLOCK = 8;
-    private static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
-    private static final int[] DY = {0, 0, 1, -1, 1, -1, 1, -1};
-    private static final int[] NO_EDGES = {};
+    static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
+    static final int[] DY = {0, 0, 1, -1, 1, -1, 1, -1};
+    static final int[] NO_EDGES = {};
 
-    private final CollisionMap map;
-    private final SeaMap sea;
-    private final List<Edge> stairs;
+    final CollisionMap map;
+    final SeaMap sea;
+    final List<Edge> stairs;
     private final List<ShortcutPassage> shortcutPassages;
     /** For route requests built without this pathfinder at hand. */
     private static final Map<CollisionMap, List<ShortcutPassage>> SHORTCUT_PASSAGES =
         Collections.synchronizedMap(new WeakHashMap<>());
-    private final EdgeIndex stairsByOrigin;
+    final EdgeIndex stairsByOrigin;
     private final List<Edge> heuristicStairs;
 
     public Pathfinder(CollisionMap map, SeaMap sea)
@@ -268,7 +267,7 @@ public final class Pathfinder
     }
 
     /** A start the data calls unwalkable (a boat's deck, a stepping stone) begins from the nearest open tile. */
-    private int startNode(int start)
+    int startNode(int start)
     {
         if (start < 0 || Tiles.isSea(start) || map.walkable(Tiles.x(start), Tiles.y(start), Tiles.z(start)))
         {
@@ -351,59 +350,6 @@ public final class Pathfinder
             }
         }
         return true;
-    }
-
-    /** Every land tile reachable from the request, by {@link Tiles#pack}; about 128 MB, a development aid. */
-    public BitSet reachable(RouteRequest request)
-    {
-        BitSet seen = new BitSet(1 << 30);
-        BitSet seaSeen = new BitSet();
-        ArrayDeque<Integer> queue = new ArrayDeque<>();
-        EdgeIndex requestByOrigin = EdgeIndex.of(request.edges, 0);
-        java.util.function.IntConsumer visit = node -> {
-            BitSet set = Tiles.isSea(node) ? seaSeen : seen;
-            int index = node & ~Tiles.SEA;
-            if (!set.get(index))
-            {
-                set.set(index);
-                queue.add(node);
-            }
-        };
-        int first = startNode(request.start);
-        if (first >= 0)
-        {
-            visit.accept(first);
-        }
-        for (Edge e : request.startEdges)
-        {
-            visit.accept(e.to);
-        }
-        while (!queue.isEmpty())
-        {
-            int node = queue.poll();
-            boolean sailing = Tiles.isSea(node);
-            int x = sailing ? Tiles.cellX(node) : Tiles.x(node);
-            int y = sailing ? Tiles.cellY(node) : Tiles.y(node);
-            int z = Tiles.z(node);
-            for (int d = 0; d < 8; d++)
-            {
-                if (sailing ? sea.sailable(x + DX[d], y + DY[d], request.sailingLevel) : map.canStep(x, y, z, DX[d], DY[d]))
-                {
-                    visit.accept(sailing ? Tiles.sea(x + DX[d], y + DY[d]) : Tiles.pack(x + DX[d], y + DY[d], z));
-                }
-            }
-            int[] up = sailing ? null : stairsByOrigin.get(node);
-            int[] out = requestByOrigin.get(node);
-            for (int i : up != null ? up : NO_EDGES)
-            {
-                visit.accept(stairs.get(i).to);
-            }
-            for (int i : out != null ? out : NO_EDGES)
-            {
-                visit.accept(request.edges.get(i).to);
-            }
-        }
-        return seen;
     }
 
     public Route find(RouteRequest request, BooleanSupplier cancelled)

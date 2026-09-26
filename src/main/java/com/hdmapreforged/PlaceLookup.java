@@ -141,7 +141,10 @@ final class PlaceLookup
             if (map.id != BaseMap.FULL && map.id != BaseMap.SURFACE && map.name.equalsIgnoreCase(name))
             {
                 WorldPoint middle = new WorldPoint((map.minX + map.maxX) / 2, (map.minY + map.maxY) / 2, 0);
-                return maps.find(middle.getX(), middle.getY()) == map ? middle : null;
+                if (maps.find(middle.getX(), middle.getY()) == map)
+                {
+                    return middle;
+                }
             }
         }
         return null;

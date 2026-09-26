@@ -44,10 +44,12 @@ import javax.swing.ScrollPaneConstants;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.ui.ColorScheme;
 
 /** The map with its controls and detail card: sidebar, large window and game-view map. */
+@Slf4j
 final class MapScreen extends JPanel implements MapView.Listener
 {
     enum Layout
@@ -127,6 +129,8 @@ final class MapScreen extends JPanel implements MapView.Listener
     private final JButton searchMode = new JButton();
 
     private final SearchResults npcs;
+    /** What the search results last put in the card or their panel. */
+    private IntFunction<JComponent> searchSection;
 
     private final JLayeredPane layers = new JLayeredPane();
 
@@ -139,12 +143,40 @@ final class MapScreen extends JPanel implements MapView.Listener
         view.setListener(this);
         card = new InfoCard(view, wiki, itemNames, config);
         this.wiki = wiki;
-        npcs = new SearchResults(view, wiki, section -> {
-            if (tours != null && layout != Layout.FULL)
+        npcs = new SearchResults(view, wiki, new SearchResults.Card()
+        {
+            @Override
+            public void show(IntFunction<JComponent> section)
             {
-                tours.replaced();
+                searchSection = section;
+                if (tours != null && layout != Layout.FULL)
+                {
+                    tours.replaced();
+                }
+                showSection(section);
             }
-            showSection(section);
+
+            @Override
+            public void update(IntFunction<JComponent> section)
+            {
+                // Late answers never reopen or replace what the user opened since (a place's details, a route).
+                if (searchSection == null)
+                {
+                    return;
+                }
+                if (layout == Layout.FULL)
+                {
+                    if (npcFloat.isVisible())
+                    {
+                        searchSection = section;
+                        showFloating(npcPanel, npcFloat, section, JLayeredPane.PALETTE_LAYER);
+                    }
+                }
+                else if (card.updateExtra(searchSection, section))
+                {
+                    searchSection = section;
+                }
+            }
         });
         card.setItemSearch(npcs::findItem);
         cardScroll = scroll(card);
@@ -907,6 +939,11 @@ final class MapScreen extends JPanel implements MapView.Listener
         {
             return;
         }
+        if (building != null)
+        {
+            // Superseded: the lists it reads were replaced.
+            building.cancel(false);
+        }
         buildingFrom = from;
         Supplier<Indexes> build = builder();
         building = INDEXER.submit(build::get);
@@ -928,6 +965,11 @@ final class MapScreen extends JPanel implements MapView.Listener
         };
     }
 
+    /**
+     * The newest finished indexes. Waits (Swing thread) only when there are none yet, the build having started when
+     * the search field got focus; while a newer build runs, the older indexes answer. A failed build is never redone
+     * here: the older indexes (or none) answer, and the next search starts a new build in the background.
+     */
     private Indexes indexes()
     {
         List<Object> from = indexSources();
@@ -937,26 +979,36 @@ final class MapScreen extends JPanel implements MapView.Listener
         }
         prepareSearch();
         Future<Indexes> pending = building;
+        if (indexes != null && !pending.isDone())
+        {
+            return indexes;
+        }
         List<Object> pendingFrom = buildingFrom;
         building = null;
         buildingFrom = null;
-        Indexes ready;
         try
         {
-            ready = pending.get();
+            indexes = pending.get();
+            indexesFrom = pendingFrom;
         }
         catch (InterruptedException e)
         {
             Thread.currentThread().interrupt();
-            ready = builder().get();
         }
-        catch (java.util.concurrent.ExecutionException e)
+        catch (java.util.concurrent.ExecutionException | java.util.concurrent.CancellationException e)
         {
-            ready = builder().get();
+            log.warn("Could not build the search indexes", e);
         }
-        indexes = ready;
-        indexesFrom = pendingFrom;
-        return ready;
+        return indexes != null ? indexes : emptyIndexes();
+    }
+
+    /** No hits: while the first build failed. */
+    private static Indexes emptyIndexes()
+    {
+        KindIndex kinds = KindIndex.build(java.util.Collections.emptyList(), java.util.Collections.emptyList(),
+            java.util.Collections.emptyList());
+        return new Indexes(kinds, SearchIndex.build(java.util.Collections.emptyList(), java.util.Collections.emptyList(),
+            java.util.Collections.emptyList(), java.util.Collections.emptyList(), kinds, point -> null));
     }
 
     private JPopupMenu wikiResults(String typed, boolean items)

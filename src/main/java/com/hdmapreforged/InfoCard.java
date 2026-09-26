@@ -179,6 +179,24 @@ final class InfoCard extends JPanel implements Scrollable
         rebuild();
     }
 
+    /**
+     * A background update of {@code old}: taken only while it is still the card's extra, re-rendered only while shown
+     * (no place's details open over it), never closing anything.
+     */
+    boolean updateExtra(IntFunction<JComponent> old, IntFunction<JComponent> now)
+    {
+        if (extra == null || extra != old)
+        {
+            return false;
+        }
+        extra = now;
+        if (poi == null && nearestTo == null)
+        {
+            rebuild();
+        }
+        return true;
+    }
+
     boolean hasExtra()
     {
         return extra != null;
@@ -214,7 +232,7 @@ final class InfoCard extends JPanel implements Scrollable
             removeAll();
             if (poi != null)
             {
-                JLabel title = SearchResults.bold(new JLabel(poi.name));
+                JLabel title = SearchResults.bold(plain(poi.name));
                 title.setForeground(Color.WHITE);
                 title.setAlignmentX(Component.LEFT_ALIGNMENT);
                 add(title);
@@ -516,7 +534,7 @@ final class InfoCard extends JPanel implements Scrollable
             JLabel icon = SearchResults.pictureIcon(warePictures.get(ware.item));
             wareIcons.put(ware.item, icon);
             JPanel line = SearchResults.panel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-            JLabel detail = new JLabel((inStock ? ware.stock.equals("∞") ? "Endless stock" : "Stock " + ware.stock
+            JLabel detail = plain((inStock ? ware.stock.equals("∞") ? "Endless stock" : "Stock " + ware.stock
                 : "Out of stock") + (ware.price.isEmpty() ? "" : " · " + ware.price));
             detail.setForeground(inStock ? ColorScheme.LIGHT_GRAY_COLOR : new Color(170, 110, 110));
             line.add(detail);
@@ -598,12 +616,21 @@ final class InfoCard extends JPanel implements Scrollable
     private void heading(String text)
     {
         add(Box.createVerticalStrut(8));
-        JLabel label = new JLabel(text);
+        JLabel label = plain(text);
         label.setFont(FontManager.getRunescapeSmallFont());
         label.setForeground(ColorScheme.BRAND_ORANGE);
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
         add(label);
         add(Box.createVerticalStrut(2));
+    }
+
+    /** Wiki text as it is: a name starting with {@code <html>} must not render as HTML (remote images). */
+    static JLabel plain(String text)
+    {
+        JLabel label = new JLabel();
+        label.putClientProperty("html.disable", Boolean.TRUE);
+        label.setText(text);
+        return label;
     }
 
     private JLabel grey(String text)
@@ -621,6 +648,7 @@ final class InfoCard extends JPanel implements Scrollable
         // HTML labels wrap but are slow to build: plain labels wherever the text fits on one line.
         if (text.indexOf('\n') < 0 && label.getFontMetrics(label.getFont()).stringWidth(text) <= textWidth)
         {
+            label.putClientProperty("html.disable", Boolean.TRUE);
             label.setText(text);
         }
         else

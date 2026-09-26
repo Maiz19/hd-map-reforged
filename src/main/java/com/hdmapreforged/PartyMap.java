@@ -210,6 +210,7 @@ public final class PartyMap
         MESSAGES.forEach(wsClient::unregisterMessage);
         members.clear();
         throttle.reset();
+        clientThread.invoke(() -> hopTarget = null);
         SwingUtilities.invokeLater(() -> {
             if (idleCheck != null)
             {
@@ -318,13 +319,15 @@ public final class PartyMap
         {
             return;
         }
+        // Expires a few ticks after the click.
+        if (++hopAttempts > 5)
+        {
+            hopTarget = null;
+            return;
+        }
         if (client.getWidget(InterfaceID.Worldswitcher.BUTTONS) == null)
         {
             client.openWorldHopper();
-            if (++hopAttempts >= 5)
-            {
-                hopTarget = null;
-            }
             return;
         }
         client.hopToWorld(target);
@@ -432,7 +435,7 @@ public final class PartyMap
                 // RuneLite names a member "<unknown>" until they log in and send their name.
                 String name = member.getDisplayName();
                 list.add(new FriendsWidget.Member(member.getMemberId(),
-                    name == null || name.startsWith("<") ? null : name));
+                    name == null || name.startsWith("<") ? null : PartyMapMembers.clean(name)));
             }
         }
         lastGroup = List.copyOf(list);
@@ -476,6 +479,10 @@ public final class PartyMap
     public void onGameStateChanged(GameStateChanged event)
     {
         GameState state = event.getGameState();
+        if (state != GameState.LOGGED_IN && state != GameState.LOADING)
+        {
+            hopTarget = null;
+        }
         if (state == GameState.LOGGED_IN)
         {
             loggedOutSince = null;
@@ -635,13 +642,21 @@ public final class PartyMap
     @Subscribe
     public void onHdMapPartyDrop(HdMapPartyDrop message)
     {
-        if (isLocal(message.getMemberId()) || message.item() < 0)
+        int item = message.item();
+        if (isLocal(message.getMemberId()) || item < 0)
         {
             return;
         }
-        members.loot(message.getMemberId(), new PartyMapMembers.Loot(message.item(), message.quantity(), message.value(),
-            System.currentTimeMillis()));
-        repaint();
+        // Only items the game has, valued by our own prices.
+        clientThread.invoke(() -> {
+            if (item < client.getItemCount())
+            {
+                long value = (long) itemManager.getItemPrice(item) * message.quantity();
+                members.loot(message.getMemberId(), new PartyMapMembers.Loot(item, message.quantity(), value,
+                    System.currentTimeMillis()));
+                repaint();
+            }
+        });
     }
 
     private HdMapPartyGear gear()

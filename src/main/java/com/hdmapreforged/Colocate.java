@@ -40,7 +40,9 @@ final class Colocate
             }
             kept.add(poi);
         }
-        return twins(kept);
+        List<Poi> out = twins(kept);
+        out.forEach(Poi::liftNearby);
+        return out;
     }
 
     /** The same place under one name this close is drawn once. */

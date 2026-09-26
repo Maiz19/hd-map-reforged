@@ -420,6 +420,15 @@ final class MapPanel extends PluginPanel
         return orb;
     }
 
+    /** Party members' names are never HTML. */
+    private static JLabel plain(String text)
+    {
+        JLabel label = new JLabel();
+        label.putClientProperty("html.disable", Boolean.TRUE);
+        label.setText(text);
+        return label;
+    }
+
     /** A name over a smaller line; with {@code action}, clickable. */
     private static JComponent entry(String title, String under, Color dot, String tip, Runnable action)
     {
@@ -435,11 +444,11 @@ final class MapPanel extends PluginPanel
         }
         JPanel texts = new JPanel(new GridLayout(2, 1));
         texts.setOpaque(false);
-        JLabel name = new JLabel(title);
+        JLabel name = plain(title);
         name.setForeground(action != null ? Color.WHITE : ColorScheme.LIGHT_GRAY_COLOR);
         name.setFont(FontManager.getRunescapeBoldFont());
         texts.add(name);
-        JLabel small = new JLabel(under);
+        JLabel small = plain(under);
         small.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
         small.setFont(FontManager.getRunescapeSmallFont());
         texts.add(small);

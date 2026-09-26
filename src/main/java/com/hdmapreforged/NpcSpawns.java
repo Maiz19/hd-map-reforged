@@ -193,8 +193,8 @@ final class NpcSpawns
                 Integer value = coordinate(kv[kv.length - 1]);
                 if (value == null)
                 {
-                    // A word, not coordinates at all.
-                    return;
+                    // A stray word: the pairs read so far and after it still count.
+                    continue;
                 }
                 if (open == null)
                 {

@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.client.util.Text;
 
 /** Last known location of each party member: written from network threads, read on Swing, so all synchronized. */
 final class PartyMapMembers
@@ -130,6 +131,7 @@ final class PartyMapMembers
     synchronized void loot(long id, Loot drop)
     {
         List<Loot> list = loot.computeIfAbsent(id, k -> new ArrayList<>());
+        list.removeIf(l -> drop.at - l.at > LOOT_MS);
         list.add(drop);
         // A big pile shows its most valuable few.
         if (list.size() > 4)
@@ -210,10 +212,22 @@ final class PartyMapMembers
     synchronized void name(long id, String name)
     {
         Member member = members.get(id);
-        if (member != null && member.name == null && name != null && !name.isEmpty())
+        name = clean(name);
+        if (member != null && member.name == null && name != null)
         {
             member.name = name;
         }
+    }
+
+    /** Never HTML in a Swing label; null when nothing is left. */
+    static String clean(String name)
+    {
+        if (name == null || name.length() > 64)
+        {
+            return null;
+        }
+        name = Text.removeTags(name).replace('<', ' ').replace('\u00a0', ' ').trim();
+        return name.isEmpty() || name.length() > HdMapPartyLocation.MAX_NAME ? null : name;
     }
 
     synchronized void avatar(long id, BufferedImage avatar)

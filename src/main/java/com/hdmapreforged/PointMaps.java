@@ -21,9 +21,20 @@ final class PointMaps
 
     static Map<WorldPoint, BaseMap> resolve(TileCache tiles, String version, BaseMaps maps, List<WorldPoint> points)
     {
+        return resolve(tiles, version, maps, points, () -> false);
+    }
+
+    /** As above, stopping between points once {@code stop} says the answer is no longer wanted (a newer search). */
+    static Map<WorldPoint, BaseMap> resolve(TileCache tiles, String version, BaseMaps maps, List<WorldPoint> points,
+        java.util.function.BooleanSupplier stop)
+    {
         Map<WorldPoint, BaseMap> found = new HashMap<>();
         for (WorldPoint point : points)
         {
+            if (stop.getAsBoolean())
+            {
+                break;
+            }
             WorldMapMoves.Drawn moved = WorldMapMoves.drawn(point);
             if (moved != null && maps.byId(moved.map) != null)
             {

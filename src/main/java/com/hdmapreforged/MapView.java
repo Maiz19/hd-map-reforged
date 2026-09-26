@@ -2042,8 +2042,9 @@ final class MapView extends JComponent
     private void updateHover(Point p)
     {
         Control overControl = control(p);
-        boolean full = overControl != hoveredControl;
-        if (full)
+        // Controls are made anew every paint: the same button has the same shape.
+        boolean full = overControl == null ? hoveredControl != null : !isHovered(overControl.shape);
+        if (overControl != hoveredControl)
         {
             hoveredControl = overControl;
             setToolTipText(overControl == null ? null : overControl.tooltip);
