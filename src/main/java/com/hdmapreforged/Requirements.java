@@ -12,7 +12,6 @@ final class Requirements
 {
     private static final int MAX_ALTERNATIVES = 3;
 
-    /** One requirement as shown on the detail card; {@link #skill} or {@link #quest} is set when it can be checked. */
     static final class Line
     {
         final String text;
@@ -65,10 +64,7 @@ final class Requirements
         return lines;
     }
 
-    /**
-     * {@code "AIR_RUNE=3&&FIRE_RUNE=1"} lists all items needed; {@code "1706=1||1708=1"} lists alternatives.
-     * Item ids go through {@code itemNames}, which may return null while a name is unknown.
-     */
+    /** {@code "AIR_RUNE=3&&FIRE_RUNE=1"}: all needed; {@code "1706=1||1708=1"}: alternatives. {@code itemNames} may return null. */
     static List<String> items(String column, IntFunction<String> itemNames)
     {
         List<String> lines = new ArrayList<>();
@@ -95,7 +91,6 @@ final class Requirements
                     }
                     catch (NumberFormatException ignored)
                     {
-                        // Keep the previous quantity.
                     }
                 }
                 alternatives.add(itemName(parts[0].trim(), itemNames));
@@ -127,7 +122,6 @@ final class Requirements
         return Character.toUpperCase(words.charAt(0)) + words.substring(1);
     }
 
-    /** Item ids named in a requirement column, to look up before display. */
     static List<Integer> itemIds(String column)
     {
         List<Integer> ids = new ArrayList<>();
@@ -142,7 +136,6 @@ final class Requirements
         return ids;
     }
 
-    /** Digits that fit an int: a level or an item id; anything longer is a broken line, not a number. */
     private static boolean isNumber(String text)
     {
         return !text.isEmpty() && text.length() <= 9 && text.chars().allMatch(Character::isDigit);

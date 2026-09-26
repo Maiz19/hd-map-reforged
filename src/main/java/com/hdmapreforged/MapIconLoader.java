@@ -14,31 +14,22 @@ import java.util.Set;
 import net.runelite.api.coords.WorldPoint;
 
 /**
- * The game's own world map icons (shops, quest starts, map links, anvils, ...), which the wiki's map tiles show
- * baked in. Reads the bundled {@code map_icons.tsv} (built from the game cache by
- * {@code local-development/tools/map-icons}) and gives each icon something to select: one of our own icons when one
- * stands at the same place, otherwise a new {@link Poi} with a name, wiki query and, for map links, where it leads.
+ * The game's own map icons, baked into the wiki tiles, from {@code map_icons.tsv}: each gets something to select, our
+ * own icon at the same place or a new {@link Poi}.
  */
 final class MapIconLoader
 {
     static final String FILE = "map_icons.tsv";
 
-    /** One baked icon and what hovering or clicking it selects. */
     static final class Icon
     {
-        /** The tile the game places the icon on, in the game. */
         final WorldPoint location;
-        /**
-         * Where the map's tiles draw it: {@link #location}, but for a part of the game the map draws elsewhere (the
-         * Keldagrim tunnel); the wiki draws it centred on this tile's south-west corner.
-         */
+        /** Differs from {@link #location} where the map draws a place elsewhere (the Keldagrim tunnel). */
         final WorldPoint drawn;
-        /** The map whose tiles show it. */
         final BaseMap map;
         final Poi poi;
-        /** True when {@link #poi} is one of our own icons standing at the same place. */
         final boolean own;
-        /** The game's map element drawn there, or -1: its sprite draws the icon larger than the tiles do. */
+        /** The game's map element, or -1. */
         final int element;
 
         Icon(WorldPoint location, BaseMap map, Poi poi, boolean own)
@@ -57,7 +48,6 @@ final class MapIconLoader
         }
     }
 
-    /** A map element: one kind of icon. */
     static final class Kind
     {
         final int id;
@@ -76,7 +66,6 @@ final class MapIconLoader
         }
     }
 
-    /** A row of the table. */
     static final class Entry
     {
         final WorldPoint location;
@@ -92,7 +81,6 @@ final class MapIconLoader
         }
     }
 
-    /** Which of our own icon types stand for a kind of game icon, and how far apart they may be. */
     private static final class Match
     {
         final Set<PoiType> types;
@@ -108,7 +96,6 @@ final class MapIconLoader
     private static final Map<String, Match> MATCHES = new HashMap<>();
     private static final Set<PoiType> PASSAGES = EnumSet.of(PoiType.DUNGEON_ENTRANCE, PoiType.MAP_EXIT);
     private static final Set<PoiType> TRANSPORTS = EnumSet.noneOf(PoiType.class);
-    /** Shops are named after a settlement this close. */
     private static final int PLACE_RADIUS = 120;
 
     static
@@ -138,7 +125,6 @@ final class MapIconLoader
     {
     }
 
-    /** Reads the bundled table from a data source and builds the icons. */
     static List<Icon> load(BaseMaps maps, List<Poi> own, PoiLoader.Source source, List<PoiLoader.Place> places)
         throws IOException
     {
@@ -154,13 +140,11 @@ final class MapIconLoader
         }
         catch (IOException | RuntimeException e)
         {
-            // Map links are then named after where they lead.
             dungeonRows = new ArrayList<>();
         }
         return load(maps, own, source, places, entries, dungeonRows);
     }
 
-    /** Builds the icons from the tables already read ({@link MapData} reads each once). */
     static List<Icon> load(BaseMaps maps, List<Poi> own, PoiLoader.Source source, List<PoiLoader.Place> places,
         List<Entry> entries, List<Tsv.Row> dungeonRows)
     {
@@ -195,7 +179,6 @@ final class MapIconLoader
         }
         catch (IOException | RuntimeException e)
         {
-            // Icons are then named after their kind and town.
         }
         List<Icon> icons = build(maps, entries, own, places, dungeons);
         List<Icon> named = new ArrayList<>(icons.size());
@@ -216,10 +199,9 @@ final class MapIconLoader
         return named;
     }
 
-    /** Names for game icons their kind and town do not tell apart (the three Barracuda Trials), from the wiki. */
+    /** Names for icons their kind and town do not tell apart (the Barracuda Trials). */
     static final String NAMES_FILE = "icon_names.tsv";
 
-    /** Parses the table; malformed rows are skipped. */
     static List<Entry> parse(Reader source) throws IOException
     {
         BufferedReader reader = new BufferedReader(source);
@@ -253,24 +235,16 @@ final class MapIconLoader
             }
             catch (NumberFormatException e)
             {
-                // Skip the row.
             }
         }
         return entries;
     }
 
-    /**
-     * Gives every icon on a known map something to select.
-     *
-     * @param own our own icons; one of a matching type close by is selected instead of a new one
-     * @param places place names, to tell shops of the same kind apart
-     */
     static List<Icon> build(BaseMaps maps, List<Entry> entries, List<Poi> own, List<PoiLoader.Place> places)
     {
         return build(maps, entries, own, places, Collections.emptyList());
     }
 
-    /** {@code dungeons}: RuneLite's names of dungeon entrances, which name the game's map links beside them. */
     static List<Icon> build(BaseMaps maps, List<Entry> entries, List<Poi> own, List<PoiLoader.Place> places,
         List<PoiLoader.Place> dungeons)
     {
@@ -282,7 +256,6 @@ final class MapIconLoader
         List<Icon> icons = new ArrayList<>();
         for (Entry entry : entries)
         {
-            // The map that draws it, also where it is drawn elsewhere than it is (the Keldagrim tunnel).
             BaseMap map = maps.find(entry.location);
             if (map == null)
             {
@@ -291,7 +264,6 @@ final class MapIconLoader
             Poi match = ownMatch(entry, ownByArea);
             if (match != null && match.target == null && PASSAGES.contains(match.type))
             {
-                // Our entrance knows its name but not where it leads; the game's map link does.
                 Poi made = create(maps, map, entry, places, dungeons);
                 if (made.target != null)
                 {
@@ -299,7 +271,7 @@ final class MapIconLoader
                         made.target, null);
                     made.links().forEach(named::addLink);
                     icons.add(new Icon(entry.location, map, named, false, entry.kind.id));
-                    // Ours stands on the game's icon too: the tile shows that one, so ours is not drawn beside it.
+                    // The tile already shows the game's icon, so ours is not drawn beside it.
                     icons.add(new Icon(entry.location, map, match, true, entry.kind.id));
                     continue;
                 }
@@ -345,10 +317,8 @@ final class MapIconLoader
         return best;
     }
 
-    /** What the skilling icons stand for; set by {@link #load}. */
     private static volatile SkillSpots spots = SkillSpots.NONE;
 
-    /** What the skilling icons stand for, once loaded. */
     static SkillSpots skillSpots()
     {
         return spots;
@@ -368,37 +338,31 @@ final class MapIconLoader
             {
                 String place = map.id == BaseMap.SURFACE ? settlement(places, at) : null;
                 String name = place == null ? kind.name : kind.name + " (" + place + ")";
-                // The wiki search finds the particular shop from its town and kind, such as "Lumbridge General Store".
                 return new Poi(PoiType.SHOP, name, at, map, null, Needs.NONE, place == null ? wiki : place + " " + kind.name,
                     null, null);
             }
             case "link":
             case "dungeon":
             {
-                // Only where the game itself says where it leads; a guess (a way down 6400 tiles north, a nearby pair)
-                // too often led to the wrong entrance, so without one the icon stays a plain game icon.
+                // Only where the game says where it leads: guesses too often led to the wrong entrance.
                 WorldPoint target = entry.target;
                 if (target == null && kind.kind.equals("dungeon"))
                 {
-                    // The game's dungeon marker has no map link of its own: where a trusted passage beside it leads
-                    // (Waterbirth's ladder down to the sub-levels), else it stays a plain icon without a way in.
+                    // A dungeon marker has no link: use a trusted passage beside it (Waterbirth's ladder).
                     target = TrustedPassages.leadsFrom(at, p -> {
                         BaseMap drawn = maps.find(p);
                         return drawn == null || drawn.id == BaseMap.SURFACE;
                     });
                 }
-                // The map that draws where it leads, also where that is drawn elsewhere (Keldagrim's tunnel).
                 BaseMap targetMap = target == null ? null : maps.find(target);
                 boolean dungeon = kind.kind.equals("dungeon");
                 String named = dungeonName(dungeons, at);
                 if (targetMap == null)
                 {
                     String plain = named != null ? named : dungeon ? "Dungeon" : "Map link";
-                    // Nowhere to go: a plain icon, never a way in that leads nowhere.
                     return new Poi(PoiType.GAME_ICON, plain, at, map, null, Needs.NONE,
                         named != null ? named : dungeon ? "Dungeons" : null, null, null);
                 }
-                // A link up to the surface is named after the town it shows, one down after the dungeon's map.
                 String place = targetMap.id == BaseMap.SURFACE ? settlement(places, target) : null;
                 String where = place != null ? place : targetMap != map ? targetMap.name : null;
                 String name = named != null && (targetMap != map || dungeon) && targetMap.id != BaseMap.SURFACE ? named
@@ -416,14 +380,12 @@ final class MapIconLoader
                 {
                     return SkillSpots.poi(spot, at, map, place);
                 }
-                // Named after the town, like shops, so a list of furnaces or slayer masters can be told apart.
                 return new Poi(PoiType.GAME_ICON, place == null ? kind.name : kind.name + " (" + place + ")", at, map, null,
                     Needs.NONE, wiki, null, null);
             }
         }
     }
 
-    /** RuneLite's name for the dungeon entrance beside a map link (the same floor, a few tiles off), or null. */
     static String dungeonName(List<PoiLoader.Place> dungeons, WorldPoint at)
     {
         String best = null;
@@ -440,10 +402,8 @@ final class MapIconLoader
         return best;
     }
 
-    /** How far RuneLite's dungeon name may be from the game's map link it names. */
     private static final int DUNGEON_NAME_RADIUS = 6;
 
-    /** The nearest settlement or island name, if one is close. */
     static String settlement(List<PoiLoader.Place> places, WorldPoint at)
     {
         String best = null;

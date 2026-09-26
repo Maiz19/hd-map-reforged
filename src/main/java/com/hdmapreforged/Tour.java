@@ -1,24 +1,20 @@
 package com.hdmapreforged;
 
+import com.hdmapreforged.route.Tiles;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * A custom route: stops to visit one after another, made and saved by the player and run again whenever wanted. A
- * stop is a place (a spot on the map, an icon) or a kind of place ("Yew trees"), which becomes the nearest one of
- * that kind when the route runs. Kept as text in the plugin's settings.
- */
+/** A custom route: stops (a place, or a kind of place resolved to the nearest one), kept as text in settings. */
 final class Tour
 {
-    /** One stop of a route. */
     static final class Stop
     {
         final String name;
-        /** Where it is; for a kind, null. */
         final WorldPoint point;
-        /** The kind of place ("Yew trees", as the search names it), or null for a fixed place. */
+        /** Null for a fixed place. */
         final String kind;
 
         Stop(String name, WorldPoint point, String kind)
@@ -43,7 +39,6 @@ final class Tour
             return kind != null;
         }
 
-        /** The same place, or the same kind. */
         boolean same(Stop other)
         {
             return isKind() ? kind.equals(other.kind) : !other.isKind() && point.equals(other.point);
@@ -57,9 +52,8 @@ final class Tour
         }
     }
 
-    /** Stops a route may have: the fastest order is worked out over all of them. */
+    /** The fastest order is solved exactly over all of them. */
     static final int MAX_STOPS = 12;
-    /** Routes kept at most. */
     static final int MAX_TOURS = 50;
     private static final String HEADER = "# route\t";
 
@@ -72,7 +66,6 @@ final class Tour
         this.stops = new ArrayList<>(stops);
     }
 
-    /** The name, or with a number added when another route has it. */
     static String unique(List<Tour> tours, String name)
     {
         String candidate = name;
@@ -87,16 +80,12 @@ final class Tour
         }
     }
 
-    /**
-     * Whether stop {@code i} is the same as the one before it: going there again at once goes nowhere, so it is
-     * shown greyed out and skipped when the route runs. It is kept, to be moved elsewhere (there and back).
-     */
+    /** Same as the stop before: skipped when run, but kept so it can be moved (there and back). */
     boolean repeats(int i)
     {
         return i > 0 && i < stops.size() && stops.get(i).same(stops.get(i - 1));
     }
 
-    /** The route as it runs: without stops that repeat the one before (see {@link #repeats}). */
     Tour withoutRepeats()
     {
         List<Stop> kept = new ArrayList<>();
@@ -115,10 +104,7 @@ final class Tour
         return new Tour(newName, stops);
     }
 
-    /**
-     * The place of a kind nearest {@code near} (as the crow flies, the same floor first); the first place when
-     * {@code near} is not known; null for no kind or none of it.
-     */
+    /** As the crow flies, same floor first; the first place when {@code near} is unknown. */
     static WorldPoint nearest(KindIndex.Kind kind, WorldPoint near)
     {
         if (kind == null || kind.entries.isEmpty())
@@ -145,12 +131,7 @@ final class Tour
         return best;
     }
 
-    // ---- as text ----
-
-    /**
-     * All routes as text: a line "# route" and its name per route, then a line per stop: "x y plane", its name and,
-     * for a kind, the kind; tab-separated. Names lose tabs and line breaks.
-     */
+    /** Per route "# route\tname", then per stop "x y plane\tname" or "-\tname\tkind". */
     static String encode(List<Tour> tours)
     {
         StringBuilder text = new StringBuilder();
@@ -175,7 +156,7 @@ final class Tour
         return text.toString();
     }
 
-    /** Routes from {@link #encode}'s text; lines that make no sense are skipped, never an error. */
+    /** Bad lines are skipped, never an error. */
     static List<Tour> decode(String text)
     {
         List<Tour> tours = new ArrayList<>();
@@ -207,14 +188,13 @@ final class Tour
                 stops.add(new Stop(cells[1].trim(), null, cells[2].trim()));
                 continue;
             }
-            // Only a tile of the world (routes pack x and y in 14 bits); anything else is not a stop.
-            int at = com.hdmapreforged.route.Tiles.parse(cells[0]);
+            int at = Tiles.parse(cells[0]);
             if (at >= 0)
             {
-                int x = com.hdmapreforged.route.Tiles.x(at);
-                int y = com.hdmapreforged.route.Tiles.y(at);
+                int x = Tiles.x(at);
+                int y = Tiles.y(at);
                 stops.add(Stop.place(cells.length > 1 && !cells[1].trim().isEmpty() ? cells[1].trim() : x + ", " + y,
-                    new WorldPoint(x, y, com.hdmapreforged.route.Tiles.z(at))));
+                    new WorldPoint(x, y, Tiles.z(at))));
             }
         }
         if (name != null)
@@ -229,12 +209,9 @@ final class Tour
         return text.replaceAll("[\\t\\r\\n]+", " ").trim();
     }
 
-    // ---- the fastest order ----
-
     /**
-     * The order to visit places in that takes least in total, starting at place 0 (where the player is) and not
-     * coming back: {@code cost[a][b]} is how long from a to b (a negative value: not possible). Exact for up to
-     * {@link #MAX_STOPS} places after the start; returns the order of places 1.., without the start.
+     * Exact open-path order from place 0 (the player); {@code cost[a][b]} negative means impossible. Returns places
+     * 1.. in order, without the start.
      */
     static List<Integer> fastestOrder(long[][] cost)
     {
@@ -253,7 +230,7 @@ final class Tour
         int[][] from = new int[full][n];
         for (long[] row : best)
         {
-            java.util.Arrays.fill(row, unreachable);
+            Arrays.fill(row, unreachable);
         }
         for (int i = 0; i < n; i++)
         {
@@ -306,7 +283,7 @@ final class Tour
         return order;
     }
 
-    /** A trip that is not possible weighs a lot, so it comes last, but the order still visits everything. */
+    /** Impossible trips weigh a lot but the order still visits everything. */
     private static long weight(long cost, long unreachable)
     {
         return cost < 0 ? unreachable / (MAX_STOPS + 2) : cost;

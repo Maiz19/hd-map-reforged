@@ -7,10 +7,9 @@ import java.awt.Graphics2D;
 import java.awt.geom.RoundRectangle2D;
 import javax.swing.Timer;
 
-/** Shows the progress of "Download the whole map" (a plugin setting) on the map. Swing thread only. */
+/** Shows the progress of "Download the whole map" on the map. Swing thread only. */
 final class MapDownloadControl implements MapView.Overlay
 {
-    /** How long "Whole map downloaded" stays on the map. */
     private static final int MESSAGE_MS = 8000;
     private static final Color PANEL = new Color(22, 24, 28, 225);
     private static final Color BAR = new Color(90, 180, 110);
@@ -29,7 +28,7 @@ final class MapDownloadControl implements MapView.Overlay
         this.repaint = repaint;
     }
 
-    /** Stops the finished message's timer, so nothing runs after the plugin has shut down. Swing thread. */
+    /** Stops the timer so nothing runs after shutdown. */
     void dispose()
     {
         if (messageTimer != null)
@@ -52,30 +51,27 @@ final class MapDownloadControl implements MapView.Overlay
         {
             shownMessage = null;
         }
-        else
+        else if (!status.equals(shownMessage))
         {
             // A finished message stays for a few seconds.
-            if (!status.equals(shownMessage))
+            shownMessage = status;
+            if (messageTimer != null)
             {
-                shownMessage = status;
-                if (messageTimer != null)
-                {
-                    messageTimer.stop();
-                }
-                messageTimer = new Timer(MESSAGE_MS, e -> {
-                    downloader.clearMessage();
-                    shownMessage = null;
-                    repaint.run();
-                });
-                messageTimer.setRepeats(false);
-                messageTimer.start();
+                messageTimer.stop();
             }
+            messageTimer = new Timer(MESSAGE_MS, e -> {
+                downloader.clearMessage();
+                shownMessage = null;
+                repaint.run();
+            });
+            messageTimer.setRepeats(false);
+            messageTimer.start();
         }
         g.setFont(FONT);
         FontMetrics metrics = g.getFontMetrics();
         if (metrics.stringWidth(status) + 24 > projection.width() - 16 && downloader.isRunning())
         {
-            // The sidebar is narrow: just the percentage.
+            // Narrow sidebar: just the percentage.
             status = "Downloading map " + downloader.done() * 100 / Math.max(1, downloader.total()) + "%";
         }
         int width = Math.min(projection.width() - 16, metrics.stringWidth(status) + 24);

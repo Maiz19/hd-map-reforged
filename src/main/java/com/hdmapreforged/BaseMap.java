@@ -1,6 +1,6 @@
 package com.hdmapreforged;
 
-/** One of the wiki's maps: the surface, a dungeon or another separate area, in world tile coordinates. */
+/** One of the wiki's maps, in world tile coordinates. */
 final class BaseMap
 {
     static final int SURFACE = 0;

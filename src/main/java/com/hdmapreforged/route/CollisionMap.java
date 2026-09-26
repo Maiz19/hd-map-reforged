@@ -1,7 +1,6 @@
 package com.hdmapreforged.route;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -13,15 +12,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Where one can walk, read from the bundled {@code collision.zip} (built from the game cache by
- * {@code local-development/tools/collision}). Per 64×64 region and floor it holds bitsets: walkable tiles, walls on
- * the north and east edges of a tile, and doors on those edges (passable, a little slower); on the ground floor also
- * which tiles are water. Coordinates outside the data are not walkable. Immutable after loading, so any thread may
- * read it.
+ * Where one can walk, from the bundled collision.zip: per region and floor, bitsets of walkable tiles and of walls and
+ * doors on the north and east edges, plus ground-floor water. Immutable after loading, so any thread may read it.
  */
 public final class CollisionMap
 {
@@ -34,13 +31,12 @@ public final class CollisionMap
     private static final int DOOR_E = 256;
     private static final int LAYERS = 320;
 
-    /** Per region id and floor ({@code region * 4 + plane}): five bitsets of 64 longs, or null. */
+    /** By {@code region * 4 + plane}: five bitsets of 64 longs, or null. */
     private final long[][] floors = new long[1 << 18][];
     private final long[][] water = new long[1 << 16][];
     private final List<Transition> transitions;
-    /** Obstacles cut through on the way, by packed tile: "Chop-down Vines (bring an axe)". */
+    /** By packed tile: "Chop-down Vines (bring an axe)". */
     private final Map<Integer, String> obstacles;
-    /** Regions with obstacles, so the search looks them up only there. */
     private final boolean[] obstacleRegions = new boolean[1 << 16];
 
     private CollisionMap(List<Transition> transitions, Map<Integer, String> obstacles)
@@ -53,7 +49,6 @@ public final class CollisionMap
         }
     }
 
-    /** Reads the bundled map. */
     public static CollisionMap load() throws IOException
     {
         InputStream in = CollisionMap.class.getResourceAsStream(RESOURCE);
@@ -67,7 +62,6 @@ public final class CollisionMap
         }
     }
 
-    /** Reads a zip holding {@code collision.bin} and {@code transitions.tsv}. */
     public static CollisionMap read(InputStream zipped) throws IOException
     {
         byte[] bin = null;
@@ -79,36 +73,21 @@ public final class CollisionMap
         {
             if ("collision.bin".equals(entry.getName()))
             {
-                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-                byte[] buffer = new byte[65536];
-                int n;
-                while ((n = zip.read(buffer)) > 0)
-                {
-                    bytes.write(buffer, 0, n);
-                }
-                bin = bytes.toByteArray();
+                bin = zip.readAllBytes();
             }
             else if ("transitions.tsv".equals(entry.getName()))
             {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(zip, StandardCharsets.UTF_8));
-                String line;
-                while ((line = reader.readLine()) != null)
-                {
+                lines(zip, line -> {
                     Transition t = Transition.parse(line);
                     if (t != null)
                     {
                         transitions.add(t);
                     }
-                }
+                });
             }
             else if ("obstacles.tsv".equals(entry.getName()))
             {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(zip, StandardCharsets.UTF_8));
-                String line;
-                while ((line = reader.readLine()) != null)
-                {
-                    obstacle(obstacles, line);
-                }
+                lines(zip, line -> obstacle(obstacles, line));
             }
         }
         if (bin == null)
@@ -118,6 +97,16 @@ public final class CollisionMap
         CollisionMap map = new CollisionMap(Collections.unmodifiableList(transitions), obstacles);
         map.decode(bin);
         return map;
+    }
+
+    private static void lines(InputStream in, Consumer<String> each) throws IOException
+    {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        String line;
+        while ((line = reader.readLine()) != null)
+        {
+            each.accept(line);
+        }
     }
 
     private void decode(byte[] bin) throws IOException
@@ -182,13 +171,11 @@ public final class CollisionMap
         return transitions;
     }
 
-    /** What it takes to get through the obstacle on a tile, as "Chop-down Vines (bring an axe)", or null. */
     public String obstacle(int node)
     {
         return isObstacle(Tiles.x(node), Tiles.y(node), node) ? obstacles.get(node) : null;
     }
 
-    /** Whether a tile holds an obstacle to cut through; quick where there are none. */
     public boolean isObstacle(int x, int y, int node)
     {
         return x >= 0 && y >= 0 && x < 1 << 14 && y < 1 << 14 && obstacleRegions[(x >> 6) << 8 | (y >> 6)]
@@ -201,8 +188,7 @@ public final class CollisionMap
         {
             return null;
         }
-        int index = ((x >> 6) << 8 | (y >> 6)) << 2 | z;
-        return floors[index];
+        return floors[((x >> 6) << 8 | (y >> 6)) << 2 | z];
     }
 
     private static boolean bit(long[] layers, int offset, int x, int y)
@@ -213,23 +199,19 @@ public final class CollisionMap
 
     public boolean walkable(int x, int y, int z)
     {
-        long[] layers = layers(x, y, z);
-        return layers != null && bit(layers, WALK, x, y);
+        return edge(x, y, z, WALK);
     }
 
-    /** Whether a region has any data for a floor. */
     public boolean hasFloor(int region, int z)
     {
         return region >= 0 && region < 1 << 16 && z >= 0 && z < 4 && floors[region << 2 | z] != null;
     }
 
-    /** Whether a region has any water on the ground floor. */
     public boolean hasWater(int region)
     {
         return region >= 0 && region < 1 << 16 && water[region] != null;
     }
 
-    /** Water on the ground floor: rivers, lakes and the sea. */
     public boolean water(int x, int y)
     {
         if (x < 0 || y < 0 || x >= 1 << 14 || y >= 1 << 14)
@@ -237,12 +219,7 @@ public final class CollisionMap
             return false;
         }
         long[] bits = water[(x >> 6) << 8 | (y >> 6)];
-        if (bits == null)
-        {
-            return false;
-        }
-        int i = (x & 63) << 6 | (y & 63);
-        return (bits[i >> 6] & 1L << (i & 63)) != 0;
+        return bits != null && bit(bits, 0, x, y);
     }
 
     private boolean edge(int x, int y, int z, int offset)
@@ -251,7 +228,6 @@ public final class CollisionMap
         return layers != null && bit(layers, offset, x, y);
     }
 
-    /** A straight step from a walkable tile to a neighbour: blocked by walls, open through doors. */
     public boolean canStep(int x, int y, int z, int dx, int dy)
     {
         int nx = x + dx;
@@ -273,63 +249,34 @@ public final class CollisionMap
 
     private boolean straightOpen(int x, int y, int z, int dx, int dy)
     {
-        if (dx == 1)
-        {
-            return !edge(x, y, z, WALL_E);
-        }
-        if (dx == -1)
-        {
-            return !edge(x - 1, y, z, WALL_E);
-        }
-        if (dy == 1)
-        {
-            return !edge(x, y, z, WALL_N);
-        }
-        return !edge(x, y - 1, z, WALL_N);
+        return !crosses(x, y, z, dx, dy, WALL_N, WALL_E);
     }
 
-    /** Whether a straight step crosses a door. */
     public boolean door(int x, int y, int z, int dx, int dy)
     {
-        if (dx == 1)
-        {
-            return edge(x, y, z, DOOR_E);
-        }
-        if (dx == -1)
-        {
-            return edge(x - 1, y, z, DOOR_E);
-        }
-        if (dy == 1)
-        {
-            return edge(x, y, z, DOOR_N);
-        }
-        if (dy == -1)
-        {
-            return edge(x, y - 1, z, DOOR_N);
-        }
-        return false;
+        return (dx == 1 || dx == -1 || dy == 1 || dy == -1) && crosses(x, y, z, dx, dy, DOOR_N, DOOR_E);
     }
 
-    /** Wall flags of a tile for drawing and tests: 1 north wall, 2 east wall, 4 north door, 8 east door. */
+    private boolean crosses(int x, int y, int z, int dx, int dy, int north, int east)
+    {
+        return dx == 1 ? edge(x, y, z, east) : dx == -1 ? edge(x - 1, y, z, east)
+            : dy == 1 ? edge(x, y, z, north) : edge(x, y - 1, z, north);
+    }
+
+    /** 1 north wall, 2 east wall, 4 north door, 8 east door. */
     public int edges(int x, int y, int z)
     {
         return (edge(x, y, z, WALL_N) ? 1 : 0) | (edge(x, y, z, WALL_E) ? 2 : 0) | (edge(x, y, z, DOOR_N) ? 4 : 0)
             | (edge(x, y, z, DOOR_E) ? 8 : 0);
     }
 
-    /**
-     * The walkable tile nearest to a point on the same floor within {@code radius} (Chebyshev rings, then straight
-     * distance), packed with {@link Tiles#pack}, or -1.
-     */
+    /** Nearest walkable tile within {@code radius} (Chebyshev rings, then straight distance), packed, or -1. */
     public int nearestWalkable(int x, int y, int z, int radius)
     {
         return nearestWalkable(x, y, z, radius, x, y);
     }
 
-    /**
-     * The walkable tile nearest to a spot; of equally near ones, the one farthest from {@code (awayX, awayY)}: the
-     * near side of a shortcut whose ends stand on water or lava, not a pocket between its stones.
-     */
+    /** Ties go farthest from {@code (awayX, awayY)}: a shortcut's near side, not a pocket between its stones. */
     public int nearestWalkable(int x, int y, int z, int radius, int awayX, int awayY)
     {
         for (int r = 0; r <= radius; r++)
@@ -345,7 +292,6 @@ public final class CollisionMap
                         continue;
                     }
                     double away = (x + dx - awayX) * (double) (x + dx - awayX) + (y + dy - awayY) * (double) (y + dy - awayY);
-                    // Nearness first; farther from the other end breaks ties.
                     double d = (dx * dx + dy * dy) * 1e6 - away;
                     if (d < bestDistance)
                     {

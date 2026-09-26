@@ -1,23 +1,21 @@
 package com.hdmapreforged.route;
 
+import java.io.BufferedReader;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 
 /**
- * Our own route search: A* over game tiles (8 directions, walls and doors from {@link CollisionMap}), sea blocks
- * (from {@link SeaMap}) and jumps ({@link Edge}: stairs from the game cache, and the teleports and transports of
- * a {@link RouteRequest}). Costs are half game ticks: running one tile costs 1, walking 2, sailing a 4-tile block 4
- * (about running speed; the real speed depends on the boat and the wind), a door 2 extra.
- *
- * <p>The heuristic stays a lower bound despite jumps: distances are measured with underground coordinates folded
- * onto the surface (y − 6400, where the game puts most dungeons), so ordinary stairs cost nothing to guess across,
- * and every jump that goes further than it costs (transports, and short passages cheaper than walking their length)
- * gets a lower bound to the target from a small backward search over those jumps alone.
- *
- * <p>Thread-safe: each search keeps its own state; the maps are immutable.
+ * A* over tiles, sea blocks and jumps ({@link Edge}); costs in half ticks. The heuristic stays a lower bound by folding
+ * underground y onto the surface (y − 6400) and bounding far/cheap jumps with a backward search over the jumps alone.
+ * Thread-safe: each search keeps its own state; the maps are immutable.
  */
 public final class Pathfinder
 {
@@ -25,15 +23,13 @@ public final class Pathfinder
     static final int RUN = 1;
     static final int WALK = 2;
     static final int DOOR = 2;
-    /** Cutting through vines, jungle or a web: a few ticks, and it needs a tool, so walking around is better. */
+    /** Vines, jungle or a web: needs a tool, so walking around is better. */
     static final int OBSTACLE = 10;
     static final int SAIL = Tiles.CELL;
     static final int STAIRS = 5;
-    /** Extra for walking through a solid object found by shape: taken only when no known way is much shorter. */
+    /** Through a solid object found by shape: only when no known way is much shorter. */
     static final int THROUGH = 30;
-    /** How far a blocked target is moved to the nearest walkable tile. */
     static final int SNAP_RADIUS = 12;
-    /** Jumps longer than this (folded) are kept in the heuristic; shorter ones too where they cost less than that. */
     private static final int LONG_JUMP = 24;
     private static final int BLOCK = 8;
     private static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
@@ -43,11 +39,10 @@ public final class Pathfinder
     private final SeaMap sea;
     private final List<Edge> stairs;
     private final List<ShortcutPassage> shortcutPassages;
-    /** The shortcut passages per collision map, for route requests built without this pathfinder at hand. */
+    /** For route requests built without this pathfinder at hand. */
     private static final Map<CollisionMap, List<ShortcutPassage>> SHORTCUT_PASSAGES =
-        Collections.synchronizedMap(new java.util.WeakHashMap<>());
+        Collections.synchronizedMap(new WeakHashMap<>());
     private final EdgeIndex stairsByOrigin;
-    /** The passages the heuristic has to know of (see {@link #shortCut}), the same for every search. */
     private final List<Edge> heuristicStairs;
 
     public Pathfinder(CollisionMap map, SeaMap sea)
@@ -55,15 +50,10 @@ public final class Pathfinder
         this.map = map;
         this.sea = sea;
         List<Edge> edges = new ArrayList<>();
-        // Where passages come from (local-development/APPROACH.md), nothing else:
-        // 1. the game's own world map links (map_link_passages.tsv, built by MapLinkPassages): the passage object beside
-        //    each link, to where the link leads;
+        // Passages only from (see local-development/APPROACH.md): the game's map links, hand links citing a source,
+        // and cache passages within SAME_SPOT (a far one only where a map or hand link confirms it).
         List<Edge> mapLinks = links(map, "/com/hdmapreforged/route/map_link_passages.tsv");
-        // 2. passages added by hand (links.tsv), each citing the wiki page or cache object it comes from;
         List<Edge> handLinks = links(map, "/com/hdmapreforged/route/links.tsv");
-        // 3. the cache's own passages where the destination follows from the game's data: the other side of an
-        //    obstacle, or the same spot on another floor (stairs, ladders, trapdoors), within SAME_SPOT tiles. A far
-        //    one (the cache tools' 6400-tiles-north guesses) only where a map link or a hand link confirms it.
         for (Transition t : map.transitions())
         {
             Edge.Kind kind = Tiles.z(t.to) != t.plane && Math.abs(Tiles.y(t.to) - t.y) < 1000 ? Edge.Kind.STAIRS
@@ -84,11 +74,9 @@ public final class Pathfinder
         }
         edges.addAll(mapLinks);
         edges.addAll(handLinks);
-        // One-way passages (one_way.tsv): whatever source pairs them both ways, never taken backwards.
         OneWay oneWay = OneWay.load();
         edges.removeIf(e -> oneWay.against(e.from, e.to));
-        // Agility shortcuts of the wiki's (shortcuts.tsv) that the game's data also knows as a passage, without the
-        // shortcut's level: not an always open passage, but added to each request whose player meets the shortcut.
+        // Passages that are wiki Agility shortcuts: added only to requests whose player meets the shortcut.
         List<ShortcutPassage> atShortcuts = new ArrayList<>();
         List<ShortcutPassage.Shortcut> known = ShortcutPassage.shortcuts();
         edges.removeIf(e -> {
@@ -117,35 +105,27 @@ public final class Pathfinder
         heuristicStairs = Collections.unmodifiableList(cutting);
     }
 
-    /** The passages that are Agility shortcuts, taken only by players who meet the shortcut (see ShortcutPassage). */
     public List<ShortcutPassage> shortcutPassages()
     {
         return shortcutPassages;
     }
 
-    /** {@link #shortcutPassages()} for a collision map, from its pathfinder (made once if there is none yet). */
     public static List<ShortcutPassage> shortcutPassages(CollisionMap map)
     {
         List<ShortcutPassage> known = SHORTCUT_PASSAGES.get(map);
         return known != null ? known : new Pathfinder(map, null).shortcutPassages;
     }
 
-    /** Every passage the planner knows besides walking and what a request adds (teleports, transport, shortcuts). */
     public List<Edge> passages()
     {
         return stairs;
     }
 
-    /** Whether a passage leaps far (into another map), rather than to the floor above or through a door. */
     public static boolean far(int from, int to)
     {
         return Tiles.distance(from, to) > 64 || Math.abs(Tiles.y(from) - Tiles.y(to)) > 1000;
     }
 
-    /**
-     * Whether a cache passage's destination follows from the game's data: the other side of what it crosses (the same
-     * floor, a few tiles), or the same spot on another floor (stairs, ladders, trapdoors).
-     */
     static boolean sameSpot(int from, int to)
     {
         int dx = Math.abs(Tiles.x(from) - Tiles.x(to));
@@ -153,14 +133,9 @@ public final class Pathfinder
         return Math.max(dx, dy) <= SAME_SPOT;
     }
 
-    /**
-     * Tiles a cache passage may move the player and still be "the same spot": across an obstacle (rocks, stepping
-     * stones) or a staircase landing a few tiles off. Every guessed passage of the cache tools leaps far further (the
-     * underground 6400 tiles north), so this keeps what the game's data decides and drops what was guessed.
-     */
+    /** Guessed cache passages leap far further (6400 tiles north), so this keeps only what the game decides. */
     static final int SAME_SPOT = 10;
 
-    /** Whether a passage from the game's map links or a hand link starts and ends near this one. */
     private static boolean confirmed(List<Edge> passages, int from, int to)
     {
         for (Edge e : passages)
@@ -174,7 +149,6 @@ public final class Pathfinder
         return false;
     }
 
-    /** Passages added by hand (links.tsv): ones neither the cache nor the wiki map link, such as new portals. */
     private static List<Edge> links(CollisionMap map, String resource)
     {
         List<Edge> edges = new ArrayList<>();
@@ -183,7 +157,7 @@ public final class Pathfinder
         {
             return edges;
         }
-        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+        try (BufferedReader reader = new BufferedReader(
             new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8)))
         {
             String line;
@@ -206,7 +180,6 @@ public final class Pathfinder
         }
         catch (java.io.IOException e)
         {
-            // None then.
         }
         return edges;
     }
@@ -228,10 +201,7 @@ public final class Pathfinder
         return Math.max(Math.abs(Tiles.x(a) - Tiles.x(b)), Math.abs(fy(a) - fy(b)));
     }
 
-    /**
-     * Whether the heuristic must know a jump: a long one, or one that costs less than walking its (folded) length
-     * would; guessing across it by distance alone would overestimate, and A* could miss the best way.
-     */
+    /** Jumps the heuristic must know, else it would overestimate and A* could miss the best way. */
     private static boolean shortCut(Edge e)
     {
         if (e.from == Edge.ANYWHERE)
@@ -242,12 +212,10 @@ public final class Pathfinder
         return length > LONG_JUMP || e.cost < length * RUN;
     }
 
-    /** Where to aim for: the target, or the walkable tile nearest to it (same floor first), or -1. */
     public int resolveGoal(int target)
     {
         if (Tiles.isSea(target))
         {
-            // A place at sea (a Barracuda Trial, a shipwreck): sailed to, never snapped to land.
             return target;
         }
         int x = Tiles.x(target);
@@ -262,8 +230,7 @@ public final class Pathfinder
         {
             return near;
         }
-        // Only a pocket on this floor (an icon the wiki gives on the wrong floor): an open spot right there on
-        // another floor is meant.
+        // Only a pocket here: the wiki may give the icon on the wrong floor.
         for (int dz = 1; dz < 4; dz++)
         {
             for (int other : new int[]{z - dz, z + dz})
@@ -279,50 +246,41 @@ public final class Pathfinder
         {
             return near;
         }
-        // Nothing near on this floor: the same spot on another floor first. The wiki gives some places on the wrong
-        // floor (Brimhaven Dungeon's upper fire giants are on plane 2, the wiki says 1).
-        for (int dz = 1; dz < 4; dz++)
+        // Wrong floor in the wiki (Brimhaven's upper fire giants): the same spot on another floor first.
+        near = otherFloor(x, y, z, 1);
+        if (near < 0)
         {
-            for (int other : new int[]{z - dz, z + dz})
-            {
-                if (other >= 0 && other < 4)
-                {
-                    near = map.nearestWalkable(x, y, other, 1);
-                    if (near >= 0)
-                    {
-                        return near;
-                    }
-                }
-            }
+            near = otherFloor(x, y, z, SNAP_RADIUS);
         }
-        for (int dz = 1; dz < 4; dz++)
+        if (near >= 0)
         {
-            for (int other : new int[]{z - dz, z + dz})
-            {
-                if (other >= 0 && other < 4)
-                {
-                    near = map.nearestWalkable(x, y, other, SNAP_RADIUS);
-                    if (near >= 0)
-                    {
-                        return near;
-                    }
-                }
-            }
+            return near;
         }
         if (z == 0 && sea != null && sea.sailable(x / Tiles.CELL, y / Tiles.CELL, 99))
         {
-            // Open water with no ground near on any floor (a Barracuda Trial's icon, a click out at sea): sailed to,
-            // not walked to a far shore. A spot by the shore or on a ship's deck is still that ground.
+            // Open water with no ground near: sailed to, not walked to a far shore.
             return Tiles.seaAt(x, y);
         }
         return -1;
     }
 
-    /**
-     * The player stands where they stand, even where the data says one cannot (an object moved, a boat's deck): a
-     * start on an unwalkable tile begins from the walkable tile nearest to it. Mid-shortcut (on a stepping stone over
-     * lava) the nearest walkable tile can be a pocket between the stones: the nearest one that is not shut in.
-     */
+    private int otherFloor(int x, int y, int z, int radius)
+    {
+        for (int dz = 1; dz < 4; dz++)
+        {
+            for (int other : new int[]{z - dz, z + dz})
+            {
+                int near = other >= 0 && other < 4 ? map.nearestWalkable(x, y, other, radius) : -1;
+                if (near >= 0)
+                {
+                    return near;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /** A start the data calls unwalkable (a boat's deck, a stepping stone) begins from the nearest open tile. */
     private int startNode(int start)
     {
         if (start < 0 || Tiles.isSea(start) || map.walkable(Tiles.x(start), Tiles.y(start), Tiles.z(start)))
@@ -333,10 +291,7 @@ public final class Pathfinder
         return near >= 0 ? near : start;
     }
 
-    /**
-     * The nearest walkable tile that is not a pocket (behind a bank's booths, between stepping stones), or the nearest
-     * walkable one when all near ones are; -1 when none within {@code radius}.
-     */
+    /** Nearest walkable non-pocket tile, else nearest walkable, else -1. */
     private int nearestOpen(int x, int y, int z, int radius)
     {
         int fallback = -1;
@@ -373,14 +328,13 @@ public final class Pathfinder
         return fallback;
     }
 
-    /** Tiles a walkable area needs not to count as a pocket. */
     private static final int POCKET = 120;
 
-    /** Whether a walkable tile lies in a small shut-in area (fewer than {@link #POCKET} tiles, stairs aside). */
+    /** A small shut-in area (behind bank booths, between stepping stones) with no stairs. */
     boolean pocket(int node)
     {
-        java.util.ArrayDeque<Integer> queue = new java.util.ArrayDeque<>();
-        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        ArrayDeque<Integer> queue = new ArrayDeque<>();
+        Set<Integer> seen = new HashSet<>();
         queue.add(node);
         seen.add(node);
         while (!queue.isEmpty())
@@ -412,19 +366,15 @@ public final class Pathfinder
         return true;
     }
 
-    /**
-     * Every land tile the request's start (and its teleports) can reach, whatever the cost: for checking the data for
-     * places nothing leads to. Sea is left out. Indexed by {@link Tiles#pack}; about 128 MB, a development aid.
-     */
-    public java.util.BitSet reachable(RouteRequest request)
+    /** Every land tile reachable from the request, by {@link Tiles#pack}; about 128 MB, a development aid. */
+    public BitSet reachable(RouteRequest request)
     {
-        java.util.BitSet seen = new java.util.BitSet(1 << 30);
-        // Sea blocks apart: their index has the sea bit, which would double the land set.
-        java.util.BitSet seaSeen = new java.util.BitSet();
-        java.util.ArrayDeque<Integer> queue = new java.util.ArrayDeque<>();
+        BitSet seen = new BitSet(1 << 30);
+        BitSet seaSeen = new BitSet();
+        ArrayDeque<Integer> queue = new ArrayDeque<>();
         EdgeIndex requestByOrigin = EdgeIndex.of(request.edges, 0);
         java.util.function.IntConsumer visit = node -> {
-            java.util.BitSet set = Tiles.isSea(node) ? seaSeen : seen;
+            BitSet set = Tiles.isSea(node) ? seaSeen : seen;
             int index = node & ~Tiles.SEA;
             if (!set.get(index))
             {
@@ -656,13 +606,6 @@ public final class Pathfinder
                 reversed.add(new Route.Step(kind(e.kind), new int[]{from, node}, e.name, e.detail, e.time, 0,
                     Collections.emptyList(), e.category));
                 run.clear();
-                if (parent < 0)
-                {
-                    break;
-                }
-                run.add(parent);
-                node = parent;
-                continue;
             }
             if (parent < 0)
             {
@@ -676,7 +619,7 @@ public final class Pathfinder
         return reversed;
     }
 
-    /** Turns a run of walked tiles or sailed blocks (collected backwards) into a step. */
+    /** {@code run} is collected backwards. */
     private void flush(List<Route.Step> reversed, List<Integer> run, NodeTable nodes)
     {
         if (run.size() >= 2)
@@ -700,15 +643,11 @@ public final class Pathfinder
             }
             int cost = nodes.cost(points[points.length - 1]) - nodes.cost(points[0]);
             boolean sailing = Tiles.isSea(points[0]);
-            if (!sailing)
-            {
-                // The tiles the game itself walks between the same ends.
-                points = GameWalk.follow(map, points);
-            }
             List<Route.Obstacle> obstacles = new ArrayList<>();
             StringBuilder detail = new StringBuilder();
             if (!sailing)
             {
+                points = GameWalk.follow(map, points);
                 for (int point : points)
                 {
                     String obstacle = map.obstacle(point);
@@ -733,7 +672,6 @@ public final class Pathfinder
         }
     }
 
-    /** The hazardous seas a sailing leg crosses, as "Stormy seas (Kharazi Strait)", or null. */
     private String hazards(int[] points)
     {
         List<String> names = new ArrayList<>();
@@ -775,10 +713,7 @@ public final class Pathfinder
         }
     }
 
-    /**
-     * A lower bound of the cost to the goal: the folded distance, or the way through a jump the distance cannot see (its
-     * lower bound from a backward search over those jumps), with jump bounds cached per 8×8 block.
-     */
+    /** Folded distance, or via a jump's backward-searched bound; jump bounds cached per 8×8 block. */
     private static final class Heuristic
     {
         private final int goal;
@@ -786,7 +721,6 @@ public final class Pathfinder
         private final int[] bounds;
         private final IntMap blocks = new IntMap(1 << 12);
 
-        /** {@code jumps}: the jumps with {@link #shortCut}, all starting somewhere. */
         Heuristic(List<Edge> jumps, int goal)
         {
             this.goal = goal;
@@ -804,8 +738,7 @@ public final class Pathfinder
                 cost[i] = e.cost;
                 bound[i] = (long) e.cost + folded(e.to, goal);
             }
-            // Backward Dijkstra over the jumps: the cheapest way from each jump's start to the goal, walking between
-            // jumps as the crow flies.
+            // Backward Dijkstra over the jumps, walking between them as the crow flies.
             for (int round = 0; round < n; round++)
             {
                 int pick = -1;

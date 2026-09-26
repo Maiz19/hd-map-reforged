@@ -8,12 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Passages the game lets one take in one direction only (an agility course's obstacles, a slide), read from
- * {@code one_way.tsv}: each line is the way it goes, from an area to an area. A passage from any source (the cache's
- * transitions, the map link passages, links.tsv) that goes the other way between those areas is left out, so no route
- * takes it backwards.
- */
+/** One-way passages ({@code one_way.tsv}, e.g. a slide): a passage of any source going back between the areas is left out. */
 public final class OneWay
 {
     private static final class Rule
@@ -37,7 +32,6 @@ public final class OneWay
         this.rules = rules;
     }
 
-    /** The bundled rules; none when the file is missing. */
     public static OneWay load()
     {
         return load("/com/hdmapreforged/route/one_way.tsv");
@@ -65,12 +59,11 @@ public final class OneWay
         }
         catch (IOException e)
         {
-            // None then.
         }
         return new OneWay(rules);
     }
 
-    /** "x y plane <tab> x y plane <tab> radius <tab> name": from, to, how far from each (tiles); null when not a rule. */
+    /** "x y plane <tab> x y plane <tab> radius <tab> name"; null when not a rule. */
     static Rule parse(String line)
     {
         String[] parts = line.split("\t");
@@ -90,7 +83,6 @@ public final class OneWay
         }
     }
 
-    /** Whether a passage from {@code from} to {@code to} goes against a one-way rule. */
     public boolean against(int from, int to)
     {
         for (Rule rule : rules)

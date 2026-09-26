@@ -4,16 +4,13 @@ import java.util.ArrayDeque;
 import java.util.Arrays;
 
 /**
- * Walking the way the game walks. Between two tiles there are often many equally short paths; the game picks one by
- * a breadth-first search over a 128×128 area around the player, trying the directions in a fixed order (west, east,
- * south, north, then south-west, south-east, north-west, north-east). Redoing a route's walks this way puts the drawn
- * route on the tiles the player really walks when clicking ahead.
+ * Walking the way the game walks: a breadth-first search over 128×128 tiles around the player with directions in a
+ * fixed order, so the drawn route lies on the tiles the player really walks.
  */
 public final class GameWalk
 {
-    /** The game searches this far from the player in each direction. */
     static final int HALF = 64;
-    /** Legs are redone in pieces this long, well inside the search area. */
+    /** Well inside the search area. */
     static final int PIECE = 48;
     private static final int[] DX = {-1, 1, 0, 0, -1, 1, -1, 1};
     private static final int[] DY = {0, 0, -1, 1, -1, -1, 1, 1};
@@ -22,10 +19,7 @@ public final class GameWalk
     {
     }
 
-    /**
-     * The walked tiles of a route's walk, as the game would take them, piece by piece along the route. Pieces the
-     * game's search cannot do as short (or at all) keep the route's own tiles.
-     */
+    /** A route's walk as the game would take it; pieces the game cannot do as short keep the route's tiles. */
     public static int[] follow(CollisionMap map, int[] points)
     {
         if (points.length < 3 || Tiles.isSea(points[0]))
@@ -38,7 +32,6 @@ public final class GameWalk
         int i = 0;
         while (i < points.length - 1)
         {
-            // The furthest point of the route still close enough, on the same floor, for one search.
             int j = i + 1;
             while (j + 1 < points.length && Tiles.z(points[j + 1]) == Tiles.z(points[i])
                 && Tiles.distance(points[i], points[j + 1]) <= PIECE)
@@ -61,7 +54,7 @@ public final class GameWalk
         return Arrays.copyOf(out, n);
     }
 
-    /** The game's path from one tile to another on the same floor (both ends included), or null. */
+    /** Both ends included, or null. */
     public static int[] path(CollisionMap map, int from, int to)
     {
         int z = Tiles.z(from);
@@ -78,7 +71,7 @@ public final class GameWalk
         {
             return null;
         }
-        // Where each tile was reached from, as a direction index; -1 not reached.
+        // Direction each tile was reached from; -1 not reached.
         byte[] via = new byte[size * size];
         Arrays.fill(via, (byte) -1);
         int start = HALF * size + HALF;
@@ -110,7 +103,6 @@ public final class GameWalk
         {
             return null;
         }
-        // Back from the goal to the start.
         int length = 0;
         int[] back = new int[size * 2];
         int cell = goal;

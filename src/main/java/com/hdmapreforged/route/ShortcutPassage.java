@@ -11,18 +11,16 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * A passage of the planner's (a cache transition, a map link or hand link passage) that is an Agility shortcut of the
- * wiki's (shortcuts.tsv): the same object, used at the shortcut. Such a passage knows nothing of the shortcut's level,
- * so the planner does not keep it as an always open passage; each route request adds it only when the shortcut's
- * requirements are met (RouteSource), and names them when a route ignores them.
+ * A planner passage that is a wiki Agility shortcut (shortcuts.tsv). It knows nothing of the shortcut's level, so
+ * RouteSource adds it per request only when the requirements are met.
  */
 public final class ShortcutPassage
 {
-    /** How near the shortcut's start (or, for the way back, its end) the passage must be, in tiles. */
+    /** How near the shortcut's start (or end) the passage must be, in tiles. */
     static final int RADIUS = 3;
 
     public final Edge edge;
-    /** The shortcut's name and requirements, as shortcuts.tsv gives them (Needs columns). */
+    /** As shortcuts.tsv gives them (Needs columns). */
     public final String name;
     public final String skills;
     public final String items;
@@ -39,11 +37,10 @@ public final class ShortcutPassage
         this.varbits = shortcut.varbits;
     }
 
-    /** One row of shortcuts.tsv. */
     static final class Shortcut
     {
         final String name;
-        /** The object's name, lower case: "Rocks (Waterbirth Island)" is "rocks". */
+        /** Lower case: "Rocks (Waterbirth Island)" is "rocks". */
         final String object;
         final int origin;
         final int destination;
@@ -64,7 +61,7 @@ public final class ShortcutPassage
             this.varbits = varbits;
         }
 
-        /** Whether a passage is this shortcut's object used at it: its name names the object, and it starts or ends here. */
+        /** Its name names the object, and it starts or ends here. */
         boolean stands(Edge e)
         {
             if (e.name == null || !e.name.toLowerCase(Locale.ROOT).contains(object))
@@ -89,7 +86,6 @@ public final class ShortcutPassage
         return plain.startsWith("pillar jump") ? "pillar" : plain;
     }
 
-    /** The bundled shortcuts (data/shortcuts.tsv); empty when it cannot be read. */
     static List<Shortcut> shortcuts()
     {
         InputStream in = ShortcutPassage.class.getResourceAsStream("/com/hdmapreforged/data/shortcuts.tsv");

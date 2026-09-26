@@ -1,14 +1,15 @@
 package com.hdmapreforged;
 
-import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Canvas;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
-import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.KeyboardFocusManager;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
@@ -16,35 +17,32 @@ import java.awt.Window;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.ComponentListener;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.geom.Line2D;
 import java.awt.geom.Rectangle2D;
 import java.util.Locale;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import javax.swing.BorderFactory;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JWindow;
 import javax.swing.SwingUtilities;
+import javax.swing.text.JTextComponent;
 import net.runelite.api.Client;
 
 /**
- * The map over the game view, opened instead of the game's world map: a panel in the game window's layered pane
- * (setting <i>Map inside the game window</i>) or else a window of its own. It is moved by the slim grip strip along
- * its top (a double-click there fills the game view), resized by its edges and corners, and its place is remembered
- * relative to the game view. Not drawn in the game, because Stretched Mode enlarges everything drawn there and blurs
- * it; the map draws at the screen's own resolution. It takes the keyboard only while one of its text fields (the
- * search) is typed in, so keys otherwise keep going to the game; Escape and the map key close it while it has the
- * keyboard. It stays within the game view and follows it; the client window itself is never moved, resized or
- * focused. Swing thread only.
+ * The map over the game view: a panel in the game window's layered pane, or a window of its own. Not drawn in the
+ * game because Stretched Mode would blur it. Takes the keyboard only while its search is typed in; never moves,
+ * resizes or focuses the client window. Swing thread only.
  */
 final class FullMapWindow
 {
     static final int GRIP_HEIGHT = 10;
     private static final Color GRIP_DOTS = new Color(255, 255, 255, 90);
     private static final int EDGE = 8;
-    /** The strip along the bottom, thicker than the sides: easy to take hold of, with the corner grip. */
+    /** Thicker than the sides: easy to take hold of. */
     private static final int BOTTOM = 12;
     private static final Color OUTLINE = new Color(220, 190, 110);
     private static final int OUTLINE_WIDTH = 2;
@@ -55,23 +53,19 @@ final class FullMapWindow
 
     private final Client client;
     private final MapScreen screen;
-    /** Saves the window's place, as written by {@link #encode}. */
     private final Consumer<String> saveBounds;
-    private final java.util.function.Predicate<java.awt.event.KeyEvent> isMapKey;
+    private final Predicate<KeyEvent> isMapKey;
     private JWindow window;
-    /** The map inside the game's own window instead (above the game view), when that is chosen; or null. */
     private JPanel panel;
-    /** While dragging over the game: the outline's four edges, and where the map goes once let go. */
+    /** While dragging over the game: the outline's edges, and where the map goes once let go. */
     private JComponent[] outline;
     private Rectangle pending;
-    /** Whether the map goes inside the game's window (true) or in a window of its own. */
     private final java.util.function.BooleanSupplier inGameWindow;
     private Canvas watchedCanvas;
     private Window watchedFrame;
-    /** Place relative to the game view as fractions of its size, or null for the default. */
+    /** Fractions of the game view, or null for the default. */
     private Rectangle2D relative;
     private boolean maximised;
-    /** Whether the key and click watchers are added (see {@link #closeKeys}). */
     private boolean keysWatched;
     private final ComponentListener follower = new ComponentAdapter()
     {
@@ -95,7 +89,7 @@ final class FullMapWindow
     };
 
     FullMapWindow(Client client, MapScreen screen, String savedBounds, Consumer<String> saveBounds,
-        java.util.function.Predicate<java.awt.event.KeyEvent> isMapKey, java.util.function.BooleanSupplier inGameWindow)
+        Predicate<KeyEvent> isMapKey, java.util.function.BooleanSupplier inGameWindow)
     {
         this.inGameWindow = inGameWindow;
         this.client = client;
@@ -136,7 +130,6 @@ final class FullMapWindow
         return panel != null ? panel.isVisible() : window != null && window.isVisible();
     }
 
-    /** The map's place on screen. */
     private Rectangle hostBounds()
     {
         if (panel != null)
@@ -150,19 +143,17 @@ final class FullMapWindow
         return window.getBounds();
     }
 
-    /** Puts the map at a place on screen. */
     private void setHostBounds(Rectangle screenBounds)
     {
         if (panel != null)
         {
-            java.awt.Container parent = panel.getParent();
+            Container parent = panel.getParent();
             Point at = screenBounds.getLocation();
             SwingUtilities.convertPointFromScreen(at, parent);
-            // The game's picture is a native window under the map, with a hole cut where the map is. Moving the map
-            // cuts a new hole but does not fill the old one again; hiding the map does, so it is hidden, moved and
-            // shown again, and everything under it laid out anew.
+            // The game is a native surface with a hole cut where the map is; moving does not refill the old hole but
+            // hiding does, so hide, move, show.
             boolean shown = panel.isVisible();
-            java.awt.Component typing = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+            Component typing = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
             panel.setVisible(false);
             panel.setBounds(at.x, at.y, screenBounds.width, screenBounds.height);
             panel.setVisible(shown);
@@ -179,33 +170,28 @@ final class FullMapWindow
         window.validate();
     }
 
-    /** Whether a component is part of the map. */
-    private boolean inside(java.awt.Component c)
+    private boolean inside(Component c)
     {
         return panel != null ? SwingUtilities.isDescendingFrom(c, panel)
             : window != null && SwingUtilities.getWindowAncestor(c) == window;
     }
 
-    /** Whether the map has the keyboard (typing in its search field). */
     private boolean hasKeys()
     {
         if (panel != null)
         {
-            java.awt.Component owner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+            Component owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
             return owner != null && SwingUtilities.isDescendingFrom(owner, panel);
         }
         return window != null && window.isFocused();
     }
 
-    /**
-     * Inside the game's window: a panel in its layered pane over the game view, so the desktop sees one window (no
-     * taskbar or focus trouble). Java cuts the game view's native surface where the panel lies over it.
-     */
+    /** A panel in the game window's layered pane, so the desktop sees one window. */
     private void openInGameWindow(Canvas canvas)
     {
         if (window != null)
         {
-            // Hidden first, which hands the keyboard back to the game if it was typing here.
+            // Hidden first, which hands the keyboard back to the game.
             close();
             window.dispose();
             window = null;
@@ -261,7 +247,6 @@ final class FullMapWindow
         }
         if (panel != null)
         {
-            // Changed to a window of its own.
             if (panel.getParent() != null)
             {
                 panel.getParent().remove(panel);
@@ -271,21 +256,17 @@ final class FullMapWindow
         if (window == null)
         {
             window = new JWindow(SwingUtilities.getWindowAncestor(canvas));
-            // A helper window of the game's, not a program of its own: the taskbar and alt-tab leave it out, and it
-            // goes to the front and back with the game.
+            // A utility window: left out of the taskbar and alt-tab, raised and lowered with the game.
             window.setType(Window.Type.UTILITY);
-            // It does not ask for the keyboard, so keys keep going to the game. Some window managers still hand it
-            // the keyboard when it is clicked; then Escape and the map key must work here too.
+            // Some window managers still focus it on click; then Escape and the map key must work here too.
             window.setAutoRequestFocus(false);
-            // Never the keyboard's, so the desktop (KWin and others) keeps the game as the active window and its
-            // taskbar button brings it back; only while a text field here is typed in (see typeHere).
+            // Never focusable, so the desktop (KWin) keeps the game active; only while typing (see typeHere).
             window.setFocusableWindowState(false);
             window.addWindowFocusListener(new java.awt.event.WindowAdapter()
             {
                 @Override
                 public void windowLostFocus(java.awt.event.WindowEvent e)
                 {
-                    // Done typing: not focusable again.
                     window.setFocusableWindowState(false);
                 }
             });
@@ -297,7 +278,7 @@ final class FullMapWindow
         if (!window.isVisible())
         {
             window.setVisible(true);
-            // Some window managers place a new window themselves; put it back where it belongs.
+            // Some window managers place a new window themselves.
             SwingUtilities.invokeLater(this::place);
             screen.opened();
         }
@@ -305,33 +286,31 @@ final class FullMapWindow
 
     void close()
     {
+        boolean hadKeys;
         if (panel != null && panel.isVisible())
         {
-            boolean hadKeys = hasKeys();
+            hadKeys = hasKeys();
             panel.setVisible(false);
-            java.awt.Container parent = panel.getParent();
+            Container parent = panel.getParent();
             if (parent != null)
             {
                 parent.repaint();
             }
-            Canvas canvas = watchedCanvas;
-            if (hadKeys && canvas != null && canvas.isShowing())
-            {
-                canvas.requestFocus();
-            }
-            return;
         }
-        if (window != null && window.isVisible())
+        else if (window != null && window.isVisible())
         {
-            boolean hadKeys = window.isFocused();
+            hadKeys = window.isFocused();
             window.setVisible(false);
             window.setFocusableWindowState(false);
-            Canvas canvas = watchedCanvas;
-            if (hadKeys && canvas != null && canvas.isShowing())
-            {
-                // The keyboard goes back to the game it came from.
-                canvas.requestFocus();
-            }
+        }
+        else
+        {
+            return;
+        }
+        Canvas canvas = watchedCanvas;
+        if (hadKeys && canvas != null && canvas.isShowing())
+        {
+            canvas.requestFocus();
         }
     }
 
@@ -343,10 +322,7 @@ final class FullMapWindow
         screen.refresh();
     }
 
-    /**
-     * Escape, and the map key, close the map while this window has the keyboard. Added once however often the map's
-     * host is made again (the focus manager keeps every copy added), taken away in {@link #dispose}.
-     */
+    /** Escape and the map key close the map while it has the keyboard. Added once (the focus manager keeps every copy). */
     private void closeKeys()
     {
         if (keysWatched)
@@ -354,26 +330,25 @@ final class FullMapWindow
             return;
         }
         keysWatched = true;
-        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(keys);
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(keys);
         java.awt.Toolkit.getDefaultToolkit().addAWTEventListener(clicks, java.awt.AWTEvent.MOUSE_EVENT_MASK);
     }
 
-    /** Sees keys only while this window has the keyboard; never takes them from the game. */
     private final java.awt.KeyEventDispatcher keys = e -> {
-        if (!isOpen() || !hasKeys() || e.getID() != java.awt.event.KeyEvent.KEY_PRESSED)
+        if (!isOpen() || !hasKeys() || e.getID() != KeyEvent.KEY_PRESSED)
         {
             return false;
         }
-        java.awt.Component owner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-        boolean typing = owner instanceof javax.swing.text.JTextComponent;
+        Component owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        boolean typing = owner instanceof JTextComponent;
         boolean menu = javax.swing.MenuSelectionManager.defaultManager().getSelectedPath().length > 0;
-        // While typing in the search field or using a menu, keys are theirs: Escape closes the menu, letters type.
-        if (menu || typing && (e.getKeyCode() != java.awt.event.KeyEvent.VK_ESCAPE
-            || !((javax.swing.text.JTextComponent) owner).getText().isEmpty()))
+        // While typing or in a menu, keys are theirs: Escape closes the menu, letters type.
+        if (menu || typing && (e.getKeyCode() != KeyEvent.VK_ESCAPE
+            || !((JTextComponent) owner).getText().isEmpty()))
         {
             return false;
         }
-        if (e.getKeyCode() == java.awt.event.KeyEvent.VK_ESCAPE || FullMapWindow.this.isMapKey.test(e))
+        if (e.getKeyCode() == KeyEvent.VK_ESCAPE || FullMapWindow.this.isMapKey.test(e))
         {
             close();
             return true;
@@ -381,16 +356,13 @@ final class FullMapWindow
         return false;
     };
 
-    /**
-     * After a click on the map (not in the search field or a menu), the keyboard goes back to the game: the window
-     * can take it only so the search field can be typed in.
-     */
+    /** After a click on the map outside a text field or menu, the keyboard goes back to the game. */
     private final java.awt.event.AWTEventListener clicks = event -> {
         if (event instanceof MouseEvent && event.getID() == MouseEvent.MOUSE_PRESSED && isOpen()
-            && event.getSource() instanceof javax.swing.text.JTextComponent
-            && inside((java.awt.Component) event.getSource()))
+            && event.getSource() instanceof JTextComponent
+            && inside((Component) event.getSource()))
         {
-            typeHere((javax.swing.text.JTextComponent) event.getSource());
+            typeHere((JTextComponent) event.getSource());
             return;
         }
         if (!(event instanceof MouseEvent) || event.getID() != MouseEvent.MOUSE_RELEASED || !isOpen() || !hasKeys())
@@ -398,16 +370,16 @@ final class FullMapWindow
             return;
         }
         Object source = event.getSource();
-        if (!(source instanceof java.awt.Component) || !inside((java.awt.Component) source)
-            || source instanceof javax.swing.text.JTextComponent)
+        if (!(source instanceof Component) || !inside((Component) source)
+            || source instanceof JTextComponent)
         {
             return;
         }
         SwingUtilities.invokeLater(this::giveKeysBack);
     };
 
-    /** A click in a text field (the search, a route's name): the window takes the keyboard for typing there. */
-    private void typeHere(javax.swing.text.JTextComponent field)
+    /** A click in a text field: the window takes the keyboard for typing there. */
+    private void typeHere(JTextComponent field)
     {
         if (window != null && !window.getFocusableWindowState())
         {
@@ -430,7 +402,6 @@ final class FullMapWindow
         }
     }
 
-    /** A slim strip to move by, and a thin frame to resize by, around the map. */
     private JPanel frame()
     {
         JPanel root = new JPanel(new BorderLayout())
@@ -439,7 +410,6 @@ final class FullMapWindow
             protected void paintComponent(Graphics graphics)
             {
                 super.paintComponent(graphics);
-                // A grip in the bottom right corner: drag it to size the map.
                 Graphics2D g = (Graphics2D) graphics.create();
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g.setColor(GRIP_DOTS);
@@ -466,7 +436,6 @@ final class FullMapWindow
         return root;
     }
 
-    /** Places the window from its remembered place, within the game view. */
     private void place()
     {
         Canvas canvas = watchedCanvas;
@@ -487,10 +456,7 @@ final class FullMapWindow
         }
     }
 
-    /**
-     * Screen bounds for a place given as fractions of the game view; null gives the default (most of the view,
-     * centered). Always inside the view and at least the minimum size where the view allows.
-     */
+    /** Screen bounds for fractions of the game view (null: the default), inside the view, at least the minimum size. */
     static Rectangle fit(Rectangle2D relative, Rectangle view)
     {
         double rx = relative != null ? relative.getX() : 0.08;
@@ -509,9 +475,8 @@ final class FullMapWindow
     }
 
     /**
-     * Moves or sizes the map while dragging. Over the game (in its window) only an outline follows the mouse and the
-     * map goes there once let go: moving it over the game's picture every step leaves black where it was, as the
-     * game does not draw that part again quickly enough.
+     * Over the game only an outline follows the mouse and the map moves once let go: moving it every step leaves black
+     * where it was, as the game does not redraw that quickly enough.
      */
     private void dragTo(Rectangle bounds)
     {
@@ -521,7 +486,7 @@ final class FullMapWindow
             return;
         }
         pending = bounds;
-        java.awt.Container parent = panel.getParent();
+        Container parent = panel.getParent();
         if (outline == null)
         {
             outline = new JComponent[4];
@@ -546,8 +511,7 @@ final class FullMapWindow
         {
             if (!outline[i].getBounds().equals(edges[i]))
             {
-                // Over the game's picture an edge only shows where a hole is cut for it, which showing it does
-                // (see setHostBounds); moved while shown, it would stay hidden outside the map.
+                // An edge only shows where showing it cuts a hole (see setHostBounds).
                 outline[i].setVisible(false);
                 outline[i].setBounds(edges[i]);
                 outline[i].setVisible(true);
@@ -555,17 +519,15 @@ final class FullMapWindow
         }
     }
 
-    /** Puts the map where it was dragged to, and takes the outline away. */
     private void dragDone()
     {
         if (outline != null)
         {
             for (JComponent edge : outline)
             {
-                java.awt.Container parent = edge.getParent();
+                Container parent = edge.getParent();
                 if (parent != null)
                 {
-                    // Hidden first, which fills its hole in the game's picture again.
                     edge.setVisible(false);
                     parent.remove(edge);
                     parent.repaint(edge.getX(), edge.getY(), edge.getWidth(), edge.getHeight());
@@ -581,7 +543,6 @@ final class FullMapWindow
         }
     }
 
-    /** Remembers the window's place after the user moved or resized it. */
     private void setFromScreen(Rectangle bounds)
     {
         Canvas canvas = watchedCanvas;
@@ -686,10 +647,9 @@ final class FullMapWindow
         if (keysWatched)
         {
             keysWatched = false;
-            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(keys);
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(keys);
             java.awt.Toolkit.getDefaultToolkit().removeAWTEventListener(clicks);
         }
-        // Closed first, which hands the keyboard back to the game if it was typing here.
         close();
         unwatch();
         if (window != null)
@@ -699,14 +659,13 @@ final class FullMapWindow
         }
         if (panel != null && panel.getParent() != null)
         {
-            java.awt.Container parent = panel.getParent();
+            Container parent = panel.getParent();
             parent.remove(panel);
             parent.repaint();
         }
         panel = null;
     }
 
-    /** A slim strip along the top to move the window by (drag) or fill the game view (double-click). */
     private final class Grip extends JComponent
     {
         private Point grab;
@@ -743,7 +702,7 @@ final class FullMapWindow
                         {
                             return;
                         }
-                        // Dragging a maximised window restores it under the mouse, like other windows do.
+                        // Dragging a maximised window restores it under the mouse.
                         Rectangle restored = fit(relative, new Rectangle(canvas.getLocationOnScreen(), canvas.getSize()));
                         double along = (grab.x - start.x) / (double) Math.max(1, start.width);
                         start = new Rectangle(grab.x - (int) (restored.width * along), start.y, restored.width, restored.height);
@@ -784,7 +743,6 @@ final class FullMapWindow
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setColor(FRAME);
             g.fillRect(0, 0, getWidth(), getHeight());
-            // A few dots in the middle, the usual sign for "grab here".
             g.setColor(GRIP_DOTS);
             double cx = getWidth() / 2.0;
             double cy = getHeight() / 2.0;
@@ -796,7 +754,6 @@ final class FullMapWindow
         }
     }
 
-    /** Resizing by the frame around the map: edges and corners. */
     private final class Resizer extends MouseAdapter
     {
         private final JComponent root;
@@ -809,7 +766,7 @@ final class FullMapWindow
             this.root = root;
         }
 
-        /** Bit set of the edges under a point: 1 left, 2 right, 4 top, 8 bottom. */
+        /** Bits: 1 left, 2 right, 4 top, 8 bottom. */
         private int edgesAt(Point p)
         {
             int corner = EDGE * 4;

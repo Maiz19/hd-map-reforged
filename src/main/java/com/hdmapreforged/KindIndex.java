@@ -12,21 +12,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * Every place of one kind, to search for together: all herb patches, all shark fishing spots, all iron rocks, all
- * banks or furnaces. Built from the map's icons, the game's icons baked into the tiles, and the skilling spots
- * RuneLite lists (what fish, rocks, trees and creatures are where).
- */
+/** Every place of one kind (herb patches, shark fishing spots, banks) from our icons, game icons and skill spots. */
 final class KindIndex
 {
-    /** One place of a kind. */
     static final class Entry
     {
         final String name;
         final WorldPoint point;
-        /** What is there, with levels ("Shark (76), Bass (46)"), or null. */
         final String detail;
-        /** The icon it comes from, or null for a skilling spot of the list. */
+        /** Null for a listed skilling spot. */
         final Poi poi;
 
         Entry(String name, WorldPoint point, String detail)
@@ -43,14 +37,10 @@ final class KindIndex
         }
     }
 
-    /** A kind of place and everywhere it is. */
     static final class Kind
     {
-        /** "Herb patches", "Shark fishing spots". */
         final String label;
-        /** The icon to show beside it, or null for a skilling spot. */
         final PoiType type;
-        /** The wiki page about it, or null. */
         final String page;
         final List<Entry> entries = new ArrayList<>();
 
@@ -62,7 +52,6 @@ final class KindIndex
         }
     }
 
-    /** Our icon types that make a kind: each such icon is one place (a fairy ring, a bank). */
     private static final Set<PoiType> COUNTED = EnumSet.of(PoiType.FAIRY_RING, PoiType.SPIRIT_TREE, PoiType.GNOME_GLIDER,
         PoiType.BALLOON, PoiType.QUETZAL, PoiType.MUSHTREE, PoiType.OBELISK, PoiType.CHARTER, PoiType.CANOE,
         PoiType.CARPET, PoiType.MINECART, PoiType.DUNGEON_ENTRANCE, PoiType.MOORING, PoiType.SALVAGE,
@@ -75,9 +64,7 @@ final class KindIndex
     private static final Pattern PLURAL_S = Pattern.compile("s$");
     private static final Pattern NOT_KEY = Pattern.compile("[^a-z0-9]");
     private static final Pattern RESOURCE = Pattern.compile("^(?:\\d+\\s*×\\s*)?(.+?)\\s*(?:\\((\\d+)[^)]*\\))?$");
-    /** A kind needs this many places; one alone is found by its own name. */
     static final int MIN_ENTRIES = 2;
-    /** Places of the same kind this close are one. */
     private static final int SAME_PLACE = 1;
 
     private final List<Kind> kinds;
@@ -127,12 +114,11 @@ final class KindIndex
         if (COUNTED.contains(poi.type))
         {
             String label = poi.type == PoiType.SALVAGE ? "Salvaging spots" : plural(poi.type.displayName);
-            add(kinds, label, poi.type, poi.type.wikiPage != null ? poi.type.wikiPage : null,
+            add(kinds, label, poi.type, poi.type.wikiPage,
                 new Entry(poi.name, poi.location, poi.note, poi));
         }
         if (poi.type == PoiType.FARMING_PATCH)
         {
-            // "Allotment/Herb/Flower – note": one kind for each thing the patch grows.
             int dash = poi.name.indexOf(" – ");
             String grows = dash < 0 ? poi.name : poi.name.substring(0, dash);
             for (String part : grows.split("/"))
@@ -148,7 +134,7 @@ final class KindIndex
         {
             if (poi.note != null && SKILL_NOTE.matcher(poi.note).matches())
             {
-                // A skilling spot: those come from the list, with what is there.
+                // Skilling spots come from the list.
                 return;
             }
             String base = TRAILING_BRACKETS.matcher(poi.name).replaceAll("").trim();
@@ -159,7 +145,6 @@ final class KindIndex
             String spotKind = SkillSpots.kindOf(base);
             if (spotKind != null)
             {
-                // A skilling icon the list has nothing for: with the listed spots of its kind.
                 add(kinds, spotLabel(spotKind), null, spotPage(spotKind), new Entry(poi.name, poi.location, poi.note, poi));
                 return;
             }
@@ -187,7 +172,7 @@ final class KindIndex
         }
     }
 
-    /** "Maple/yew trees" gives "Maple trees" and "Yew trees"; "Shark" stays "Shark". */
+    /** "Maple/yew trees" gives "Maple trees" and "Yew trees". */
     static List<String> split(String names)
     {
         String[] parts = SLASH.split(names);
@@ -227,7 +212,6 @@ final class KindIndex
         }
     }
 
-    /** All spots of a kind (fishing, mining, hunter, trees), for the list's spots and the game's icons alike. */
     private static String spotLabel(String kind)
     {
         switch (kind)
@@ -275,10 +259,7 @@ final class KindIndex
         kind.entries.add(entry);
     }
 
-    /**
-     * The kinds matching a search, best first: those starting with it, then those with a word starting with it,
-     * then those containing it; more places first within each.
-     */
+    /** Best match first, then more places first. */
     List<Kind> find(String query, int limit)
     {
         String q = query.trim().toLowerCase(Locale.ROOT);
@@ -318,10 +299,7 @@ final class KindIndex
         return label.contains(query) ? 2 : -1;
     }
 
-    /**
-     * More than one: "Bank" gives "Banks", "Farming patch" "Farming patches", "Fairy" "Fairies", "Agility shortcut
-     * (one way)" "Agility shortcuts (one way)"; names already plural ("Rare trees", "Barracuda Trials") stay.
-     */
+    /** "Farming patch" gives "Farming patches", "Agility shortcut (one way)" "Agility shortcuts (one way)". */
     static String plural(String name)
     {
         int bracket = name.indexOf(" (");
@@ -345,7 +323,6 @@ final class KindIndex
         return name + "s";
     }
 
-    /** Only the first letter capital: "Fruit Tree" gives "Fruit tree". */
     static String sentence(String name)
     {
         if (name.isEmpty())

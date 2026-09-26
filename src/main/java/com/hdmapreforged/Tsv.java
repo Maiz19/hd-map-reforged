@@ -10,13 +10,9 @@ import java.util.List;
 import java.util.Map;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * One of our bundled tables: a first line of {@code #}-prefixed, tab-separated column names, then data rows. Other
- * lines starting with {@code #} are comments (kept as comment rows); points are written {@code "x y plane"}.
- */
+/** A bundled table: a {@code #}-prefixed header of tab-separated column names, then rows and {@code #} comments. */
 final class Tsv
 {
-    /** A data row, or a comment when {@link #comment} is set. */
     static final class Row
     {
         final String comment;
@@ -81,7 +77,7 @@ final class Tsv
         return rows;
     }
 
-    /** Parses {@code "x y plane"}; returns null for blank or malformed cells. */
+    /** {@code "x y plane"}, or null. */
     static WorldPoint parsePoint(String cell)
     {
         String[] parts = cell.trim().split("\\s+");

@@ -1,13 +1,23 @@
 package com.hdmapreforged;
 
+import java.awt.Component;
+import java.awt.KeyboardFocusManager;
+import java.awt.Point;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.ConcurrentModificationException;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.inject.Inject;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
@@ -18,15 +28,35 @@ import javax.swing.Timer;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.Item;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.Player;
+import net.runelite.api.Skill;
+import net.runelite.api.World;
+import net.runelite.api.WorldType;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
+import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.StatChanged;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.VarPlayerID;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.NpcLootReceived;
 import net.runelite.client.events.PartyChanged;
 import net.runelite.client.events.PartyMemberAvatar;
+import net.runelite.client.events.PlayerLootReceived;
+import net.runelite.client.game.ItemManager;
+import net.runelite.client.game.ItemStack;
+import net.runelite.client.game.SkillIconManager;
+import net.runelite.client.game.SpriteManager;
+import net.runelite.client.game.WorldService;
+import net.runelite.client.input.MouseManager;
 import net.runelite.client.party.PartyMember;
 import net.runelite.client.party.PartyService;
 import net.runelite.client.party.WSClient;
@@ -34,21 +64,19 @@ import net.runelite.client.party.events.UserJoin;
 import net.runelite.client.party.events.UserPart;
 import net.runelite.client.party.messages.UserSync;
 import net.runelite.client.plugins.party.messages.LocationUpdate;
+import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.AsyncBufferedImage;
 import net.runelite.client.util.Text;
+import net.runelite.client.util.WorldUtil;
+import net.runelite.http.api.worlds.WorldResult;
 
 /**
- * Friends on the map, through RuneLite's party service (no server of our own). While the user is in a party,
- * each member running this plugin sends where they are; everyone's map shows the others. Members who only run
- * RuneLite's Party plugin show from its coarser location messages.
- *
- * <p>Nothing is sent outside a party. The plugin never joins a party by itself: it remembers the last party the user
- * was in, and "Rejoin party" (the map's menu and button, the sidebar, a small button over the game after login) joins it
- * again when the user clicks it (see local-development/PARTY-RESEARCH.md).
+ * Party members on the map through RuneLite's party service. Nothing is sent outside a party, and a party is never
+ * joined without a user click: "Rejoin party" rejoins the remembered last one (see PARTY-RESEARCH.md).
  */
 @Slf4j
 public final class PartyMap
 {
-    /** The last party the user was in (its passphrase), kept for "Rejoin party". */
     static final String LAST_KEY = "partyLast";
 
     private final Client client;
@@ -60,39 +88,34 @@ public final class PartyMap
     private final PartyMapMembers members = new PartyMapMembers();
     private final PartyMapRules.Throttle throttle = new PartyMapRules.Throttle();
     private final PartyMapOverlay overlay;
-    /** Swing thread only: the maps drawn on, with the menu entries added to each. */
+    /** Swing thread only. */
     private final Map<MapView, MapView.MenuContributor> views = new LinkedHashMap<>();
-    /** Swing thread only: the friends tab on each map. */
     private final Map<MapView, FriendsWidget> widgets = new LinkedHashMap<>();
     private volatile int myWorld;
     private volatile Set<String> favourites = Collections.emptySet();
-    /** The party this plugin joined for the user, or null. Set on the Swing thread, read on party threads too. */
+    /** The party this plugin joined for the user, or null. */
     private volatile String joinedCode;
     private volatile long lastChange = Long.MIN_VALUE / 2;
-    /** The user left the party themselves: no reminder to rejoin it until the client restarts. */
+    /** The user left themselves: no rejoin reminder until the client restarts. */
     private volatile boolean leftByUser;
     private Timer idleCheck;
-    /** Whether others currently see us, so they get an "offline" message when that ends. */
     private volatile boolean sentOnline;
     private volatile Long loggedOutSince;
 
-    private final net.runelite.client.game.ItemManager itemManager;
-    private final net.runelite.client.game.SkillIconManager skillIcons;
-    /** Our inventory, equipment or levels changed since they were last shared. Set on party threads too. */
+    private final ItemManager itemManager;
+    private final SkillIconManager skillIcons;
     private volatile boolean gearChanged = true;
-    /** Client thread. */
     private int gearSentTick = Integer.MIN_VALUE / 2;
-    /** The party's members as last read without a clash with the websocket thread. */
+    /** The members as last read without a clash with the websocket thread. */
     private volatile List<FriendsWidget.Member> lastGroup = Collections.emptyList();
-    /** Item pictures by id and quantity; they load on the client thread and repaint when they arrive. */
-    private final Map<Long, BufferedImage> itemImages = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Long, BufferedImage> itemImages = new ConcurrentHashMap<>();
 
     @Inject
     PartyMap(Client client, PartyService party, WSClient wsClient, EventBus eventBus, ConfigManager configManager,
-        HdMapReforgedConfig config, net.runelite.client.game.ItemManager itemManager,
-        net.runelite.client.game.SkillIconManager skillIcons, net.runelite.client.game.WorldService worldService,
-        net.runelite.client.callback.ClientThread clientThread, net.runelite.client.game.SpriteManager spriteManager,
-        net.runelite.client.ui.overlay.OverlayManager overlays, net.runelite.client.input.MouseManager mouse)
+        HdMapReforgedConfig config, ItemManager itemManager,
+        SkillIconManager skillIcons, WorldService worldService,
+        ClientThread clientThread, SpriteManager spriteManager,
+        OverlayManager overlays, MouseManager mouse)
     {
         this.overlays = overlays;
         this.mouse = mouse;
@@ -112,7 +135,6 @@ public final class PartyMap
         overlay.setLoot(id -> members.loot(id, System.currentTimeMillis()), this::itemImage, this::repaint);
     }
 
-    /** Called from the plugin's startUp with the maps to draw on. */
     void start(MapView... maps)
     {
         wsClient.registerMessage(HdMapPartyLocation.class);
@@ -145,10 +167,10 @@ public final class PartyMap
                 MapView.ClickCatcher catcher = (at, projection) -> clickedMember(widget, at, projection);
                 catchers.put(view, catcher);
                 view.addClickCatcher(catcher);
-                java.awt.event.MouseAdapter pointing = new java.awt.event.MouseAdapter()
+                MouseAdapter pointing = new MouseAdapter()
                 {
                     @Override
-                    public void mouseMoved(java.awt.event.MouseEvent e)
+                    public void mouseMoved(MouseEvent e)
                     {
                         long now = memberAt(e.getPoint(), view.projection());
                         if (now != hoveredMember)
@@ -159,7 +181,7 @@ public final class PartyMap
                     }
 
                     @Override
-                    public void mouseExited(java.awt.event.MouseEvent e)
+                    public void mouseExited(MouseEvent e)
                     {
                         if (hoveredMember >= 0)
                         {
@@ -220,7 +242,6 @@ public final class PartyMap
                 widget.dispose();
             });
             widgets.clear();
-            // A party we rejoined for the user is not left running without the plugin that shows it.
             if (PartyMapRules.leaveOnShutdown(joinedCode, party.getPartyPassphrase()))
             {
                 party.changeParty(null);
@@ -229,22 +250,19 @@ public final class PartyMap
         });
     }
 
-    /** The world the player is on, for telling party members on other worlds apart. */
     @Subscribe
-    public void onGameTick(net.runelite.api.events.GameTick event)
+    public void onGameTick(GameTick event)
     {
         myWorld = client.getWorld();
         continueHop();
     }
 
-    /** Clicks on the map that land on a member's marker: their details open in the Friends list. */
     private final Map<MapView, MapView.ClickCatcher> catchers = new LinkedHashMap<>();
 
-    private final Map<MapView, java.awt.event.MouseAdapter> pointers = new LinkedHashMap<>();
-    /** The member under the mouse on a map, or -1: their name shows. Swing thread. */
+    private final Map<MapView, MouseAdapter> pointers = new LinkedHashMap<>();
     private volatile long hoveredMember = -1;
 
-    private boolean clickedMember(FriendsWidget widget, java.awt.Point at, MapView.Projection projection)
+    private boolean clickedMember(FriendsWidget widget, Point at, MapView.Projection projection)
     {
         long best = memberAt(at, projection);
         if (best < 0)
@@ -256,14 +274,13 @@ public final class PartyMap
         return true;
     }
 
-    /** The member whose marker is under a point of the map, or -1. */
-    private long memberAt(java.awt.Point at, MapView.Projection projection)
+    private long memberAt(Point at, MapView.Projection projection)
     {
         long best = -1;
         double bestDistance = 14;
         for (PartyMapMembers.Marker marker : markers())
         {
-            // Where the map draws them (a place the wiki draws elsewhere than it is in the game).
+            // Where the map draws them, which can differ from the game.
             WorldPoint shown = projection.shown(marker.point);
             if (!projection.shows(marker.point))
             {
@@ -279,19 +296,14 @@ public final class PartyMap
         return best;
     }
 
-    private final net.runelite.client.game.WorldService worldService;
-    private final net.runelite.client.game.SpriteManager spriteManager;
-    /** The game's orb sprites, by id, once loaded. */
-    private final Map<Integer, BufferedImage> sprites = new java.util.concurrent.ConcurrentHashMap<>();
-    private final net.runelite.client.callback.ClientThread clientThread;
-    /** A world to hop to, once the game's world switcher is open; null when none. Client thread. */
-    private net.runelite.api.World hopTarget;
+    private final WorldService worldService;
+    private final SpriteManager spriteManager;
+    private final Map<Integer, BufferedImage> sprites = new ConcurrentHashMap<>();
+    private final ClientThread clientThread;
+    private World hopTarget;
     private int hopAttempts;
 
-    /**
-     * Hops to a friend's world, as RuneLite's World Hopper does: only when the user clicks for it, never by itself.
-     * Opens the game's world switcher, then hops on the next tick.
-     */
+    /** Only on a user click, as RuneLite's World Hopper: opens the world switcher, then hops on a later tick. */
     void hop(int worldId)
     {
         clientThread.invoke(() -> {
@@ -299,45 +311,42 @@ public final class PartyMap
             {
                 return;
             }
-            net.runelite.http.api.worlds.WorldResult result = worldService.getWorlds();
+            WorldResult result = worldService.getWorlds();
             net.runelite.http.api.worlds.World world = result == null ? null : result.findWorld(worldId);
             if (world == null)
             {
                 return;
             }
-            boolean member = client.getWorldType().contains(net.runelite.api.WorldType.MEMBERS)
-                || client.getVarpValue(net.runelite.api.gameval.VarPlayerID.ACCOUNT_CREDIT) > 0;
+            boolean member = client.getWorldType().contains(WorldType.MEMBERS)
+                || client.getVarpValue(VarPlayerID.ACCOUNT_CREDIT) > 0;
             String refused = PartyMapRules.hopRefusal(world.getTypes(), member);
             if (refused != null)
             {
                 // Dangerous or special worlds are left to the game's own world switcher.
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                    java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow(),
-                    "World " + worldId + " " + refused + ". Hop there with the game's world switcher if you mean to.",
-                    "HD Map Reforged", JOptionPane.INFORMATION_MESSAGE));
+                SwingUtilities.invokeLater(() -> tell(KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow(),
+                    "World " + worldId + " " + refused + ". Hop there with the game's world switcher if you mean to."));
                 return;
             }
-            net.runelite.api.World target = client.createWorld();
+            World target = client.createWorld();
             target.setActivity(world.getActivity());
             target.setAddress(world.getAddress());
             target.setId(world.getId());
             target.setPlayerCount(world.getPlayers());
             target.setLocation(world.getLocation());
-            target.setTypes(net.runelite.client.util.WorldUtil.toWorldTypes(world.getTypes()));
+            target.setTypes(WorldUtil.toWorldTypes(world.getTypes()));
             hopTarget = target;
             hopAttempts = 0;
         });
     }
 
-    /** Moves a hop along: the switcher open first, then the hop. Client thread, each game tick. */
     private void continueHop()
     {
-        net.runelite.api.World target = hopTarget;
+        World target = hopTarget;
         if (target == null)
         {
             return;
         }
-        if (client.getWidget(net.runelite.api.gameval.InterfaceID.Worldswitcher.BUTTONS) == null)
+        if (client.getWidget(InterfaceID.Worldswitcher.BUTTONS) == null)
         {
             client.openWorldHopper();
             if (++hopAttempts >= 5)
@@ -350,7 +359,6 @@ public final class PartyMap
         hopTarget = null;
     }
 
-    /** Item and skill pictures, for the maps' details and the sidebar's. */
     private final FriendsWidget.Images sidebarImages = new FriendsWidget.Images()
     {
         @Override
@@ -362,7 +370,7 @@ public final class PartyMap
         @Override
         public BufferedImage skill(int ordinal)
         {
-            net.runelite.api.Skill[] skills = net.runelite.api.Skill.values();
+            Skill[] skills = Skill.values();
             if (ordinal < 0 || ordinal >= Math.min(HdMapPartyGear.SKILLS, skills.length))
             {
                 return null;
@@ -377,7 +385,6 @@ public final class PartyMap
         }
     };
 
-    /** The party for the sidebar's list. */
     MapPanel.Friends sidebar()
     {
         return new MapPanel.Friends()
@@ -425,17 +432,16 @@ public final class PartyMap
             }
 
             @Override
-            public void join(java.awt.Component from)
+            public void join(Component from)
             {
                 PartyMap.this.join(from);
             }
         };
     }
 
-    /** Everyone in the party but the player, by the party's own list. */
     List<FriendsWidget.Member> groupMembers()
     {
-        List<FriendsWidget.Member> list = new java.util.ArrayList<>();
+        List<FriendsWidget.Member> list = new ArrayList<>();
         if (!party.isInParty())
         {
             return list;
@@ -445,11 +451,11 @@ public final class PartyMap
         try
         {
             // The websocket thread changes this list while we read it on the Swing thread.
-            all = new java.util.ArrayList<>(party.getMembers());
+            all = new ArrayList<>(party.getMembers());
         }
         catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException e)
         {
-            return new java.util.ArrayList<>(lastGroup);
+            return new ArrayList<>(lastGroup);
         }
         for (PartyMember member : all)
         {
@@ -461,28 +467,23 @@ public final class PartyMap
                     name == null || name.startsWith("<") ? null : name));
             }
         }
-        lastGroup = Collections.unmodifiableList(new java.util.ArrayList<>(list));
+        lastGroup = Collections.unmodifiableList(new ArrayList<>(list));
         return list;
     }
 
-    /** What the maps draw now. */
     List<PartyMapMembers.Marker> markers()
     {
         return config.partyShowMembers() ? members.markers(System.currentTimeMillis()) : Collections.emptyList();
     }
 
-    // ---- sending, on the client thread ----
-
-    /** Every game tick, with the player's real location (instances and boats resolved). */
     void tick(WorldPoint location, int tick)
     {
         if (!members.isEmpty())
         {
-            // Fading follows the clock, not only new messages.
+            // Fading follows the clock.
             repaint();
         }
-        // What we carry, wear and can do: when it changed, at most every GEAR_TICKS. Run and special attack
-        // energy go along with it but are no reason to send by themselves.
+        // Run and special attack energy alone are no reason to send.
         if (gearChanged && party.isInParty() && config.partyShareGear()
             && tick - gearSentTick >= PartyMapRules.GEAR_TICKS)
         {
@@ -522,7 +523,6 @@ public final class PartyMap
             }
             if (sentOnline && party.isInParty())
             {
-                // Take our marker off the others' maps now instead of letting it fade.
                 party.send(HdMapPartyLocation.offline(null));
             }
             sentOnline = false;
@@ -563,7 +563,7 @@ public final class PartyMap
         favourites = Collections.unmodifiableSet(names);
     }
 
-    // ---- receiving; party events arrive on the websocket thread ----
+    // Party events arrive on the websocket thread.
 
     @Subscribe
     public void onHdMapPartyLocation(HdMapPartyLocation message)
@@ -578,7 +578,7 @@ public final class PartyMap
         repaint();
     }
 
-    /** RuneLite's Party plugin, for members without this plugin (only arrives while that plugin is on). */
+    /** RuneLite's Party plugin's messages, for members without this plugin. */
     @Subscribe
     public void onLocationUpdate(LocationUpdate message)
     {
@@ -589,7 +589,6 @@ public final class PartyMap
         WorldPoint point = message.getWorldPoint();
         if (!HdMapPartyLocation.plausible(point))
         {
-            // Messages come from other clients.
             return;
         }
         if (members.updateFromCore(message.getMemberId(), point, System.currentTimeMillis()))
@@ -602,24 +601,22 @@ public final class PartyMap
     @Subscribe
     public void onUserJoin(UserJoin event)
     {
-        // Let the newcomer see us without waiting for the next heartbeat.
         throttle.force();
         gearChanged = true;
     }
 
     @Subscribe
-    public void onItemContainerChanged(net.runelite.api.events.ItemContainerChanged event)
+    public void onItemContainerChanged(ItemContainerChanged event)
     {
         int id = event.getContainerId();
-        if (id == net.runelite.api.gameval.InventoryID.INV || id == net.runelite.api.gameval.InventoryID.WORN)
+        if (id == InventoryID.INV || id == InventoryID.WORN)
         {
             gearChanged = true;
         }
     }
 
-    /** Levels and experience; sent no more often than {@link PartyMapRules#GEAR_TICKS} however fast they rise. */
     @Subscribe
-    public void onStatChanged(net.runelite.api.events.StatChanged event)
+    public void onStatChanged(StatChanged event)
     {
         gearChanged = true;
     }
@@ -636,26 +633,25 @@ public final class PartyMap
     }
 
     @Subscribe
-    public void onNpcLootReceived(net.runelite.client.events.NpcLootReceived event)
+    public void onNpcLootReceived(NpcLootReceived event)
     {
         shareDrops(event.getItems());
     }
 
     @Subscribe
-    public void onPlayerLootReceived(net.runelite.client.events.PlayerLootReceived event)
+    public void onPlayerLootReceived(PlayerLootReceived event)
     {
         shareDrops(event.getItems());
     }
 
-    /** Sends the drop's valuable stacks to the party, when sharing them is on. Client thread. */
-    private void shareDrops(java.util.Collection<net.runelite.client.game.ItemStack> items)
+    private void shareDrops(Collection<ItemStack> items)
     {
         if (!party.isInParty() || !config.partyShareDrops())
         {
             return;
         }
-        List<HdMapPartyDrop> valuable = new java.util.ArrayList<>();
-        for (net.runelite.client.game.ItemStack stack : items)
+        List<HdMapPartyDrop> valuable = new ArrayList<>();
+        for (ItemStack stack : items)
         {
             long value = (long) itemManager.getItemPrice(stack.getId()) * stack.getQuantity();
             if (value >= config.partyDropValue())
@@ -663,8 +659,8 @@ public final class PartyMap
                 valuable.add(new HdMapPartyDrop(stack.getId(), stack.getQuantity(), value));
             }
         }
-        // A big pile sends only its most valuable few; the map shows no more than that anyway.
-        valuable.sort(java.util.Comparator.comparingLong((HdMapPartyDrop d) -> -d.value()));
+        // Only the most valuable few; the map shows no more.
+        valuable.sort(Comparator.comparingLong((HdMapPartyDrop d) -> -d.value()));
         for (HdMapPartyDrop drop : valuable.subList(0, Math.min(valuable.size(), PartyMapRules.MAX_DROPS_PER_LOOT)))
         {
             party.send(drop);
@@ -683,16 +679,15 @@ public final class PartyMap
         repaint();
     }
 
-    /** What we carry, wear and can do, for the party. Client thread. */
     private HdMapPartyGear gear()
     {
         int[] inventory = new int[HdMapPartyGear.INVENTORY];
         int[] quantities = new int[HdMapPartyGear.INVENTORY];
-        java.util.Arrays.fill(inventory, -1);
-        net.runelite.api.ItemContainer inv = client.getItemContainer(net.runelite.api.gameval.InventoryID.INV);
+        Arrays.fill(inventory, -1);
+        ItemContainer inv = client.getItemContainer(InventoryID.INV);
         if (inv != null)
         {
-            net.runelite.api.Item[] items = inv.getItems();
+            Item[] items = inv.getItems();
             for (int k = 0; k < Math.min(items.length, inventory.length); k++)
             {
                 inventory[k] = items[k].getId();
@@ -700,11 +695,11 @@ public final class PartyMap
             }
         }
         int[] equipment = new int[HdMapPartyGear.EQUIPMENT];
-        java.util.Arrays.fill(equipment, -1);
-        net.runelite.api.ItemContainer worn = client.getItemContainer(net.runelite.api.gameval.InventoryID.WORN);
+        Arrays.fill(equipment, -1);
+        ItemContainer worn = client.getItemContainer(InventoryID.WORN);
         if (worn != null)
         {
-            net.runelite.api.Item[] items = worn.getItems();
+            Item[] items = worn.getItems();
             for (int k = 0; k < Math.min(items.length, equipment.length); k++)
             {
                 equipment[k] = items[k].getId();
@@ -713,7 +708,7 @@ public final class PartyMap
         int[] levels = new int[HdMapPartyGear.SKILLS];
         int[] boosted = new int[HdMapPartyGear.SKILLS];
         int[] experience = new int[HdMapPartyGear.SKILLS];
-        net.runelite.api.Skill[] skills = net.runelite.api.Skill.values();
+        Skill[] skills = Skill.values();
         for (int k = 0; k < Math.min(skills.length, levels.length); k++)
         {
             levels[k] = client.getRealSkillLevel(skills[k]);
@@ -721,10 +716,9 @@ public final class PartyMap
             experience[k] = client.getSkillExperience(skills[k]);
         }
         return new HdMapPartyGear(inventory, quantities, equipment, levels, boosted, experience,
-            client.getEnergy() / 100, client.getVarpValue(net.runelite.api.gameval.VarPlayerID.SA_ENERGY) / 10);
+            client.getEnergy() / 100, client.getVarpValue(VarPlayerID.SA_ENERGY) / 10);
     }
 
-    /** An item's picture, cached; repaints the maps when it has loaded. */
     private BufferedImage itemImage(int id, int quantity)
     {
         long key = (long) id << 32 | quantity;
@@ -737,7 +731,7 @@ public final class PartyMap
         {
             itemImages.clear();
         }
-        net.runelite.client.util.AsyncBufferedImage image = itemManager.getImage(id, quantity, quantity > 1);
+        AsyncBufferedImage image = itemManager.getImage(id, quantity, quantity > 1);
         image.onLoaded(this::repaint);
         itemImages.put(key, image);
         return image;
@@ -764,7 +758,7 @@ public final class PartyMap
             removeReminder();
             if (event.getPassphrase() != null && !event.getPassphrase().isEmpty())
             {
-                // Remembered for "Rejoin party", whoever joined it (this plugin or RuneLite's Party panel).
+                // Whoever joined it (this plugin or RuneLite's Party panel).
                 configManager.setConfiguration(HdMapReforgedConfig.GROUP, LAST_KEY, event.getPassphrase());
             }
         }
@@ -772,12 +766,12 @@ public final class PartyMap
         if (event.getPartyId() == null && ours != null
             && System.currentTimeMillis() - lastChange >= PartyMapRules.CHANGE_COOLDOWN_MILLIS)
         {
-            // Left elsewhere (RuneLite's Party panel): no reminder to rejoin it either.
+            // Left in RuneLite's Party panel: no reminder either.
             leftByUser = true;
         }
         if (ours != null && !ours.equals(event.getPassphrase()))
         {
-            // Left, or joined another party by hand: that one is the user's own and never left for them.
+            // A party joined by hand is the user's own and never left for them.
             joinedCode = null;
         }
         members.clear();
@@ -799,7 +793,6 @@ public final class PartyMap
         return local != null && local.getMemberId() == memberId;
     }
 
-    /** Name and avatar as RuneLite's party knows them, when the Party plugin has set them. */
     private void memberDetails(long memberId)
     {
         try
@@ -817,7 +810,7 @@ public final class PartyMap
         }
         catch (ConcurrentModificationException e)
         {
-            // The member list changed meanwhile; the next message fills this in.
+            // The next message fills this in.
         }
     }
 
@@ -830,8 +823,6 @@ public final class PartyMap
             }
         });
     }
-
-    // ---- the map's right-click menu, on the Swing thread ----
 
     private void contribute(JPopupMenu popup, MapView view)
     {
@@ -877,17 +868,15 @@ public final class PartyMap
         popup.add(friends);
     }
 
-    /** An earlier version's "map group" code; it was a party passphrase too, and moves to {@link #LAST_KEY}. */
+    /** An earlier version's group code (a passphrase too), moved to {@link #LAST_KEY}. */
     static final String LEGACY_KEY = "partyGroupCode";
 
-    /** The last party the user was in, or null. */
     String lastParty()
     {
         String last = configManager.getConfiguration(HdMapReforgedConfig.GROUP, LAST_KEY);
         return last == null || last.trim().isEmpty() ? null : last.trim();
     }
 
-    /** Moves an earlier version's group code to {@link #LAST_KEY} once, then forgets the old setting. */
     void migrateLegacyCode()
     {
         String legacy = configManager.getConfiguration(HdMapReforgedConfig.GROUP, LEGACY_KEY);
@@ -902,8 +891,7 @@ public final class PartyMap
         configManager.unsetConfiguration(HdMapReforgedConfig.GROUP, LEGACY_KEY);
     }
 
-    /** Rejoins the last party, from a button or menu the user clicked. */
-    void join(java.awt.Component view)
+    void join(Component view)
     {
         String last = lastParty();
         if (last != null)
@@ -912,8 +900,7 @@ public final class PartyMap
         }
     }
 
-    /** Joins the group after the user asked to; true if joined. */
-    private boolean joinCode(java.awt.Component view, String code)
+    private boolean joinCode(Component view, String code)
     {
         long now = System.currentTimeMillis();
         String current = party.getPartyPassphrase();
@@ -922,12 +909,10 @@ public final class PartyMap
             case ALREADY_IN:
                 return true;
             case NOT_LOGGED_IN:
-                JOptionPane.showMessageDialog(view, "Log in to the game first, then rejoin the party.",
-                    "HD Map Reforged", JOptionPane.INFORMATION_MESSAGE);
+                tell(view, "Log in to the game first, then rejoin the party.");
                 return false;
             case TOO_SOON:
-                JOptionPane.showMessageDialog(view, "You just changed party. Try again in a few seconds.",
-                    "HD Map Reforged", JOptionPane.INFORMATION_MESSAGE);
+                tell(view, "You just changed party. Try again in a few seconds.");
                 return false;
             case INVALID_CODE:
                 return false;
@@ -948,11 +933,9 @@ public final class PartyMap
         return true;
     }
 
-    /** Reminded already after this login: not again until the next login. */
     private boolean askedThisLogin;
-    private final net.runelite.client.ui.overlay.OverlayManager overlays;
-    private final net.runelite.client.input.MouseManager mouse;
-    /** "Rejoin party" over the game after login, out of the party joined before. */
+    private final OverlayManager overlays;
+    private final MouseManager mouse;
     private final RejoinButton rejoin = new RejoinButton(() -> {
         String code = lastParty();
         removeReminder();
@@ -962,10 +945,7 @@ public final class PartyMap
         }
     }, this::removeReminder);
 
-    /**
-     * After logging in, out of any party but with a party before: a small "Rejoin party" button over the game. One
-     * click rejoins; nothing is joined without it. Client thread.
-     */
+    /** After login, out of any party: a "Rejoin party" button; nothing is joined without its click. */
     private void askToJoin()
     {
         String code = lastParty();
@@ -977,6 +957,11 @@ public final class PartyMap
         }
         askedThisLogin = true;
         rejoin.setShowing(true);
+    }
+
+    private static void tell(Component to, String message)
+    {
+        JOptionPane.showMessageDialog(to, message, "HD Map Reforged", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void removeReminder()
@@ -991,7 +976,7 @@ public final class PartyMap
         party.changeParty(null);
     }
 
-    /** Leaves a party we rejoined after a long time logged out, as RuneLite's Party plugin does. */
+    /** Leaves a party we rejoined after long logged out, as RuneLite's Party plugin does. */
     private void checkIdle()
     {
         if (PartyMapRules.leaveIdle(joinedCode, party.getPartyPassphrase(), loggedOutSince, System.currentTimeMillis()))

@@ -1,13 +1,9 @@
 package com.hdmapreforged.route;
 
-/**
- * Nodes of the route graph as ints: a game tile (x and y below 16384, floor 0-3) or, with {@link #SEA} set, a 4×4
- * block of sea tiles on the ground floor that a boat sails through.
- */
+/** Route graph nodes as ints: a game tile, or with {@link #SEA} set a 4×4 block of sea tiles on the ground floor. */
 public final class Tiles
 {
     public static final int SEA = 1 << 30;
-    /** Sea blocks are this many tiles wide. */
     public static final int CELL = 4;
 
     private Tiles()
@@ -54,13 +50,12 @@ public final class Tiles
         return node & 0xfff;
     }
 
-    /** The sea block containing a tile. */
     public static int seaAt(int x, int y)
     {
         return sea(x / CELL, y / CELL);
     }
 
-    /** A tile written {@code "x y plane"} as our tables do, packed; -1 when it is not one (or outside the world). */
+    /** {@code "x y plane"} packed; -1 when it is not one. */
     public static int parse(String text)
     {
         String[] xyz = text.trim().split("\\s+");
@@ -70,7 +65,8 @@ public final class Tiles
         }
         for (String part : xyz)
         {
-            // More digits than any coordinate has: not a tile (and no overflow).
+            // Too many digits: not a tile (and no overflow).
+
             if (part.isEmpty() || part.length() > 5 || !part.chars().allMatch(Character::isDigit))
             {
                 return -1;

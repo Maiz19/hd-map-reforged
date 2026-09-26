@@ -10,23 +10,19 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Where a boat can sail: the ground floor's water in blocks of {@link Tiles#CELL}×{@link Tiles#CELL} tiles, a block
- * counting as open sea when most of it is water (so boats, 3 to 10 tiles long, keep off narrow rivers and the
- * shore). Each block gets the hazard of the nearest named sea (the wiki's sea pages and its "Sailing hazards"
- * table): a Sailing level that lets a boat with the right equipment through, or no way through at all. Named seas
- * only give a point, not borders, so hazards near a border are approximate. Immutable after building.
+ * Where a boat can sail: ground floor water in CELL×CELL blocks, open sea when mostly water (boats keep off rivers
+ * and shores). Each block takes the hazard level of the nearest named wiki sea (approximate near borders). Immutable.
  */
 public final class SeaMap
 {
     public static final String AREAS = "/com/hdmapreforged/route/sea_areas.tsv";
-    /** Water tiles a block needs, of {@code CELL * CELL}. */
+    /** Water tiles a block needs, of CELL * CELL. */
     static final int MIN_WATER = 10;
     /** No sea here. */
     static final byte NONE = -2;
     /** Sea no boat can cross yet. */
     static final byte CLOSED = -1;
 
-    /** A named sea from the wiki. */
     public static final class Area
     {
         public final String name;
@@ -34,7 +30,7 @@ public final class SeaMap
         public final int x;
         public final int y;
         public final String hazard;
-        /** Sailing level needed, 0 for none, -1 when it cannot be crossed. */
+        /** 0 for none, -1 when it cannot be crossed. */
         public final int level;
 
         Area(String name, String ocean, int x, int y, String hazard, int level)
@@ -48,7 +44,7 @@ public final class SeaMap
         }
     }
 
-    /** Per 64-tile region: per block (16×16), the level needed or {@link #NONE}/{@link #CLOSED}; null when no sea. */
+    /** Per region, per 16×16 block: the level needed, NONE or CLOSED; null when no sea. */
     private final byte[][] blocks = new byte[1 << 15][];
     private final List<Area> areas;
 
@@ -144,7 +140,6 @@ public final class SeaMap
         return sea;
     }
 
-    /** The named sea nearest to a point, or null. */
     public Area nearest(int x, int y)
     {
         Area best = null;
@@ -168,7 +163,7 @@ public final class SeaMap
         return areas;
     }
 
-    /** The level a block needs: {@code NONE} when it is no sea, {@code CLOSED} when no boat may cross. */
+    /** The level a block needs, NONE or CLOSED. */
     int level(int cellX, int cellY)
     {
         if (cellX < 0 || cellY < 0 || cellX >= 1 << 12 || cellY >= 1 << 12)
@@ -184,7 +179,6 @@ public final class SeaMap
         return cells == null ? NONE : cells[(cellX & 15) << 4 | (cellY & 15)];
     }
 
-    /** Whether a boat may be in a block with a given Sailing level. */
     public boolean sailable(int cellX, int cellY, int sailingLevel)
     {
         int level = level(cellX, cellY);
@@ -196,10 +190,7 @@ public final class SeaMap
         return level(cellX, cellY) != NONE;
     }
 
-    /**
-     * The open sea block nearest to a tile within {@code radius} tiles that a boat with this level may be in, as a
-     * packed sea node, or -1.
-     */
+    /** The nearest sailable block within {@code radius} tiles, as a packed sea node, or -1. */
     public int nearestBlock(int x, int y, int radius, int sailingLevel)
     {
         int best = -1;

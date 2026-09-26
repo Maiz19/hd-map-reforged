@@ -8,15 +8,11 @@ import java.util.Map;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.events.PluginMessage;
 
-/**
- * Drawing the route's ground tiles with the HD Tile Markers plugin, when the player has it: through its public
- * plugin-message format ({@code hd-tile-markers}: {@code tiles} and {@code clear} for one owner), no code of it.
- */
+/** The route's ground tiles via HD Tile Markers' public plugin messages ({@code tiles} and {@code clear}, one owner). */
 final class HdTileMarkersBridge
 {
     static final String NAMESPACE = "hd-tile-markers";
     static final String OWNER = "hd-map-reforged-route";
-    /** The plugin's name in RuneLite's plugin list. */
     static final String PLUGIN_NAME = "HD Tile Markers";
     /** It takes at most this many tiles from one sender. */
     static final int MAX_TILES = 1000;
@@ -25,13 +21,13 @@ final class HdTileMarkersBridge
     {
     }
 
-    /** One tile to mark: where, and optionally a label (a teleport's name where it lands). */
+    /** A tile to mark, optionally labelled. */
     static final class Tile
     {
         final WorldPoint point;
         final Color color;
         final String label;
-        /** The fill, or null for a faint one after the colour's transparency. */
+        /** Null: a faint fill after the colour's transparency. */
         final Color fill;
         final int width;
 
@@ -62,7 +58,8 @@ final class HdTileMarkersBridge
             Map<String, Object> entry = new HashMap<>();
             entry.put("point", tile.point);
             entry.put("color", tile.color);
-            // The fill follows the colour's own transparency, so fading tiles fade as a whole.
+            // Follows the colour's transparency, so fading tiles fade as a whole.
+
             entry.put("fill", tile.fill != null ? tile.fill : new Color(tile.color.getRed(), tile.color.getGreen(),
                 tile.color.getBlue(), tile.color.getAlpha() * 50 / 255));
             entry.put("width", tile.width);

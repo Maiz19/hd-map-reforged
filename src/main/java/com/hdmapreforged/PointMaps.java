@@ -8,27 +8,17 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * Which of several overlapping wiki maps really shows a point: the one whose tile has something drawn at that exact
- * spot. Finer than the region table, whose 64×64 regions can hold parts of two maps (Brimhaven Dungeon and Yanille's
- * underground share regions). Background threads only: may download a few tiles.
- */
+/** Which overlapping wiki map draws a point, finer than the region table. Background threads: may download tiles. */
 @Slf4j
 final class PointMaps
 {
-    /** Wiki zoom level used for the check: 4 pixels per game tile. */
     static final int LEVEL = 2;
-    /** Game tiles around a point looked at for anything drawn. */
     private static final int NEAR = 10;
 
     private PointMaps()
     {
     }
 
-    /**
-     * Per point, the smallest map that draws it where several maps cover it; a null value when maps cover it but
-     * none draws it (a place the wiki has not drawn yet). Points without a doubt are left out.
-     */
     static Map<WorldPoint, BaseMap> resolve(TileCache tiles, String version, BaseMaps maps, List<WorldPoint> points)
     {
         Map<WorldPoint, BaseMap> found = new HashMap<>();
@@ -37,7 +27,7 @@ final class PointMaps
             WorldMapMoves.Drawn moved = WorldMapMoves.drawn(point);
             if (moved != null && maps.byId(moved.map) != null)
             {
-                // Drawn elsewhere by its map (the Kalphite Lair): that map shows it, whatever its tiles have here.
+                // Drawn elsewhere by its map (the Kalphite Lair).
                 found.put(point, maps.byId(moved.map));
                 continue;
             }
@@ -66,8 +56,7 @@ final class PointMaps
             }
             else if (best == null && !unknown)
             {
-                // Some places are only on the wiki's map of everything (map -1), such as the Charred Dungeon or the
-                // Ancient Guthixian Temple, which no other map even covers.
+                // Some places are only on the map of everything (the Charred Dungeon).
                 BaseMap full = maps.byId(BaseMap.FULL);
                 int drawn = full == null ? 0 : check(tiles, version, full, point);
                 if (drawn >= 0)
@@ -79,7 +68,6 @@ final class PointMaps
         return found;
     }
 
-    /** Whether any wiki map, the map of everything too, draws something at or near a point; false when unknown. */
     static boolean drawnAnywhere(TileCache tiles, String version, BaseMaps maps, WorldPoint point)
     {
         for (BaseMap map : maps.all())
@@ -92,10 +80,6 @@ final class PointMaps
         return false;
     }
 
-    /**
-     * Whether a wiki map of its own (not only the map of everything, which also draws instances) draws something at
-     * or near a point; false when unknown.
-     */
     static boolean drawnOnAMap(TileCache tiles, String version, BaseMaps maps, WorldPoint point)
     {
         for (BaseMap map : maps.all())
@@ -108,26 +92,19 @@ final class PointMaps
         return false;
     }
 
-    /** Whether a map's tile has something drawn at a point (not the empty black background). */
     static boolean shows(TileCache tiles, String version, BaseMap map, WorldPoint point)
     {
         return check(tiles, version, map, point) == 2;
     }
 
-    /** Answers already found, by version, map and point: a second look at the same monster reads no tile. */
     private static final Map<String, Integer> CHECKED = new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** Forgets the answers found (the plugin shutting down). */
     static void clear()
     {
         CHECKED.clear();
     }
 
-    /**
-     * 2 when the map draws the point itself; 1 when only something near it (dark floors, such as the Catacombs of
-     * Kourend, are black between their outlines); 0 when nothing near it (or no tile at all); -1 when the tile could
-     * not be loaded.
-     */
+    /** 2: drawn at the point; 1: only near it (dark floors like the Catacombs are black inside); 0: not; -1: unknown. */
     private static int check(TileCache tiles, String version, BaseMap map, WorldPoint point)
     {
         String key = version + "/" + map.id + "/" + point.getX() + "," + point.getY() + "," + point.getPlane();
@@ -188,10 +165,7 @@ final class PointMaps
         }
     }
 
-    /**
-     * Whether a pixel of a wiki tile shows something: not black, nor the even dark grey (16, 16, 16) the wiki fills a
-     * floor above with where it has drawn nothing (the Kalphite Lair's floor 2).
-     */
+    /** Not black, nor the dark grey (16, 16, 16) the wiki fills empty upper floors with. */
     static boolean isDrawn(int rgb)
     {
         int r = (rgb >> 16) & 0xff;

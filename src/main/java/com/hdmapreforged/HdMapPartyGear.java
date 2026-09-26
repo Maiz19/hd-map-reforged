@@ -3,9 +3,8 @@ package com.hdmapreforged;
 import net.runelite.client.party.messages.PartyMemberMessage;
 
 /**
- * What a party member carries, wears and can do, sent to their party by this plugin when it changes (setting
- * "Share inventory, equipment and skills"). Short field names keep the message small; values from other clients are
- * checked before use.
+ * What a party member carries, wears and can do, sent when it changes. Short field names keep the message small;
+ * values from other clients are checked before use.
  */
 public class HdMapPartyGear extends PartyMemberMessage
 {
@@ -15,21 +14,18 @@ public class HdMapPartyGear extends PartyMemberMessage
     /** Item ids above this are not believed. */
     static final int MAX_ITEM = 100_000;
 
-    /** Inventory item ids, -1 for an empty slot. */
+    /** Inventory ids (-1 empty) and quantities. */
     private final int[] i;
-    /** Inventory quantities. */
     private final int[] q;
-    /** Worn item ids by equipment slot, -1 for none. */
+    /** Worn item ids by slot, -1 for none. */
     private final int[] e;
-    /** Real skill levels, in the order of RuneLite's Skill list. */
+    /** Real and current skill levels, in RuneLite's Skill order. */
     private final int[] s;
-    /** Current (boosted or drained) skill levels, same order. */
     private final int[] b;
-    /** Experience per skill, same order; null from older versions. */
+    /** Experience per skill; null from older versions. */
     private final int[] x;
-    /** Run energy, 0 to 100; null from older versions. */
+    /** Run and special attack energy, 0 to 100; null from older versions. */
     private final Integer r;
-    /** Special attack energy, 0 to 100; null from older versions. */
     private final Integer p;
 
     HdMapPartyGear(int[] inventory, int[] quantities, int[] equipment, int[] levels, int[] boosted)
@@ -50,7 +46,7 @@ public class HdMapPartyGear extends PartyMemberMessage
         p = special < 0 ? null : special;
     }
 
-    /** Experience per skill, or null when not shared. */
+    /** Null when not shared. */
     int[] experience()
     {
         if (x == null)
@@ -65,13 +61,13 @@ public class HdMapPartyGear extends PartyMemberMessage
         return out;
     }
 
-    /** Run energy 0 to 100, or -1 when not shared. */
+    /** 0 to 100, or -1 when not shared. */
     int runEnergy()
     {
         return r == null ? -1 : Math.max(0, Math.min(100, r));
     }
 
-    /** Special attack energy 0 to 100, or -1 when not shared. */
+    /** 0 to 100, or -1 when not shared. */
     int specialAttack()
     {
         return p == null ? -1 : Math.max(0, Math.min(100, p));

@@ -1,11 +1,9 @@
 package com.hdmapreforged.route;
 
 import java.util.ArrayDeque;
+import java.util.BitSet;
 
-/**
- * The walkable area around a tile, on its floor: how far a dungeon, cave or room reaches without its stairs, ladders
- * or entrances. For fitting the map to the dungeon one enters instead of to every dungeon its wiki map holds.
- */
+/** How far a dungeon, cave or room reaches on its floor, to fit the map to the dungeon one enters. */
 public final class WalkableArea
 {
     private static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
@@ -15,11 +13,7 @@ public final class WalkableArea
     {
     }
 
-    /**
-     * The bounds {minX, minY, maxX, maxY} of the tiles one can walk to from {@code (x, y, z)} (from the nearest
-     * walkable tile within a few tiles), or null when there is none or the area has more than {@code limit} tiles (the
-     * surface, a large cave system: no "one dungeon" to fit).
-     */
+    /** {minX, minY, maxX, maxY} of the tiles walkable from a point, or null when none or over {@code limit} tiles. */
     public static int[] bounds(CollisionMap map, int x, int y, int z, int limit)
     {
         int start = map.walkable(x, y, z) ? Tiles.pack(x, y, z) : map.nearestWalkable(x, y, z, 4);
@@ -27,8 +21,8 @@ public final class WalkableArea
         {
             return null;
         }
-        java.util.BitSet seen = new java.util.BitSet();
-        // Tiles by their place within a window around the start: dungeons never span more than this.
+        BitSet seen = new BitSet();
+        // Dungeons never span more than this.
         int size = 1024;
         int ox = Tiles.x(start) - size / 2;
         int oy = Tiles.y(start) - size / 2;

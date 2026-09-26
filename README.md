@@ -42,4 +42,4 @@ The map only changes what you see. It never walks, clicks, or sends anything to 
 
 Map tiles, shop stock, drops and spawn locations: © the [OSRS Wiki](https://oldschool.runescape.wiki) / Weird Gloop, [CC BY-NC-SA 3.0](https://weirdgloop.org/licensing/).
 
-[Credits](THIRD_PARTY_NOTICES.md) · [Changes](CHANGELOG.md) · [License](LICENSE)
+[Credits](THIRD_PARTY_NOTICES.md) · [License](LICENSE)

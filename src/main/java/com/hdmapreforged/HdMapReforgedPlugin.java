@@ -10,15 +10,23 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -63,10 +71,10 @@ import okhttp3.OkHttpClient;
 )
 public class HdMapReforgedPlugin extends Plugin
 {
-    /** The map version the bundled {@code basemaps.json} and {@code region_maps.tsv} belong to. */
+    /** Version of the bundled basemaps.json and region_maps.tsv. */
     static final String BUNDLED_VERSION = "2026-08-12_a";
     private static final String DATA = "data/";
-    /** Unlocks are read at most this often while things change, and quest states this often at all. */
+    /** Unlocks are read at most this often while things change; quest states this often at all. */
     private static final int UNLOCK_TICKS = 5;
     private static final int QUEST_TICKS = 100;
 
@@ -97,30 +105,24 @@ public class HdMapReforgedPlugin extends Plugin
     @Inject
     private ConfigManager configManager;
 
-    /** Party members on the map. */
     @Inject
     private PartyMap party;
 
-    /** "Path to here": routes on our own collision map. */
     @Inject
     private RouteFeature route;
 
-    /** Tile downloads and disk reads. */
     private ExecutorService io;
-    /** Loading icons, checking regions and updating data, one task at a time so results arrive in order. */
+    /** One task at a time so results arrive in order. */
     private ExecutorService dataIo;
     private final AtomicInteger dataGeneration = new AtomicInteger();
-    private final java.util.concurrent.atomic.AtomicBoolean repaintPending = new java.util.concurrent.atomic.AtomicBoolean();
+    private final AtomicBoolean repaintPending = new AtomicBoolean();
     private File home;
     private TileCache tiles;
     private WikiClient wiki;
     private RegionResolver regionResolver;
-    /** The map in a window of its own (the sidebar has the route and party instead). */
     private MapScreen screen;
-    /** The map over the whole game view, opened from the world map orb instead of the game's map. */
     private MapScreen fullScreen;
     private FullMapWindow fullMap;
-    /** The game's map icons on the sidebar map and the full-screen map. */
     private MapIconLayer[] gameIcons = new MapIconLayer[0];
     private MapDownloader downloader;
     private MapDownloadControl downloadControl;
@@ -130,15 +132,9 @@ public class HdMapReforgedPlugin extends Plugin
         @Override
         public void hotkeyPressed()
         {
-            SwingUtilities.invokeLater(() -> {
-                if (fullMap != null)
-                {
-                    fullMap.toggle();
-                }
-            });
+            toggleFullMap();
         }
     };
-    /** Escape closes the full-screen map, as it closes the game's own map. */
     private final KeyListener escape = new KeyListener()
     {
         @Override
@@ -170,19 +166,11 @@ public class HdMapReforgedPlugin extends Plugin
     private volatile BaseMaps currentMaps;
     private volatile String currentVersion = BUNDLED_VERSION;
     private volatile List<Needs> allNeeds = Collections.emptyList();
-    /**
-     * Regions being checked (the value {@link Long#MAX_VALUE}) or whose check failed, with when to try again. Cleared
-     * with each new map version.
-     */
-    private final java.util.Map<Integer, Long> regionsPending = new ConcurrentHashMap<>();
-    /** A failed region check is tried again after this long, when the player walks there. */
+    /** Regions being checked (value Long.MAX_VALUE) or failed, with when to retry. Cleared per map version. */
+    private final Map<Integer, Long> regionsPending = new ConcurrentHashMap<>();
     private static final long REGION_RETRY_MS = 60_000;
-    /**
-     * Counts starts and stops: answers from the wiki and client-thread tasks of an earlier run (after
-     * {@link #shutDown}) see another number and do nothing.
-     */
+    /** Counts starts and stops, so late callbacks of an earlier run do nothing. */
     private final AtomicInteger life = new AtomicInteger();
-    /** The map version last asked for; a map list that arrives for another is dropped. */
     private volatile String wantedVersion;
     private Unlocks unlocks;
     private boolean unlocksDirty = true;
@@ -200,7 +188,6 @@ public class HdMapReforgedPlugin extends Plugin
     protected void startUp() throws Exception
     {
         int started = life.incrementAndGet();
-        // Reading and decoding tiles from disk is most of the work when a map opens: four at a time.
         io = Executors.newFixedThreadPool(4, runnable -> daemon(runnable, "HD Map Reforged tiles"));
         dataIo = Executors.newSingleThreadExecutor(runnable -> daemon(runnable, "HD Map Reforged data"));
         home = new File(RuneLite.RUNELITE_DIR, "hd-map-reforged");
@@ -220,7 +207,6 @@ public class HdMapReforgedPlugin extends Plugin
         fullScreen = new MapScreen(tiles, config, wiki, itemNames, () -> fullMap.close());
         for (MapScreen s : new MapScreen[]{screen, fullScreen})
         {
-            // "Show lines" in an icon's card: kept, and both maps follow it.
             s.view().setLinesChoice(value -> configManager.setConfiguration(HdMapReforgedConfig.GROUP, "linesOff", value));
         }
         fullMap = new FullMapWindow(client, fullScreen, config.fullMapBounds(),
@@ -243,37 +229,36 @@ public class HdMapReforgedPlugin extends Plugin
         route.setSidebar(panel::showRoute, this::showOnMap);
         panel.setTours(route.sidebarTours(panel::refreshTours));
         gameIcons = new MapIconLayer[]{gameIconLayer(screen), gameIconLayer(fullScreen)};
-        for (MapScreen on : new MapScreen[]{screen, fullScreen})
-        {
-            on.setRegionCheck(this::checkRegions);
-        }
         downloader = new MapDownloader(tiles, this::tileLoaded);
         downloadControl = new MapDownloadControl(downloader, this::refresh);
         for (MapScreen on : new MapScreen[]{screen, fullScreen})
         {
+            on.setRegionCheck(this::checkRegions);
             on.view().addOverlay(downloadControl);
         }
 
         refreshData(bundledMaps, BUNDLED_VERSION);
         resolveMapVersion();
-        // The game's own map icons, once the game has loaded its data.
+        whenGameLoaded(started, () -> GameIconSprites.load(client), PoiIcons::clearCache);
+    }
+
+    private void whenGameLoaded(int started, BooleanSupplier load, Runnable after)
+    {
         clientThread.invokeLater(() -> {
             if (started != life.get())
             {
-                // Shut down meanwhile: nothing to fill.
                 return true;
             }
-            if (client.getGameState().getState() < GameState.LOGIN_SCREEN.getState() || !GameIconSprites.load(client))
+            if (client.getGameState().getState() < GameState.LOGIN_SCREEN.getState() || !load.getAsBoolean())
             {
                 return false;
             }
-            PoiIcons.clearCache();
+            after.run();
             SwingUtilities.invokeLater(this::refresh);
             return true;
         });
     }
 
-    /** The game's own map icons, baked into the wiki tiles, made hoverable and clickable on a screen's map. */
     private MapIconLayer gameIconLayer(MapScreen on)
     {
         MapIconLayer layer = new MapIconLayer(on.view(), config::showGameIcons, config::iconSize);
@@ -306,12 +291,7 @@ public class HdMapReforgedPlugin extends Plugin
         party.stop();
         route.stop();
         clientToolbar.removeNavigation(button);
-        if (window != null)
-        {
-            MapWindow closing = window;
-            window = null;
-            closing.dispose();
-        }
+        dock();
         keyManager.unregisterKeyListener(escape);
         keyManager.unregisterKeyListener(mapKey);
         fullMap.dispose();
@@ -337,7 +317,6 @@ public class HdMapReforgedPlugin extends Plugin
         button = null;
     }
 
-    /** Applies a change to both maps, on the Swing thread. */
     private void screens(Consumer<MapScreen> change)
     {
         SwingUtilities.invokeLater(() -> {
@@ -370,10 +349,7 @@ public class HdMapReforgedPlugin extends Plugin
         updateUnlocks();
     }
 
-    /**
-     * Where the player is, as the wiki maps show it: inside instances the real location the instance copies, and
-     * on a boat (its own world view) the boat's place in the main world.
-     */
+    /** As the wiki maps show it: in instances the copied real location, on a boat the boat's main-world place. */
     private WorldPoint playerLocation(Player player)
     {
         LocalPoint local = player.getLocalLocation();
@@ -386,22 +362,18 @@ public class HdMapReforgedPlugin extends Plugin
         return local == null ? null : WorldPoint.fromLocalInstance(client, local);
     }
 
-    /**
-     * Which map really shows each point where maps overlap, checked on the map tiles themselves (in the background);
-     * {@code done} gets the answers on the Swing thread.
-     */
-    private void checkRegions(List<WorldPoint> points, java.util.function.Consumer<java.util.Map<WorldPoint, BaseMap>> done)
+    /** Which map shows each point where maps overlap, checked on the tiles; answers on the Swing thread. */
+    private void checkRegions(List<WorldPoint> points, Consumer<Map<WorldPoint, BaseMap>> done)
     {
         BaseMaps maps = currentMaps;
         String version = tiles.version();
         runData(() -> {
-            java.util.Map<WorldPoint, BaseMap> found = version == null ? java.util.Collections.emptyMap()
+            Map<WorldPoint, BaseMap> found = version == null ? Collections.emptyMap()
                 : PointMaps.resolve(tiles, version, maps, points);
             SwingUtilities.invokeLater(() -> done.accept(found));
         });
     }
 
-    /** Where the wiki maps overlap, looks up once which one shows the region the player walked into. */
     private void checkRegion(WorldPoint location)
     {
         BaseMaps maps = currentMaps;
@@ -434,14 +406,12 @@ public class HdMapReforgedPlugin extends Plugin
                 }
                 else
                 {
-                    // The tiles could not be read: again when the player walks here after a while.
                     regionsPending.replace(region, Long.MAX_VALUE, System.currentTimeMillis() + REGION_RETRY_MS);
                 }
             }
             if (found)
             {
                 saveRegions(version, maps.regions());
-                // Follow again now that the right map for this spot is known.
                 screens(s -> {
                     s.setPlayer(null);
                     s.setPlayer(location);
@@ -480,10 +450,7 @@ public class HdMapReforgedPlugin extends Plugin
         screens(s -> s.setUnlocks(current));
     }
 
-    /**
-     * Adds "HD Map" to the world map orb, as its left-click option. A RuneLite-only menu entry: choosing it opens
-     * this plugin's map and sends nothing to the game. The game's "World Map" stays in the right-click menu.
-     */
+    /** A RuneLite-only orb entry; the game's "World Map" stays in the menu. */
     @Subscribe
     public void onMenuEntryAdded(MenuEntryAdded event)
     {
@@ -492,7 +459,7 @@ public class HdMapReforgedPlugin extends Plugin
         {
             return;
         }
-        // The orb can list several map options ("World Map", "Floating World Map", ...); one entry of ours is enough.
+        // The orb can list several map options; one entry of ours is enough.
         for (MenuEntry entry : client.getMenu().getMenuEntries())
         {
             if (isOurEntry(entry))
@@ -505,19 +472,20 @@ public class HdMapReforgedPlugin extends Plugin
             .setTarget("")
             .setType(MenuAction.RUNELITE)
             .setParam1(widget)
-            .onClick(entry -> SwingUtilities.invokeLater(() -> {
-                if (fullMap != null)
-                {
-                    fullMap.toggle();
-                }
-            }));
+            .onClick(entry -> toggleFullMap());
     }
 
-    /**
-     * Keeps "HD Map" as the orb's left-click option: the client sorts the menu after entries are added, and entries
-     * added after ours would otherwise take the top spot. Only while "World map orb opens this map" is on, and only
-     * reordered: every entry of the game stays in the menu.
-     */
+    private void toggleFullMap()
+    {
+        SwingUtilities.invokeLater(() -> {
+            if (fullMap != null)
+            {
+                fullMap.toggle();
+            }
+        });
+    }
+
+    /** Keeps "HD Map" as the orb's left-click option, as later entries would take the top; only reorders. */
     @Subscribe
     public void onPostMenuSort(PostMenuSort event)
     {
@@ -540,10 +508,9 @@ public class HdMapReforgedPlugin extends Plugin
         return widget == InterfaceID.Orbs.ORB_WORLDMAP || widget == InterfaceID.Orbs.WORLDMAP;
     }
 
-    /** "World Map", and variants such as "Floating World Map", with any colour tags removed. */
     static boolean isWorldMapOption(String option)
     {
-        return option != null && Text.removeTags(option).toLowerCase(java.util.Locale.ROOT).contains("world map");
+        return option != null && Text.removeTags(option).toLowerCase(Locale.ROOT).contains("world map");
     }
 
     private static boolean isOurEntry(MenuEntry entry)
@@ -643,20 +610,16 @@ public class HdMapReforgedPlugin extends Plugin
     private void configureTiles()
     {
         MapDownloader.Scope scope = config.wholeMap().scope;
-        // The chosen whole-map download always fits: trimming never deletes it only for it to download again.
+        // The chosen whole-map download always fits, so trimming never deletes it.
         tiles.setDiskFloor(scope == null ? 0 : downloadRoom(scope));
         tiles.configure(config.diskCache(), config.memoryTiles(), config.diskCacheMb());
     }
 
-    /** Disk space a whole-map download needs, with room for the tiles looked at besides. */
     private static int downloadRoom(MapDownloader.Scope scope)
     {
         return scope.megabytes + 500;
     }
 
-    // ---- downloading the whole map ----
-
-    /** Applies the "Download the whole map" setting: starts, switches or stops the download. */
     private void applyWholeMap()
     {
         MapDownloader.Scope scope = config.wholeMap().scope;
@@ -670,7 +633,7 @@ public class HdMapReforgedPlugin extends Plugin
         ensureDiskLimit(downloadRoom(scope));
         if (!config.diskCache())
         {
-            // Changes the setting, which comes back here through onConfigChanged.
+            // Comes back here through onConfigChanged.
             configManager.setConfiguration(HdMapReforgedConfig.GROUP, "diskCache", true);
             return;
         }
@@ -683,7 +646,6 @@ public class HdMapReforgedPlugin extends Plugin
         }
     }
 
-    /** Continues the chosen download for a map version (new, or after a restart). */
     private void resumeDownload(String version, BaseMaps maps)
     {
         MapDownloader.Scope scope = config.wholeMap().scope;
@@ -699,7 +661,6 @@ public class HdMapReforgedPlugin extends Plugin
 
     private volatile BaseMaps downloadingMaps;
 
-    /** Raises the disk cache limit when it is too small to hold the whole map. */
     private void ensureDiskLimit(int megabytes)
     {
         if (config.diskCacheMb() < megabytes)
@@ -709,7 +670,6 @@ public class HdMapReforgedPlugin extends Plugin
         }
     }
 
-    /** Tiles arrive many at a time; one repaint covers all that arrived before it runs. */
     private void tileLoaded()
     {
         if (repaintPending.compareAndSet(false, true))
@@ -730,10 +690,7 @@ public class HdMapReforgedPlugin extends Plugin
         }
     }
 
-    /**
-     * Uses the configured map version, else the wiki's current one, else the bundled one. The wiki's version is
-     * remembered, and only asked for again as often as the "Check for a new map" setting says.
-     */
+    /** The configured map version, else the wiki's current one (remembered), else the bundled one. */
     private void resolveMapVersion()
     {
         String configured = config.mapVersion().trim();
@@ -757,7 +714,7 @@ public class HdMapReforgedPlugin extends Plugin
         }
         int started = life.get();
         wiki.mapVersion(version -> {
-            // A manual version set while the wiki was answering wins; nothing after the plugin stopped.
+            // A manual version set meanwhile wins.
             if (started != life.get() || !config.mapVersion().trim().isEmpty())
             {
                 return;
@@ -774,10 +731,7 @@ public class HdMapReforgedPlugin extends Plugin
         });
     }
 
-    /**
-     * Shows a map version. The tiles switch together with its map list (the bundled one, the one kept on disk, or the
-     * wiki's): without the list, the current version stays.
-     */
+    /** Tiles switch together with the version's map list. */
     private void useVersion(String version, boolean official)
     {
         int started = life.get();
@@ -794,7 +748,6 @@ public class HdMapReforgedPlugin extends Plugin
             switchVersion(version, official, bundledMaps, started);
             return;
         }
-        // Newer versions can add maps; icons are rebuilt so each sits on the right one.
         BaseMaps kept = readBaseMaps(version);
         if (kept != null)
         {
@@ -803,7 +756,6 @@ public class HdMapReforgedPlugin extends Plugin
         }
         if (tiles.version() == null)
         {
-            // Just started: the current version's tiles show until the new version's map list is here.
             tiles.setVersion(currentVersion, false);
             SwingUtilities.invokeLater(this::refresh);
         }
@@ -823,7 +775,6 @@ public class HdMapReforgedPlugin extends Plugin
         });
     }
 
-    /** Switches tiles and icons to a map version whose map list is at hand. */
     private void switchVersion(String version, boolean official, BaseMaps maps, int started)
     {
         if (started != life.get())
@@ -849,21 +800,19 @@ public class HdMapReforgedPlugin extends Plugin
         SwingUtilities.invokeLater(this::refresh);
     }
 
-    /** Where a map version's list is kept; null for a version that could not be a file name. */
     private File baseMapsFile(String version)
     {
         return WikiClient.isSafeVersion(version) ? new File(new File(home, "basemaps"), version + ".json") : null;
     }
 
-    /** A map version's list kept from an earlier session, or null. */
     private BaseMaps readBaseMaps(String version)
     {
         File file = baseMapsFile(version);
-        if (file == null || !file.isFile() || java.nio.file.Files.isSymbolicLink(file.toPath()))
+        if (file == null || !file.isFile() || Files.isSymbolicLink(file.toPath()))
         {
             return null;
         }
-        try (InputStream in = new FileInputStream(file); Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8))
+        try (Reader reader = utf8(new FileInputStream(file)))
         {
             BaseMaps maps = BaseMaps.parse(gson, reader);
             return maps.isUsable() ? maps : null;
@@ -889,15 +838,15 @@ public class HdMapReforgedPlugin extends Plugin
             {
                 return;
             }
-            java.nio.file.Path temp = java.nio.file.Files.createTempFile(parent.toPath(), file.getName() + ".", ".part");
+            Path temp = Files.createTempFile(parent.toPath(), file.getName() + ".", ".part");
             try
             {
-                java.nio.file.Files.write(temp, json.getBytes(StandardCharsets.UTF_8));
-                java.nio.file.Files.move(temp, file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                Files.write(temp, json.getBytes(StandardCharsets.UTF_8));
+                Files.move(temp, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
             finally
             {
-                java.nio.file.Files.deleteIfExists(temp);
+                Files.deleteIfExists(temp);
             }
         }
         catch (IOException e)
@@ -906,10 +855,6 @@ public class HdMapReforgedPlugin extends Plugin
         }
     }
 
-    /**
-     * Loads icons for a map version and shows them, then checks overlapping regions and newer transport data in
-     * the background, showing the icons again whenever that changes something.
-     */
     private void refreshData(BaseMaps maps, String version)
     {
         int generation = dataGeneration.incrementAndGet();
@@ -933,7 +878,6 @@ public class HdMapReforgedPlugin extends Plugin
         });
     }
 
-    /** Checks overlapping regions of all icons and destinations; true when something new was found out. */
     private boolean resolveRegions(BaseMaps maps, String version, MapData data, int generation)
     {
         if (regionResolver.resolve(version, maps, maps.regions(), data.points(), () -> generation != dataGeneration.get())
@@ -945,7 +889,6 @@ public class HdMapReforgedPlugin extends Plugin
         return true;
     }
 
-    /** Loads the icons and hands them to the map, unless newer data was requested meanwhile. */
     private MapData publish(BaseMaps maps, int generation, int started)
     {
         if (generation != dataGeneration.get())
@@ -955,14 +898,12 @@ public class HdMapReforgedPlugin extends Plugin
         try
         {
             MapData data = MapData.load(maps, this::resource);
-            List<Poi> pois = data.pois;
-            List<PoiLoader.Place> labels = data.labels;
             if (generation != dataGeneration.get())
             {
                 return null;
             }
             List<Needs> needs = new ArrayList<>();
-            for (Poi poi : Poi.flatten(pois))
+            for (Poi poi : Poi.flatten(data.pois))
             {
                 for (Poi member : poi.members())
                 {
@@ -975,39 +916,24 @@ public class HdMapReforgedPlugin extends Plugin
             }
             allNeeds = needs;
             route.setIconEntries(data.iconEntries);
-            List<MapIconLoader.Icon> bakedIcons = data.icons;
             clientThread.invokeLater(() -> unlocksDirty = true);
-            // The sprites of the tiles' icons, to draw them at the chosen icon size.
-            java.util.Set<Integer> elements = new java.util.HashSet<>();
-            for (MapIconLoader.Icon icon : bakedIcons)
+            Set<Integer> elements = new HashSet<>();
+            for (MapIconLoader.Icon icon : data.icons)
             {
                 if (icon.element >= 0)
                 {
                     elements.add(icon.element);
                 }
             }
-            clientThread.invokeLater(() -> {
-                if (started != life.get())
-                {
-                    // Shut down meanwhile: the sprites stay unloaded.
-                    return true;
-                }
-                if (client.getGameState().getState() < GameState.LOGIN_SCREEN.getState()
-                    || !GameIconSprites.loadElements(client, elements))
-                {
-                    return false;
-                }
-                SwingUtilities.invokeLater(this::refresh);
-                return true;
-            });
+            whenGameLoaded(started, () -> GameIconSprites.loadElements(client, elements), () -> { });
             SwingUtilities.invokeLater(() -> {
                 if (screen != null && generation == dataGeneration.get())
                 {
-                    screen.setData(maps, pois, data.hidden, labels);
-                    fullScreen.setData(maps, pois, data.hidden, labels);
+                    screen.setData(maps, data.pois, data.hidden, data.labels);
+                    fullScreen.setData(maps, data.pois, data.hidden, data.labels);
                     for (MapIconLayer layer : gameIcons)
                     {
-                        layer.setIcons(bakedIcons);
+                        layer.setIcons(data.icons);
                     }
                 }
             });
@@ -1020,7 +946,6 @@ public class HdMapReforgedPlugin extends Plugin
         }
     }
 
-    /** The bundled table for the bundled version, plus what earlier sessions found out for this version. */
     private RegionTable regionTable(String version) throws IOException
     {
         RegionTable table = new RegionTable();
@@ -1034,8 +959,7 @@ public class HdMapReforgedPlugin extends Plugin
         File cached = regionFile(version);
         if (cached.isFile())
         {
-            try (InputStream in = new FileInputStream(cached);
-                Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8))
+            try (Reader reader = utf8(new FileInputStream(cached)))
             {
                 table.read(reader);
             }
@@ -1064,7 +988,6 @@ public class HdMapReforgedPlugin extends Plugin
         }
     }
 
-    /** Runs a task on the data thread; false when it was not taken (shutting down). */
     private boolean runData(Runnable task)
     {
         try
@@ -1074,7 +997,6 @@ public class HdMapReforgedPlugin extends Plugin
         }
         catch (RejectedExecutionException e)
         {
-            // Shutting down.
             return false;
         }
     }
@@ -1086,6 +1008,11 @@ public class HdMapReforgedPlugin extends Plugin
         {
             throw new IOException("Missing resource " + file);
         }
+        return utf8(in);
+    }
+
+    private static Reader utf8(InputStream in)
+    {
         return new InputStreamReader(in, StandardCharsets.UTF_8);
     }
 
@@ -1100,7 +1027,6 @@ public class HdMapReforgedPlugin extends Plugin
         window.setVisible(true);
     }
 
-    /** Closes the map's own window, if open. */
     private void dock()
     {
         MapWindow closing = window;
@@ -1111,7 +1037,6 @@ public class HdMapReforgedPlugin extends Plugin
         }
     }
 
-    /** Opens the map (over the game) at a place: a step of the route, a friend, from the sidebar. */
     private void showOnMap(WorldPoint point)
     {
         if (fullMap == null)

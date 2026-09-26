@@ -7,22 +7,21 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
+import java.util.function.LongFunction;
 import java.util.function.Supplier;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * A small friends button at the bottom left of the map that opens into a list of the party: members sharing their
- * location, each with their world; click one to look at them and what they carry. Swing thread only.
- */
+/** The friends button at the map's bottom left, opening into the party list and a member's details. Swing thread only. */
 final class FriendsWidget implements MapView.Widget
 {
-    /** A member of the party, as the party knows them (also those not sharing where they are). */
     static final class Member
     {
         final long id;
@@ -35,7 +34,6 @@ final class FriendsWidget implements MapView.Widget
         }
     }
 
-    /** One row of the list. */
     static final class Row
     {
         final String name;
@@ -55,15 +53,13 @@ final class FriendsWidget implements MapView.Widget
         }
     }
 
-    /** Item and skill pictures for the details of a party member. */
     interface Images
     {
-        java.awt.image.BufferedImage item(int id, int quantity);
+        BufferedImage item(int id, int quantity);
 
-        java.awt.image.BufferedImage skill(int ordinal);
+        BufferedImage skill(int ordinal);
 
-        /** One of the game's sprites (the orbs'), or null while it loads. */
-        default java.awt.image.BufferedImage sprite(int id)
+        default BufferedImage sprite(int id)
         {
             return null;
         }
@@ -77,74 +73,63 @@ final class FriendsWidget implements MapView.Widget
     private static final Font TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 13);
     private static final Font ROW = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
     private static final int WIDTH = 256;
-    /** The button's distance from the map's left edge: the map's own margin. */
     static final int LEFT = 12;
     private static final int ROW_HEIGHT = 22;
-    /** Experience amounts with grouping ("+1,234"); one instance, used on the Swing thread only. */
     private static final java.text.NumberFormat AMOUNT = java.text.NumberFormat.getIntegerInstance();
 
     private final Supplier<List<PartyMapMembers.Marker>> party;
     private final Supplier<List<Member>> group;
-    private final java.util.function.BooleanSupplier inGroup;
+    private final BooleanSupplier inGroup;
     private final IntSupplier myWorld;
     private final Supplier<Boolean> enabled;
     private final Consumer<WorldPoint> focus;
     private final Runnable repaint;
-    /** Repaints while experience drops rise; {@link #dropsMoving} says whether the frame had any. */
     private final PartyMapOverlay.Ticker ticker;
     private boolean dropsMoving;
     private boolean open;
-    /** The party member whose details are shown, or -1. */
     private long selected = -1;
     private int page;
-    /** The details folded up to the name and the orbs. */
     private boolean folded;
-    private java.util.function.LongFunction<PartyMapMembers.Gear> gear = id -> null;
+    private LongFunction<PartyMapMembers.Gear> gear = id -> null;
     private Images images;
 
-    private java.util.function.LongFunction<List<PartyMapMembers.Drop>> drops = id -> java.util.Collections.emptyList();
+    private LongFunction<List<PartyMapMembers.Drop>> drops = id -> java.util.Collections.emptyList();
 
-    /** A member's experience drops showing now. */
-    void setDrops(java.util.function.LongFunction<List<PartyMapMembers.Drop>> drops)
+    void setDrops(LongFunction<List<PartyMapMembers.Drop>> drops)
     {
         this.drops = drops;
     }
 
-    /** The member whose details show, or -1. */
     long selected()
     {
         return open ? selected : -1;
     }
 
     private java.util.function.IntConsumer hop = world -> { };
-    private java.util.function.BooleanSupplier canJoin = () -> false;
+    private BooleanSupplier canJoin = () -> false;
     private Runnable join = () -> { };
 
-    /** Hopping to a member's world, and joining the party from a button when not in it. */
-    void setActions(java.util.function.IntConsumer hop, java.util.function.BooleanSupplier canJoin, Runnable join)
+    void setActions(java.util.function.IntConsumer hop, BooleanSupplier canJoin, Runnable join)
     {
         this.hop = hop;
         this.canJoin = canJoin;
         this.join = join;
     }
 
-    /** Opens the list at a member's details (clicked on the map), on the page shown last. */
     void show(long id)
     {
         open = true;
         selected = id;
     }
 
-    /** What party members share, and the pictures to show it with. */
-    void setDetails(java.util.function.LongFunction<PartyMapMembers.Gear> gear, Images images)
+    void setDetails(LongFunction<PartyMapMembers.Gear> gear, Images images)
     {
         this.gear = gear;
         this.images = images;
     }
 
-    /** {@code group}: every member of the party; {@code inGroup}: whether the player is in one. */
     FriendsWidget(Supplier<List<PartyMapMembers.Marker>> party, Supplier<List<Member>> group,
-        java.util.function.BooleanSupplier inGroup, IntSupplier myWorld, Supplier<Boolean> enabled,
+        BooleanSupplier inGroup, IntSupplier myWorld, Supplier<Boolean> enabled,
         Consumer<WorldPoint> focus, Runnable repaint)
     {
         this.party = party;
@@ -157,7 +142,6 @@ final class FriendsWidget implements MapView.Widget
         this.ticker = new PartyMapOverlay.Ticker(repaint);
     }
 
-    /** The members of the party sharing where they are, then the others (grey, no place), each once. */
     static List<Row> rows(List<PartyMapMembers.Marker> party, List<Member> group)
     {
         List<Row> rows = new ArrayList<>();
@@ -174,7 +158,7 @@ final class FriendsWidget implements MapView.Widget
         }
         for (Member member : group)
         {
-            // Not logged in (or a connection the party has not dropped yet): left out, there is nothing to show.
+            // Not logged in: nothing to show.
             if (member.name == null)
             {
                 continue;
@@ -198,18 +182,15 @@ final class FriendsWidget implements MapView.Widget
         }
         finally
         {
-            // Drawn again while experience drops rise.
             ticker.painted(dropsMoving);
         }
     }
 
-    /** Stops the drops' animation (the plugin shutting down). Swing thread. */
     void dispose()
     {
         ticker.stop();
     }
 
-    /** The party's members; none when the party's list cannot be read now. */
     private List<Member> groupNow()
     {
         try
@@ -218,7 +199,7 @@ final class FriendsWidget implements MapView.Widget
         }
         catch (java.util.ConcurrentModificationException e)
         {
-            // The party changed its members while they were read (on another thread); the next frame has them.
+            // Changed on another thread while read; the next frame has them.
             return java.util.Collections.emptyList();
         }
     }
@@ -239,24 +220,9 @@ final class FriendsWidget implements MapView.Widget
             return;
         }
         int w = Math.min(WIDTH, width - 24);
-        // Bottom left, as large as the floor buttons, above the custom routes button that sits on them.
         double left = LEFT;
-        g.setFont(MapView.CONTROL_FONT);
-        FontMetrics title = g.getFontMetrics();
-        int tabWidth = MapView.floorGroupWidth(title);
-        double tabTop = bottom - 2 * MapView.CONTROL - 6;
-        RoundRectangle2D tab = new RoundRectangle2D.Double(left, tabTop, tabWidth, MapView.CONTROL, 10, 10);
-        g.setColor(new Color(0, 0, 0, 70));
-        g.fill(new RoundRectangle2D.Double(left + 1, tabTop + 2, tabWidth, MapView.CONTROL, 10, 10));
-        g.setColor(clicks.hovered(tab) ? MapView.CONTROL_HOVER : MapView.CONTROL_FILL);
-        g.fill(tab);
-        g.setColor(MapView.CONTROL_EDGE);
-        g.setStroke(new java.awt.BasicStroke(1f));
-        g.draw(tab);
-        g.setColor(Color.WHITE);
-        String label = "Friends · " + rows.size() + (open ? "  ▾" : "  ▴");
-        g.drawString(label, (float) (left + (tabWidth - title.stringWidth(label)) / 2.0),
-            (float) (tabTop + (MapView.CONTROL + title.getAscent()) / 2.0 - 2));
+        RoundRectangle2D tab = tab(g, bottom, clicks, "Friends · " + rows.size() + (open ? "  ▾" : "  ▴"));
+        double tabTop = tab.getY();
         clicks.add(tab, () -> {
             open = !open;
             repaint.run();
@@ -278,29 +244,26 @@ final class FriendsWidget implements MapView.Widget
         selected = -1;
         if (rows.isEmpty())
         {
-            // In a group, alone so far.
             String text = "No one else in your party yet";
             g.setFont(ROW);
-            // As wide as the text needs: the list's width is too narrow for it.
             double boxWidth = Math.max(w, g.getFontMetrics().stringWidth(text) + 20);
             RoundRectangle2D alone = new RoundRectangle2D.Double(left, tabTop - 4 - ROW_HEIGHT - 6, boxWidth,
                 ROW_HEIGHT + 6, 10, 10);
-            box(g, alone, false);
+            box(g, alone);
             g.setFont(ROW);
             g.setColor(FRIEND);
             g.drawString(text, (float) (left + 10),
                 (float) (alone.getCenterY() + g.getFontMetrics().getAscent() / 2.0 - 2));
             return;
         }
-        // The list opens upwards, as many rows as fit.
+        // Opens upwards, as many rows as fit; the last line then says how many more.
         int fit = Math.max(1, (int) ((tabTop - 60) / ROW_HEIGHT));
-        // When not all fit, the last line says how many more there are.
         List<Row> shown = rows.size() > fit ? rows.subList(0, Math.max(0, fit - 1)) : rows;
         int more = rows.size() - shown.size();
         int lines = shown.size() + (more > 0 ? 1 : 0);
         double listTop = tabTop - 4 - lines * ROW_HEIGHT - 6;
         RoundRectangle2D list = new RoundRectangle2D.Double(left, listTop, w, lines * ROW_HEIGHT + 6, 10, 10);
-        box(g, list, false);
+        box(g, list);
         g.setFont(ROW);
         FontMetrics metrics = g.getFontMetrics();
         int mine = myWorld.getAsInt();
@@ -324,7 +287,6 @@ final class FriendsWidget implements MapView.Widget
                     }
                     if (row.id >= 0)
                     {
-                        // A party member: what they carry, wear and can do.
                         selected = row.id;
                         repaint.run();
                     }
@@ -352,33 +314,28 @@ final class FriendsWidget implements MapView.Widget
     private static final String[] PAGES = {"Inventory", "Worn", "Skills"};
     private static final int SLOT_W = 48;
     private static final int SLOT_H = 40;
-    /** The skills page: three columns this wide, rows this high. */
     private static final int SKILL_W = 74;
     private static final int SKILL_H = 30;
-    /** Every page's height: the inventory's, the largest. */
+    /** Every page as tall as the inventory, so switching pages moves nothing. */
     private static final int BODY_H = 7 * SLOT_H;
     private static final int STATUS_H = Orbs.HEIGHT + 6;
-    /** Equipment slots laid out as the game's worn items tab: column and row of each slot index. */
+    /** Column and row of each equipment slot, as in the game's worn items tab. */
     static final int[][] WORN = {{1, 0}, {0, 1}, {1, 1}, {0, 2}, {1, 2}, {2, 2}, null, {1, 3}, null, {0, 4},
         {1, 4}, null, {2, 4}, {2, 1}};
 
-    /** A party member's inventory, worn items or skills, in a calm panel above the tab. */
     private void paintDetails(Graphics2D g, Row row, double left, int w, double bottomY, MapView.Clicks clicks)
     {
         PartyMapMembers.Gear shared = gear.apply(row.id);
         int panelW = Math.max(w, 4 * Orbs.WIDTH + 3 * 4 + 16);
         double x0 = left;
-        // One size for every page, as large as the inventory, so switching pages does not move anything.
-        int bodyH = BODY_H;
-        int full = 30 + 26 + STATUS_H + bodyH + 10;
+        int full = 30 + 26 + STATUS_H + BODY_H + 10;
         // Folded (or the map too low for all of it): the name and the orbs only.
         boolean cramped = bottomY - full < 44;
         boolean compact = folded || cramped;
         int height = compact ? 30 + STATUS_H + 4 : full;
         double top = bottomY - height;
         RoundRectangle2D panel = new RoundRectangle2D.Double(x0, top, panelW, height, 12, 12);
-        box(g, panel, false);
-        // Title: who, which world, and a way back to the list.
+        box(g, panel);
         g.setFont(TITLE);
         FontMetrics title = g.getFontMetrics();
         g.setColor(row.color != null ? row.color : FRIEND);
@@ -395,7 +352,6 @@ final class FriendsWidget implements MapView.Widget
             double right = x0 + panelW - (cramped ? 34 : 56);
             if (elsewhere)
             {
-                // On another world: a button to hop there (the game's world switcher does the hop).
                 String text = "Hop";
                 double bw = rowMetrics.stringWidth(text) + 14;
                 RoundRectangle2D button = new RoundRectangle2D.Double(right - bw, top + 6, bw, 19, 8, 8);
@@ -410,31 +366,13 @@ final class FriendsWidget implements MapView.Widget
             g.setColor(elsewhere ? OTHER_WORLD : new Color(190, 190, 195));
             g.drawString(world, (float) (right - rowMetrics.stringWidth(world)), (float) (top + 20));
         }
-        RoundRectangle2D close = new RoundRectangle2D.Double(x0 + panelW - 26, top + 5, 20, 20, 8, 8);
-        if (clicks.hovered(close))
-        {
-            g.setColor(HOVER);
-            g.fill(close);
-        }
-        g.setColor(new Color(200, 200, 205));
-        g.setFont(TITLE);
-        g.drawString("×", (float) (close.getCenterX() - title.stringWidth("×") / 2.0), (float) (top + 20));
-        clicks.add(close, () -> {
+        titleButton(g, clicks, title, x0 + panelW - 26, top, "×", () -> {
             selected = -1;
             repaint.run();
         }, "Back to the list");
         if (!cramped)
         {
-            RoundRectangle2D foldButton = new RoundRectangle2D.Double(x0 + panelW - 48, top + 5, 20, 20, 8, 8);
-            if (clicks.hovered(foldButton))
-            {
-                g.setColor(HOVER);
-                g.fill(foldButton);
-            }
-            g.setColor(new Color(200, 200, 205));
-            String mark = folded ? "+" : "\u2013";
-            g.drawString(mark, (float) (foldButton.getCenterX() - title.stringWidth(mark) / 2.0), (float) (top + 20));
-            clicks.add(foldButton, () -> {
+            titleButton(g, clicks, title, x0 + panelW - 48, top, folded ? "+" : "\u2013", () -> {
                 folded = !folded;
                 repaint.run();
             }, folded ? "Unfold" : "Fold up: the name and the orbs only");
@@ -448,7 +386,6 @@ final class FriendsWidget implements MapView.Widget
             paintDrops(g, row.id, x0, top + height - 6, panelW);
             return;
         }
-        // Pages.
         double tabW = (panelW - 16) / 3.0;
         g.setFont(ROW);
         FontMetrics metrics = g.getFontMetrics();
@@ -509,14 +446,13 @@ final class FriendsWidget implements MapView.Widget
             {
                 double sx = gridLeft + (k % 3) * SKILL_W;
                 double sy = y0 + (k / 3) * SKILL_H;
-                java.awt.image.BufferedImage icon = images.skill(k);
+                BufferedImage icon = images.skill(k);
                 if (icon != null)
                 {
                     g.drawImage(icon, (int) sx + 2, (int) sy + 3, 16, 16, null);
                 }
                 int now = shared.boosted[k];
                 int real = shared.levels[k];
-                // Boosted or drained levels in the game's colours; the real level beside a changed one.
                 g.setColor(now > real ? new Color(120, 220, 120) : now < real ? new Color(230, 120, 110) : Color.WHITE);
                 String text = now == real ? String.valueOf(real) : now + "/" + real;
                 g.drawString(text, (float) (sx + 22), (float) (sy + 16));
@@ -525,8 +461,12 @@ final class FriendsWidget implements MapView.Widget
         paintDrops(g, row.id, x0, top + 110, panelW);
     }
 
-    /** Not in a party but in one before: one button to rejoin it. */
     private void paintJoin(Graphics2D g, int bottom, MapView.Clicks clicks)
+    {
+        clicks.add(tab(g, bottom, clicks, "Rejoin party"), join, "Join your last party again");
+    }
+
+    private static RoundRectangle2D tab(Graphics2D g, int bottom, MapView.Clicks clicks, String label)
     {
         g.setFont(MapView.CONTROL_FONT);
         FontMetrics metrics = g.getFontMetrics();
@@ -538,22 +478,20 @@ final class FriendsWidget implements MapView.Widget
         g.setColor(clicks.hovered(tab) ? MapView.CONTROL_HOVER : MapView.CONTROL_FILL);
         g.fill(tab);
         g.setColor(MapView.CONTROL_EDGE);
-        g.setStroke(new java.awt.BasicStroke(1f));
+        g.setStroke(new BasicStroke(1f));
         g.draw(tab);
         g.setColor(Color.WHITE);
-        String label = "Rejoin party";
         g.drawString(label, (float) (LEFT + (tabWidth - metrics.stringWidth(label)) / 2.0),
             (float) (tabTop + (MapView.CONTROL + metrics.getAscent()) / 2.0 - 2));
-        clicks.add(tab, join, "Join your last party again");
+        return tab;
     }
 
-    /** HP, prayer, run and special attack, as the game's orbs across the panel. */
     private void paintStatus(Graphics2D g, PartyMapMembers.Gear shared, double x, double y, double width)
     {
         int hp = net.runelite.api.Skill.HITPOINTS.ordinal();
         int prayer = net.runelite.api.Skill.PRAYER.ordinal();
         double gap = (width - 4 * Orbs.WIDTH) / 3.0;
-        java.util.function.IntFunction<java.awt.image.BufferedImage> sprites = images == null ? id -> null : images::sprite;
+        java.util.function.IntFunction<BufferedImage> sprites = images == null ? id -> null : images::sprite;
         int top = (int) y + 2;
         Orbs.paint(g, (int) x, top, Orbs.Kind.HITPOINTS, shared.boosted[hp], shared.levels[hp], sprites);
         Orbs.paint(g, (int) (x + Orbs.WIDTH + gap), top, Orbs.Kind.PRAYER, shared.boosted[prayer], shared.levels[prayer],
@@ -562,7 +500,6 @@ final class FriendsWidget implements MapView.Widget
         Orbs.paint(g, (int) (x + 3 * (Orbs.WIDTH + gap)), top, Orbs.Kind.SPECIAL, shared.special, 100, sprites);
     }
 
-    /** Experience drops: each rises from the bottom of the title and fades, newest lowest, as in the game. */
     private void paintDrops(Graphics2D g, long id, double x0, double start, int panelW)
     {
         List<PartyMapMembers.Drop> showing = drops.apply(id);
@@ -577,7 +514,6 @@ final class FriendsWidget implements MapView.Widget
         {
             PartyMapMembers.Drop drop = showing.get(k);
             double t = Math.min(1, (now - drop.at) / (double) PartyMapMembers.DROP_MS);
-            // Eased: quick at first, slowing down, fading over the last part.
             double rise = 1 - Math.pow(1 - t, 3);
             float alpha = (float) (t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3);
             String text = "+" + AMOUNT.format(drop.amount);
@@ -585,7 +521,7 @@ final class FriendsWidget implements MapView.Widget
             double ty = start + (showing.size() - 1 - k) * 18 - rise * 60;
             java.awt.Composite old = g.getComposite();
             g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, Math.max(0, alpha)));
-            java.awt.image.BufferedImage icon = images == null ? null : images.skill(drop.skill);
+            BufferedImage icon = images == null ? null : images.skill(drop.skill);
             if (icon != null)
             {
                 g.drawImage(icon, (int) tx - 19, (int) ty - 13, 16, 16, null);
@@ -599,14 +535,13 @@ final class FriendsWidget implements MapView.Widget
         dropsMoving = true;
     }
 
-    /** One item slot: the item's picture with its quantity, as in the game. */
     private void slot(Graphics2D g, double x, double y, int id, int quantity)
     {
         if (id < 0)
         {
             return;
         }
-        java.awt.image.BufferedImage image = images.item(id, Math.max(1, quantity));
+        BufferedImage image = images.item(id, Math.max(1, quantity));
         if (image != null)
         {
             g.drawImage(image, (int) (x + (SLOT_W - image.getWidth()) / 2.0), (int) (y + (SLOT_H - image.getHeight()) / 2.0),
@@ -614,11 +549,26 @@ final class FriendsWidget implements MapView.Widget
         }
     }
 
-    private static void box(Graphics2D g, RoundRectangle2D shape, boolean hover)
+    private static void titleButton(Graphics2D g, MapView.Clicks clicks, FontMetrics title, double x, double top,
+        String mark, Runnable action, String tip)
+    {
+        RoundRectangle2D button = new RoundRectangle2D.Double(x, top + 5, 20, 20, 8, 8);
+        if (clicks.hovered(button))
+        {
+            g.setColor(HOVER);
+            g.fill(button);
+        }
+        g.setColor(new Color(200, 200, 205));
+        g.setFont(TITLE);
+        g.drawString(mark, (float) (button.getCenterX() - title.stringWidth(mark) / 2.0), (float) (top + 20));
+        clicks.add(button, action, tip);
+    }
+
+    private static void box(Graphics2D g, RoundRectangle2D shape)
     {
         g.setColor(new Color(0, 0, 0, 70));
         g.fill(new RoundRectangle2D.Double(shape.getX() + 1, shape.getY() + 2, shape.getWidth(), shape.getHeight(), 10, 10));
-        g.setColor(hover ? HOVER : FILL);
+        g.setColor(FILL);
         g.fill(shape);
         g.setColor(EDGE);
         g.setStroke(new BasicStroke(1f));

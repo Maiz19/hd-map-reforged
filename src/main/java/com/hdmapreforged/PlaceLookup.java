@@ -1,17 +1,18 @@
 package com.hdmapreforged;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Pattern;
 import net.runelite.api.coords.WorldPoint;
 
 /**
- * Finds a place by its wiki page name in the map's own data: a dungeon entrance, minigame or other icon of that name,
- * a town or island label, a map of that name, or a teleport there. For monsters whose wiki page lists no spawns one
- * can see (a boss fought in an instance): the place the page mentions most is where one goes.
+ * Finds a place by wiki page name in the map's own data (icon, label, map or teleport). For bosses in instances, the
+ * place the page mentions most is where one goes.
  */
 final class PlaceLookup
 {
-    /** A place found: the name it was found by, and where. */
     static final class Found
     {
         final String name;
@@ -24,12 +25,12 @@ final class PlaceLookup
         }
     }
 
-    /** Where to go for a boss fought in an instance, by page name (lower case); from {@code boss_entrances.tsv}. */
-    private static final java.util.Map<String, Found> BOSSES = bosses();
+    /** Lower-case boss page name to lair entrance, from boss_entrances.tsv. */
+    private static final Map<String, Found> BOSSES = bosses();
 
-    private static java.util.Map<String, Found> bosses()
+    private static Map<String, Found> bosses()
     {
-        java.util.Map<String, Found> bosses = new java.util.HashMap<>();
+        Map<String, Found> bosses = new java.util.HashMap<>();
         java.io.InputStream in = PlaceLookup.class.getResourceAsStream("data/boss_entrances.tsv");
         if (in == null)
         {
@@ -53,27 +54,22 @@ final class PlaceLookup
         return bosses;
     }
 
-    /** The way into a boss's lair, when known: the pool, tunnel or door one uses, not just the area. */
+    /** The pool, tunnel or door into a boss's lair, when known. */
     static Found boss(String page)
     {
         return page == null ? null : BOSSES.get(page.toLowerCase(Locale.ROOT));
     }
 
-    /** Icons that stand for a place of their name. */
     private static final java.util.Set<PoiType> PLACES = java.util.EnumSet.of(PoiType.DUNGEON_ENTRANCE, PoiType.MINIGAME,
         PoiType.AGILITY_COURSE, PoiType.RUNECRAFT_ALTAR, PoiType.TELEPORT, PoiType.MAP_EXIT);
 
-    /** Names looked at at most, the most mentioned first. */
     static final int MAX_NAMES = 40;
 
     private PlaceLookup()
     {
     }
 
-    /**
-     * The first of {@code names} (in order) that the map knows, on a map one can see; kingdoms and other regions
-     * ("Morytania", "Wilderness") only when no smaller place matches. Null when none does.
-     */
+    /** The first known name, on a visible map; regions ("Morytania") only when no smaller place matches. */
     static Found find(List<String> names, BaseMaps maps, List<PoiLoader.Place> labels, List<Poi> pois)
     {
         if (maps == null)
@@ -81,10 +77,9 @@ final class PlaceLookup
             return null;
         }
         List<String> tried = names.size() > MAX_NAMES ? names.subList(0, MAX_NAMES) : names;
-        // Every icon once, with its lower-case name, for all the names tried.
-        List<Poi> hosts = new java.util.ArrayList<>();
-        List<Poi> icons = new java.util.ArrayList<>();
-        List<String> iconNames = new java.util.ArrayList<>();
+        List<Poi> hosts = new ArrayList<>();
+        List<Poi> icons = new ArrayList<>();
+        List<String> iconNames = new ArrayList<>();
         for (Poi poi : Poi.flatten(pois))
         {
             for (Poi member : poi.members())
@@ -116,9 +111,8 @@ final class PlaceLookup
         return PAGE_KIND.matcher(name).replaceAll("").trim();
     }
 
-    private static final java.util.regex.Pattern PAGE_KIND = java.util.regex.Pattern.compile("\\s*\\((location|area|dungeon)\\)$");
+    private static final Pattern PAGE_KIND = Pattern.compile("\\s*\\((location|area|dungeon)\\)$");
 
-    /** The icons of one search, flattened once: each with the icon it sits in and its lower-case name. */
     private static final class Icons
     {
         final List<Poi> hosts;
@@ -139,7 +133,6 @@ final class PlaceLookup
         String lower = name.toLowerCase(Locale.ROOT);
         if (!regions)
         {
-            // Icons first: a dungeon's entrance, a minigame's place.
             for (int i = 0; i < icons.members.size(); i++)
             {
                 Poi host = icons.hosts.get(i);
@@ -175,10 +168,7 @@ final class PlaceLookup
         return null;
     }
 
-    /**
-     * Whether an icon is the place: its name is it ("Stalker Den"), or it is a teleport there ("Skills necklace:
-     * Farming Guild", "Zul-andra teleport scroll").
-     */
+    /** Its name is the place ("Stalker Den"), or it is a teleport there ("Skills necklace: Farming Guild"). */
     static boolean named(Poi poi, String lower)
     {
         return named(poi, poi.name.toLowerCase(Locale.ROOT), lower);
@@ -188,7 +178,7 @@ final class PlaceLookup
     {
         if (name.equals(lower))
         {
-            // Places, not things that share a word with one (a "Flower" patch).
+            // Places, not things sharing a word with one (a "Flower" patch).
             return PLACES.contains(poi.type);
         }
         return poi.type == PoiType.TELEPORT && (name.endsWith(": " + lower) || name.equals(lower + " teleport")

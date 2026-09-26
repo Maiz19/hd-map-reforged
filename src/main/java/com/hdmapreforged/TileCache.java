@@ -3,9 +3,13 @@ package com.hdmapreforged;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -29,9 +33,8 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 
 /**
- * Wiki map tiles: kept in memory, optionally on disk, and downloaded a few at a time. Each frame queues the
- * tiles it needs, farthest first, and starts loading when the frame ends, so the middle of the view loads first;
- * tiles that scrolled out of view before their turn are dropped.
+ * Wiki map tiles in memory, optionally on disk, downloaded a few at a time. Each frame queues tiles farthest first
+ * and loads at frame end, so the middle loads first; tiles scrolled away before their turn are dropped.
  */
 @Slf4j
 final class TileCache
@@ -40,18 +43,13 @@ final class TileCache
     static final int MIN_ZOOM = -3;
     static final int MAX_ZOOM = 3;
     private static final String BASE_URL = "https://maps.runescape.wiki/osrs/versions/";
-    /**
-     * Tiles the map loads at once, from disk or the wiki. Their downloads go through the HTTP client's queue, which
-     * runs at most 5 requests per host at a time (OkHttp's default, shared with the rest of RuneLite). The whole-map
-     * download ({@link MapDownloader#THREADS} threads, pausing between tiles) and the region checks
-     * ({@link #loadNow}, one data thread) come on top of that.
-     */
+    /** OkHttp itself still caps requests at 5 per host, shared with the rest of RuneLite. */
     private static final int MAX_IN_FLIGHT = 10;
-    /** Larger answers are not tiles (the wiki's are well under 200 KB). */
+    /** The wiki's tiles are well under 200 KB. */
     static final int MAX_TILE_BYTES = 2 * 1024 * 1024;
-    /** A tile the wiki did not have is asked for again after this long (the wiki adds tiles now and then). */
+    /** The wiki adds tiles now and then. */
     static final long NONE_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000L;
-    /** A half-written file older than this was left by a crash; newer ones may still be being written. */
+    /** Older half-written files were left by a crash; newer ones may still be being written. */
     private static final long PART_STALE_MS = 10 * 60 * 1000L;
     private static final long RETRY_AFTER_MS = 30_000;
     private static final long MB = 1024 * 1024;
@@ -105,7 +103,7 @@ final class TileCache
     private final LinkedHashMap<Key, BufferedImage> memory = new LinkedHashMap<>(256, 0.75f, true);
     private final Set<Key> missing = new HashSet<>();
     private final Map<Key, Long> failed = new HashMap<>();
-    /** Tiles shown from the previous version while this version's are fetched; retried when that failed. */
+    /** Previous-version tiles shown while this version's are fetched. */
     private final Set<Key> stale = new HashSet<>();
     private final Deque<Key> queue = new ArrayDeque<>();
     private final Set<Key> queued = new HashSet<>();
@@ -114,17 +112,14 @@ final class TileCache
     private volatile boolean diskCache;
     private volatile int memoryLimit = 256;
     private volatile int diskLimitMb = 1000;
-    /** The disk limit never goes below this: the whole-map download's size, so trimming never undoes it. */
+    /** The whole-map download's size, so trimming never undoes it. */
     private volatile int diskFloorMb;
-    /** Tiles the current view needs; the memory cache never shrinks below this, or tiles in view would reload. */
+    /** The memory cache never shrinks below this, or tiles in view would reload. */
     private int frameNeed;
     private int generation;
-    /** Set when switching to a version the wiki reported: very old versions are removed once one of its tiles loads. */
+    /** Old versions are removed once a tile of an official version downloads, so a mistyped version never wipes the cache. */
     private boolean cleanupPending;
-    /**
-     * The previous map version still on disk. Its tiles are shown at once while the same tiles of the current version
-     * download, so a new wiki map version never starts from an empty map; each old tile is removed once replaced.
-     */
+    /** Previous version on disk, shown while the new one downloads; each old tile is removed once replaced. */
     private volatile String fallbackVersion;
 
     TileCache(OkHttpClient http, ExecutorService io, File cacheRoot, Runnable onLoaded)
@@ -140,13 +135,11 @@ final class TileCache
         return BASE_URL + version + "/tiles/rendered/" + key.path();
     }
 
-    /** Tile index containing a world coordinate at a wiki zoom level. */
     static int tileIndex(double world, int zoom)
     {
         return (int) Math.floor(world * Math.pow(2, zoom) / TILE_SIZE);
     }
 
-    /** World tiles covered by one image tile at a wiki zoom level. */
     static double worldPerTile(int zoom)
     {
         return TILE_SIZE / Math.pow(2, zoom);
@@ -163,16 +156,11 @@ final class TileCache
         }
     }
 
-    /**
-     * The smallest disk limit, whatever the setting says: the chosen whole-map download must fit, or trimming would
-     * delete it and the next start download it again.
-     */
     void setDiskFloor(int megabytes)
     {
         diskFloorMb = Math.max(0, megabytes);
     }
 
-    /** The disk limit in effect, in megabytes. */
     int diskLimitMb()
     {
         return Math.max(diskLimitMb, diskFloorMb);
@@ -183,18 +171,14 @@ final class TileCache
         return version;
     }
 
-    /**
-     * Switches to another map version, dropping tiles of the previous one. When {@code official} (the version the
-     * wiki reports, not a manual setting), older versions on disk are removed after the first tile of this one
-     * has downloaded, so a mistyped version never wipes the cache.
-     */
+    /** {@code official}: the version the wiki reports, not a manual setting. */
     void setVersion(String version, boolean official)
     {
         if (version.equals(this.version))
         {
             return;
         }
-        // Listing the disk can take a while; the map keeps painting meanwhile.
+        // Listed outside the lock: the map keeps painting meanwhile.
         String fallback = previousOnDisk(version);
         synchronized (this)
         {
@@ -216,32 +200,19 @@ final class TileCache
         }
         if (official && fallback != null)
         {
-            // Older versions go into the one shown while this one's tiles arrive: a whole-map download made for an
-            // earlier version stays usable, and is replaced tile by tile, never downloaded again in one go.
+            // Older versions merge into the fallback, so a whole-map download is replaced tile by tile.
             execute(() -> mergeOlder(version, fallback));
         }
         execute(this::limitDiskUse);
     }
 
-    /** Keeps the disk cache within its limit, in the background. */
-    void trimDiskLater()
-    {
-        execute(this::limitDiskUse);
-    }
-
-    /** The most recently used other version folder in the cache, or null. */
     private String previousOnDisk(String current)
     {
-        File[] versions = cacheRoot.listFiles(File::isDirectory);
-        if (versions == null)
-        {
-            return null;
-        }
         File best = null;
-        for (File dir : versions)
+        for (File dir : versionDirs())
         {
             if (!dir.getName().equals(current) && WikiClient.isSafeVersion(dir.getName())
-                && !java.nio.file.Files.isSymbolicLink(dir.toPath()) && (best == null || dir.lastModified() > best.lastModified()))
+                && !Files.isSymbolicLink(dir.toPath()) && (best == null || dir.lastModified() > best.lastModified()))
             {
                 best = dir;
             }
@@ -254,7 +225,6 @@ final class TileCache
         return fallbackVersion;
     }
 
-    /** Call before painting: tiles queued for the previous frame that have not started are forgotten. */
     synchronized void beginFrame(int visibleTiles)
     {
         queue.clear();
@@ -262,19 +232,17 @@ final class TileCache
         frameNeed = visibleTiles * 2 + 16;
     }
 
-    /** Call after painting: starts loading the queued tiles, nearest the middle first. */
     synchronized void endFrame()
     {
         pump();
     }
 
-    /** A loaded tile without requesting it, or null. */
     synchronized BufferedImage peek(Key key)
     {
         return memory.get(key);
     }
 
-    /** A loaded tile, or null after queueing it; queue tiles farthest from the middle first. */
+    /** Queue tiles farthest from the middle first. */
     synchronized BufferedImage get(Key key)
     {
         BufferedImage image = memory.get(key);
@@ -288,16 +256,12 @@ final class TileCache
         {
             return image;
         }
-        // Not loaded yet, or only the previous version's tile shows because this one's failed: (again) in line.
         queue.addFirst(key);
         queued.add(key);
         return image;
     }
 
-    /**
-     * Loads one tile synchronously from memory, disk or the wiki; null when the wiki has no such tile. For
-     * background work only, never the Swing or client thread.
-     */
+    /** Blocking; never on the Swing or client thread. Null when the wiki has no such tile. */
     BufferedImage loadNow(String tileVersion, Key key) throws IOException
     {
         synchronized (this)
@@ -317,6 +281,22 @@ final class TileCache
         {
             return cached;
         }
+        byte[] bytes = download(tileVersion, key);
+        if (bytes == null)
+        {
+            return null;
+        }
+        BufferedImage image = decode(bytes);
+        if (image != null && diskCache)
+        {
+            write(file, bytes);
+        }
+        return image;
+    }
+
+    /** Blocking; null on 404. */
+    private byte[] download(String tileVersion, Key key) throws IOException
+    {
         Request request = new Request.Builder().url(tileUrl(tileVersion, key)).build();
         try (Response response = http.newCall(request).execute(); ResponseBody body = response.body())
         {
@@ -328,13 +308,7 @@ final class TileCache
             {
                 throw new IOException("HTTP " + response.code());
             }
-            byte[] bytes = readBody(body, MAX_TILE_BYTES);
-            BufferedImage image = decode(bytes);
-            if (image != null && diskCache)
-            {
-                write(file, bytes);
-            }
-            return image;
+            return readBody(body, MAX_TILE_BYTES);
         }
     }
 
@@ -374,7 +348,7 @@ final class TileCache
         }
         catch (RejectedExecutionException e)
         {
-            // The plugin is shutting down.
+            // Shutting down.
             return false;
         }
     }
@@ -384,7 +358,7 @@ final class TileCache
         return new File(new File(cacheRoot, tileVersion), key.path());
     }
 
-    /** An empty file next to where a tile would be, saying the wiki has no such tile (empty sea or rock). */
+    /** An empty file saying the wiki has no such tile (empty sea or rock). */
     private File noneMarker(String tileVersion, Key key)
     {
         return new File(new File(cacheRoot, tileVersion), key.path() + NONE_SUFFIX);
@@ -394,21 +368,15 @@ final class TileCache
     private static final String PART_SUFFIX = ".part";
     private static final byte[] PNG_SIGNATURE = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
 
-    /** What {@link #fetchToDisk} did with a tile. */
     enum Fetch
     {
-        /** Downloaded and saved. */
         SAVED,
-        /** Already on disk, or known to be missing: nothing was asked of the wiki. */
+        /** Already on disk, or known missing: the wiki was not asked. */
         HAD,
-        /** The wiki answered it has no such tile. */
         NONE
     }
 
-    /**
-     * Makes sure a tile is on disk, downloading it when needed, without decoding it. For downloading the whole map in
-     * the background; never on the Swing or client thread.
-     */
+    /** For the whole-map download: blocking, never on the Swing or client thread; does not decode. */
     Fetch fetchToDisk(String tileVersion, Key key) throws IOException
     {
         File file = file(tileVersion, key);
@@ -421,32 +389,21 @@ final class TileCache
         {
             return Fetch.HAD;
         }
-        Request request = new Request.Builder().url(tileUrl(tileVersion, key)).build();
-        try (Response response = http.newCall(request).execute(); ResponseBody body = response.body())
+        byte[] bytes = download(tileVersion, key);
+        if (bytes == null)
         {
-            if (response.code() == 404)
-            {
-                write(none, new byte[0]);
-                return Fetch.NONE;
-            }
-            if (!response.isSuccessful() || body == null)
-            {
-                throw new IOException("HTTP " + response.code());
-            }
-            byte[] bytes = readBody(body, MAX_TILE_BYTES);
-            if (!isPng(bytes))
-            {
-                throw new IOException("Not a PNG: " + key.path());
-            }
-            write(file, bytes);
-            return Fetch.SAVED;
+            write(none, new byte[0]);
+            return Fetch.NONE;
         }
+        if (!isPng(bytes))
+        {
+            throw new IOException("Not a PNG: " + key.path());
+        }
+        write(file, bytes);
+        return Fetch.SAVED;
     }
 
-    /**
-     * A "no such tile" marker younger than {@link #NONE_EXPIRES_MS}; an older one is removed, so the tile is asked
-     * for again.
-     */
+    /** An expired marker is removed, so the tile is asked for again. */
     private static boolean isFreshMarker(File marker)
     {
         if (!marker.isFile())
@@ -464,9 +421,7 @@ final class TileCache
         return false;
     }
 
-    /**
-     * A response body, refused when longer than {@code max} bytes whether or not the server said how long it is.
-     */
+    /** Refused over {@code max} bytes whether or not the server declared the length. */
     static byte[] readBody(ResponseBody body, int max) throws IOException
     {
         long declared = body.contentLength();
@@ -474,9 +429,9 @@ final class TileCache
         {
             throw new IOException("Too large: " + declared + " bytes");
         }
-        try (java.io.InputStream in = body.byteStream())
+        try (InputStream in = body.byteStream())
         {
-            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(declared > 0 ? (int) declared : 16384);
+            ByteArrayOutputStream out = new ByteArrayOutputStream(declared > 0 ? (int) declared : 16384);
             byte[] buffer = new byte[16384];
             int total = 0;
             int n;
@@ -509,16 +464,12 @@ final class TileCache
         return true;
     }
 
-    /** The folder of a version's tiles. */
     File versionFolder(String tileVersion)
     {
         return new File(cacheRoot, tileVersion);
     }
 
-    /**
-     * A tile read from the disk cache at once, on the calling thread, or null. For the first frame of a map just
-     * opened: without it that frame shows the icons on black before the tiles pop in.
-     */
+    /** For a map's first frame, which would otherwise show icons on black before tiles pop in. */
     BufferedImage fromDiskNow(Key key)
     {
         String current = version;
@@ -537,7 +488,7 @@ final class TileCache
         return image;
     }
 
-    /** A tile from the disk cache, or null. Unreadable files are removed so they download again. */
+    /** Unreadable files are removed so they download again. */
     private BufferedImage readCached(File file)
     {
         if (!diskCache || !file.isFile())
@@ -549,7 +500,7 @@ final class TileCache
             BufferedImage image = decode(Files.readAllBytes(file.toPath()));
             if (image != null)
             {
-                // The size limit removes the least recently used tiles first, so mark this one as used.
+                // Trimming removes the least recently touched first.
                 long now = System.currentTimeMillis();
                 if (now - file.lastModified() > DAY_MS && !file.setLastModified(now))
                 {
@@ -581,7 +532,6 @@ final class TileCache
             }
             if (diskCache && isFreshMarker(noneMarker(tileVersion, key)))
             {
-                // Known to be empty from downloading the whole map: no need to ask the wiki.
                 finish(key, started, null, true, false);
                 return;
             }
@@ -590,7 +540,6 @@ final class TileCache
             BufferedImage stale = old == null ? null : readCached(old);
             if (stale != null)
             {
-                // Shown until this version's tile has downloaded.
                 showStale(key, started, stale);
             }
             Request request = new Request.Builder().url(tileUrl(tileVersion, key)).build();
@@ -647,7 +596,7 @@ final class TileCache
         }
     }
 
-    /** Puts an old version's tile in view while the current one loads; the key stays loading. */
+    /** The key stays loading. */
     private void showStale(Key key, int started, BufferedImage image)
     {
         synchronized (this)
@@ -727,7 +676,7 @@ final class TileCache
         }
     }
 
-    /** Decodes into an image type Java2D draws quickly; anything but a 256 by 256 image is refused. */
+    /** Into a type Java2D draws quickly; anything but 256x256 is refused. */
     static BufferedImage decode(byte[] bytes) throws IOException
     {
         BufferedImage source = ImageIO.read(new ByteArrayInputStream(bytes));
@@ -751,13 +700,13 @@ final class TileCache
         try
         {
             File parent = file.getParentFile();
-            // Another thread may create the same folder at the same moment: only its existence matters.
+            // Another thread may create the folder at the same moment.
             if (!parent.mkdirs() && !parent.isDirectory())
             {
                 return;
             }
-            // A name of its own: two threads may write the same tile at once (the map and the whole-map download).
-            java.nio.file.Path temp = Files.createTempFile(parent.toPath(), file.getName() + ".", PART_SUFFIX);
+            // Own temp name: the map and the whole-map download may write the same tile at once.
+            Path temp = Files.createTempFile(parent.toPath(), file.getName() + ".", PART_SUFFIX);
             try
             {
                 Files.write(temp, bytes);
@@ -765,7 +714,7 @@ final class TileCache
                 {
                     Files.move(temp, file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                 }
-                catch (java.nio.file.AtomicMoveNotSupportedException e)
+                catch (AtomicMoveNotSupportedException e)
                 {
                     Files.move(temp, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
                 }
@@ -781,25 +730,20 @@ final class TileCache
         }
     }
 
-    /**
-     * Moves every tile of other versions that {@code fallback} lacks into it, then removes those versions: versions
-     * older than the current one and its fallback are never shown again. Only this plugin's own cache folder is
-     * touched.
-     */
+    /** Moves tiles of other versions that {@code fallback} lacks into it, then removes those versions. */
     private void mergeOlder(String current, String fallback)
     {
-        File[] versions = cacheRoot.listFiles(File::isDirectory);
         File into = versionFolder(fallback);
-        for (File dir : versions == null ? new File[0] : versions)
+        for (File dir : versionDirs())
         {
             if (dir.getName().equals(current) || dir.getName().equals(fallback) || !WikiClient.isSafeVersion(dir.getName())
-                || java.nio.file.Files.isSymbolicLink(dir.toPath()))
+                || Files.isSymbolicLink(dir.toPath()))
             {
                 continue;
             }
             List<File> files = new ArrayList<>();
             collect(dir, files);
-            java.nio.file.Path base = dir.toPath();
+            Path base = dir.toPath();
             for (File file : files)
             {
                 File target = new File(into, base.relativize(file.toPath()).toString());
@@ -812,7 +756,7 @@ final class TileCache
                     File parent = target.getParentFile();
                     if (parent.isDirectory() || parent.mkdirs())
                     {
-                        java.nio.file.Files.move(file.toPath(), target.toPath());
+                        Files.move(file.toPath(), target.toPath());
                     }
                 }
                 catch (IOException e)
@@ -824,15 +768,10 @@ final class TileCache
         }
     }
 
-    /**
-     * Whether an earlier version on disk holds a whole-map download of that scope (it is, or is being merged into,
-     * the version shown while this one's tiles arrive).
-     */
     boolean fallbackComplete(String marker)
     {
         String current = version;
-        File[] versions = cacheRoot.listFiles(File::isDirectory);
-        for (File dir : versions == null ? new File[0] : versions)
+        for (File dir : versionDirs())
         {
             if (!dir.getName().equals(current) && new File(dir, marker).isFile())
             {
@@ -844,12 +783,7 @@ final class TileCache
 
     private void removeOtherVersions(String keep, String fallback)
     {
-        File[] versions = cacheRoot.listFiles(File::isDirectory);
-        if (versions == null)
-        {
-            return;
-        }
-        for (File dir : versions)
+        for (File dir : versionDirs())
         {
             if (!dir.getName().equals(keep) && !dir.getName().equals(fallback))
             {
@@ -858,7 +792,7 @@ final class TileCache
         }
     }
 
-    /** One file of the cache as it was when listed; the disk may change while trimming. */
+    /** Snapshot: the disk may change while trimming. */
     private static final class Entry
     {
         final File file;
@@ -873,10 +807,7 @@ final class TileCache
         }
     }
 
-    /**
-     * Removes the least recently written tiles when the cache grows past its size limit, and half-written files a
-     * crash left behind. Runs on a background thread; a download calls it itself when it has finished.
-     */
+    /** Background thread: removes oldest tiles past the limit and stale half-written files. */
     void limitDiskUse()
     {
         if (!diskCache || !cacheRoot.isDirectory())
@@ -927,9 +858,8 @@ final class TileCache
         }
         if (removed)
         {
-            // A downloaded whole map now has gaps: let the download check it again.
-            File[] versions = cacheRoot.listFiles(File::isDirectory);
-            for (File dir : versions == null ? new File[0] : versions)
+            // A downloaded whole map now has gaps: let the download check again.
+            for (File dir : versionDirs())
             {
                 File[] markers = dir.listFiles((d, name) -> name.startsWith("complete-"));
                 for (File marker : markers == null ? new File[0] : markers)
@@ -941,6 +871,12 @@ final class TileCache
                 }
             }
         }
+    }
+
+    private File[] versionDirs()
+    {
+        File[] versions = cacheRoot.listFiles(File::isDirectory);
+        return versions == null ? new File[0] : versions;
     }
 
     private static void collect(File dir, List<File> into)
@@ -967,7 +903,7 @@ final class TileCache
         }
     }
 
-    /** Deletes a folder without following symbolic links out of it. */
+    /** Never follows symbolic links. */
     private static void deleteTree(File file)
     {
         if (!Files.isSymbolicLink(file.toPath()))

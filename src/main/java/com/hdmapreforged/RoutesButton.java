@@ -9,10 +9,7 @@ import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
 import java.util.function.BooleanSupplier;
 
-/**
- * The custom routes button at the bottom left of the map, above the floor buttons, beside the friends button: opens
- * and closes the custom routes panel. Swing thread only.
- */
+/** The custom routes button above the floor buttons: toggles the custom routes panel. Swing thread only. */
 final class RoutesButton implements MapView.Widget
 {
     private static final int LEFT = 12;
@@ -37,7 +34,6 @@ final class RoutesButton implements MapView.Widget
         {
             return;
         }
-        // As large as the floor buttons below it, right above them.
         g.setFont(MapView.CONTROL_FONT);
         FontMetrics metrics = g.getFontMetrics();
         int w = MapView.floorGroupWidth(metrics);
@@ -49,7 +45,7 @@ final class RoutesButton implements MapView.Widget
         g.setColor(MapView.CONTROL_EDGE);
         g.setStroke(new BasicStroke(1f));
         g.draw(button);
-        // Three stops joined by a dashed line, then the word, together in the middle.
+        // Three stops joined by a dashed line, then the word.
         int textWidth = metrics.stringWidth("Routes");
         double x = LEFT + (w - textWidth - 20) / 2.0;
         double y = bottom - MapView.CONTROL / 2.0;

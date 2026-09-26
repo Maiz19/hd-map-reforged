@@ -2,13 +2,33 @@ package com.hdmapreforged;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import java.awt.image.BufferedImage;
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Pattern;
+import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -24,22 +44,19 @@ final class WikiClient
 {
     static final String WIKI = "https://oldschool.runescape.wiki";
     private static final String API = WIKI + "/api.php";
-    /** Map versions are used as folder names: letters, digits, dots, dashes and underscores, never "." or "..". */
+    /** Versions are used as folder names: never "." or "..". */
     private static final Pattern SAFE_VERSION = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]{0,39}");
 
-    /** Pages found by name kept, the most recently asked for; a name without a page is kept too. */
     private static final int MAX_PAGES = 500;
     /** Stands for "the wiki found nothing" in {@link #pages}. */
     private static final String NO_PAGE = "";
-    /** Answers longer than this are refused (the largest wiki pages asked for are well under 2 MB). */
     static final int MAX_BODY_BYTES = 8 * 1024 * 1024;
-    /** Pictures longer than this are refused. */
     private static final int MAX_PICTURE_BYTES = 2_000_000;
 
     private final OkHttpClient http;
     private final Gson gson;
-    /** Page titles by name asked for, in access order, so the least recently used goes first. Synchronized on itself. */
-    private final Map<String, String> pages = new java.util.LinkedHashMap<String, String>(64, 0.75f, true)
+    /** Page titles by query, least recently used first. Synchronized on itself. */
+    private final Map<String, String> pages = new LinkedHashMap<String, String>(64, 0.75f, true)
     {
         @Override
         protected boolean removeEldestEntry(Map.Entry<String, String> eldest)
@@ -72,64 +89,44 @@ final class WikiClient
         return version != null && SAFE_VERSION.matcher(version).matches() && !version.contains("..");
     }
 
-    /** The map version the wiki currently shows, as used in tile URLs; called back with null on failure. */
-    void mapVersion(Consumer<String> callback)
+    /** Name, value pairs, in order. */
+    private static HttpUrl api(String... query)
     {
-        HttpUrl url = HttpUrl.get(API).newBuilder()
-            .addQueryParameter("action", "query")
-            .addQueryParameter("meta", "allmessages")
-            .addQueryParameter("ammessages", "kartographer-map-version")
-            .addQueryParameter("format", "json")
-            .addQueryParameter("formatversion", "2")
-            .build();
-        boolean[] answered = new boolean[1];
-        get(url, body -> {
-            JsonArray messages = gson.fromJson(body, JsonObject.class)
-                .getAsJsonObject("query").getAsJsonArray("allmessages");
-            JsonObject message = messages.get(0).getAsJsonObject();
-            String version = message.has("content") ? message.get("content").getAsString() : null;
-            answered[0] = true;
-            callback.accept(isSafeVersion(version) ? version : null);
-        }, () -> {
-            if (!answered[0])
-            {
-                callback.accept(null);
-            }
-        });
+        HttpUrl.Builder url = HttpUrl.get(API).newBuilder();
+        for (int i = 0; i < query.length; i += 2)
+        {
+            url.addQueryParameter(query[i], query[i + 1]);
+        }
+        return url.build();
     }
 
-    /**
-     * The map list belonging to a map version, with the JSON it was read from (to keep on disk); called back with
-     * nulls on failure or for a list without the surface.
-     */
-    void baseMaps(String version, java.util.function.BiConsumer<BaseMaps, String> callback)
+    void mapVersion(Consumer<String> callback)
+    {
+        query(api("action", "query", "meta", "allmessages", "ammessages", "kartographer-map-version",
+            "format", "json", "formatversion", "2"), body -> {
+                JsonArray messages = gson.fromJson(body, JsonObject.class)
+                    .getAsJsonObject("query").getAsJsonArray("allmessages");
+                JsonObject message = messages.get(0).getAsJsonObject();
+                String version = message.has("content") ? message.get("content").getAsString() : null;
+                return isSafeVersion(version) ? version : null;
+            }, callback, null);
+    }
+
+    /** The map list with its JSON; nulls on failure or without the surface. */
+    void baseMaps(String version, BiConsumer<BaseMaps, String> callback)
     {
         if (!isSafeVersion(version))
         {
             callback.accept(null, null);
             return;
         }
-        boolean[] answered = new boolean[1];
-        get(HttpUrl.get("https://maps.runescape.wiki/osrs/versions/" + version + "/basemaps.json"), body -> {
+        Runnable none = () -> callback.accept(null, null);
+        query(HttpUrl.get("https://maps.runescape.wiki/osrs/versions/" + version + "/basemaps.json"), body -> {
             BaseMaps maps = BaseMaps.parse(gson, new StringReader(body));
-            answered[0] = true;
-            if (maps.isUsable())
-            {
-                callback.accept(maps, body);
-            }
-            else
-            {
-                callback.accept(null, null);
-            }
-        }, () -> {
-            if (!answered[0])
-            {
-                callback.accept(null, null);
-            }
-        });
+            return maps.isUsable() ? () -> callback.accept(maps, body) : none;
+        }, Runnable::run, none);
     }
 
-    /** The title of the best-matching wiki page; called back with null when nothing is found. */
     void page(String query, Consumer<String> callback)
     {
         String cached;
@@ -142,154 +139,110 @@ final class WikiClient
             callback.accept(cached.equals(NO_PAGE) ? null : cached);
             return;
         }
-        HttpUrl url = HttpUrl.get(API).newBuilder()
-            .addQueryParameter("action", "query")
-            .addQueryParameter("format", "json")
-            .addQueryParameter("formatversion", "2")
-            .addQueryParameter("redirects", "1")
-            .addQueryParameter("generator", "search")
-            .addQueryParameter("gsrsearch", query)
-            .addQueryParameter("gsrlimit", "1")
-            .build();
-        boolean[] answered = new boolean[1];
-        get(url, body -> {
-            JsonObject root = gson.fromJson(body, JsonObject.class);
-            JsonObject result = root.getAsJsonObject("query");
-            String title = null;
-            if (result != null && result.has("pages"))
-            {
-                title = result.getAsJsonArray("pages").get(0).getAsJsonObject().get("title").getAsString();
-            }
-            synchronized (pages)
-            {
-                pages.put(query, title == null ? NO_PAGE : title);
-            }
-            answered[0] = true;
-            callback.accept(title);
-        }, () -> {
-            if (!answered[0])
-            {
-                callback.accept(null);
-            }
-        });
+        query(api("action", "query", "format", "json", "formatversion", "2", "redirects", "1", "generator", "search",
+            "gsrsearch", query, "gsrlimit", "1"), body -> {
+                JsonObject result = answer(body);
+                String title = null;
+                if (result != null && result.has("pages"))
+                {
+                    title = result.getAsJsonArray("pages").get(0).getAsJsonObject().get("title").getAsString();
+                }
+                synchronized (pages)
+                {
+                    pages.put(query, title == null ? NO_PAGE : title);
+                }
+                return title;
+            }, callback, null);
     }
 
-    /**
-     * Where a monster or NPC is found, from its wiki page (redirects followed); called back with null when the page
-     * cannot be read. A page without locations gives no groups.
-     */
     void spawns(String name, Consumer<NpcSpawns> callback)
     {
-        HttpUrl url = HttpUrl.get(API).newBuilder()
-            .addQueryParameter("action", "query")
-            .addQueryParameter("prop", "revisions|links")
-            .addQueryParameter("rvprop", "content")
-            .addQueryParameter("rvslots", "main")
-            .addQueryParameter("pllimit", "max")
-            .addQueryParameter("plnamespace", "0")
-            .addQueryParameter("redirects", "1")
-            .addQueryParameter("format", "json")
-            .addQueryParameter("formatversion", "2")
-            .addQueryParameter("titles", name)
-            .build();
-        boolean[] answered = new boolean[1];
-        get(url, body -> {
-            JsonObject query = gson.fromJson(body, JsonObject.class).getAsJsonObject("query");
-            if (query == null || !query.has("pages"))
+        HttpUrl url = api("action", "query", "prop", "revisions|links", "rvprop", "content", "rvslots", "main",
+            "pllimit", "max", "plnamespace", "0", "redirects", "1", "format", "json", "formatversion", "2",
+            "titles", name);
+        Runnable none = () -> callback.accept(null);
+        query(url, body -> {
+            JsonObject page = firstPage(body);
+            if (page == null)
             {
-                answered[0] = true;
-                callback.accept(null);
-                return;
+                return none;
             }
-            JsonObject page = query.getAsJsonArray("pages").get(0).getAsJsonObject();
             String title = page.has("title") ? page.get("title").getAsString() : name;
             String text = content(page);
-            java.util.List<NpcSpawns.Group> groups = new java.util.ArrayList<>(NpcSpawns.parse(title, text).groups);
-            java.util.List<String> mentioned = NpcSpawns.mentioned(title, text);
-            java.util.List<String> links = new java.util.ArrayList<>();
+            List<NpcSpawns.Group> groups = new ArrayList<>(NpcSpawns.parse(title, text).groups);
+            List<String> mentioned = NpcSpawns.mentioned(title, text);
+            List<String> links = new ArrayList<>();
             if (page.has("links"))
             {
-                for (com.google.gson.JsonElement link : page.getAsJsonArray("links"))
+                for (JsonElement link : page.getAsJsonArray("links"))
                 {
                     links.add(link.getAsJsonObject().get("title").getAsString());
                 }
             }
-            answered[0] = true;
-            java.util.List<String> variants = groups.isEmpty() ? NpcSpawns.variants(title, links)
-                : java.util.Collections.emptyList();
-            if (variants.isEmpty())
-            {
-                if (groups.isEmpty())
+            return () -> {
+                List<String> variants = groups.isEmpty() ? NpcSpawns.variants(title, links) : Collections.emptyList();
+                if (variants.isEmpty())
                 {
-                    groups.addAll(NpcSpawns.maps(title, text));
+                    if (groups.isEmpty())
+                    {
+                        groups.addAll(NpcSpawns.maps(title, text));
+                    }
+                    callback.accept(new NpcSpawns(title, groups, mentioned));
+                    return;
                 }
-                callback.accept(new NpcSpawns(title, groups, mentioned));
-                return;
-            }
-            // A page about several kinds (Custodian stalker): the spawns of each kind it links to.
-            variantSpawns(variants.subList(0, Math.min(variants.size(), MAX_VARIANTS)), found -> {
-                java.util.List<NpcSpawns.Group> all = new java.util.ArrayList<>(found);
-                if (all.isEmpty())
-                {
-                    all.addAll(NpcSpawns.maps(title, text));
-                }
-                callback.accept(new NpcSpawns(title, all, mentioned));
-            });
-        }, () -> {
-            if (!answered[0])
-            {
-                callback.accept(null);
-            }
-        });
+                // A page about several kinds (Custodian stalker): the spawns of each kind it links to.
+                variantSpawns(variants.subList(0, Math.min(variants.size(), MAX_VARIANTS)), found -> {
+                    List<NpcSpawns.Group> all = new ArrayList<>(found);
+                    if (all.isEmpty())
+                    {
+                        all.addAll(NpcSpawns.maps(title, text));
+                    }
+                    callback.accept(new NpcSpawns(title, all, mentioned));
+                });
+            };
+        }, Runnable::run, none);
     }
 
-    /** Variant pages asked for at most, in one request. */
     static final int MAX_VARIANTS = 40;
 
-    /** The spawns of several pages together, in the order given; an empty list on failure. */
-    private void variantSpawns(java.util.List<String> titles, Consumer<java.util.List<NpcSpawns.Group>> callback)
+    private void variantSpawns(List<String> titles, Consumer<List<NpcSpawns.Group>> callback)
     {
-        HttpUrl url = HttpUrl.get(API).newBuilder()
-            .addQueryParameter("action", "query")
-            .addQueryParameter("prop", "revisions")
-            .addQueryParameter("rvprop", "content")
-            .addQueryParameter("rvslots", "main")
-            .addQueryParameter("format", "json")
-            .addQueryParameter("formatversion", "2")
-            .addQueryParameter("titles", String.join("|", titles))
-            .build();
-        boolean[] answered = new boolean[1];
-        get(url, body -> {
-            java.util.Map<String, java.util.List<NpcSpawns.Group>> byTitle = new java.util.HashMap<>();
-            JsonObject query = gson.fromJson(body, JsonObject.class).getAsJsonObject("query");
-            if (query != null && query.has("pages"))
-            {
-                for (com.google.gson.JsonElement element : query.getAsJsonArray("pages"))
+        query(api("action", "query", "prop", "revisions", "rvprop", "content", "rvslots", "main", "format", "json",
+            "formatversion", "2", "titles", String.join("|", titles)), body -> {
+                Map<String, List<NpcSpawns.Group>> byTitle = new HashMap<>();
+                JsonObject query = answer(body);
+                if (query != null && query.has("pages"))
                 {
-                    JsonObject page = element.getAsJsonObject();
-                    if (page.has("title") && !HIDDEN.contains(page.get("title").getAsString().toLowerCase(java.util.Locale.ROOT)))
+                    for (JsonElement element : query.getAsJsonArray("pages"))
                     {
-                        String title = page.get("title").getAsString();
-                        byTitle.put(title, NpcSpawns.parse(title, content(page)).groups);
+                        JsonObject page = element.getAsJsonObject();
+                        if (page.has("title") && !HIDDEN.contains(page.get("title").getAsString().toLowerCase(Locale.ROOT)))
+                        {
+                            String title = page.get("title").getAsString();
+                            byTitle.put(title, NpcSpawns.parse(title, content(page)).groups);
+                        }
                     }
                 }
-            }
-            java.util.List<NpcSpawns.Group> groups = new java.util.ArrayList<>();
-            for (String title : titles)
-            {
-                groups.addAll(byTitle.getOrDefault(title, java.util.Collections.emptyList()));
-            }
-            answered[0] = true;
-            callback.accept(groups);
-        }, () -> {
-            if (!answered[0])
-            {
-                callback.accept(java.util.Collections.emptyList());
-            }
-        });
+                List<NpcSpawns.Group> groups = new ArrayList<>();
+                for (String title : titles)
+                {
+                    groups.addAll(byTitle.getOrDefault(title, Collections.emptyList()));
+                }
+                return groups;
+            }, callback, Collections.emptyList());
     }
 
-    /** A page's wikitext from a revisions answer, or empty. */
+    private JsonObject answer(String body)
+    {
+        return gson.fromJson(body, JsonObject.class).getAsJsonObject("query");
+    }
+
+    private JsonObject firstPage(String body)
+    {
+        JsonObject query = answer(body);
+        return query == null || !query.has("pages") ? null : query.getAsJsonArray("pages").get(0).getAsJsonObject();
+    }
+
     private static String content(JsonObject page)
     {
         if (!page.has("revisions"))
@@ -300,71 +253,49 @@ final class WikiClient
             .getAsJsonObject("main").get("content").getAsString();
     }
 
-    /**
-     * Where an item can be had (spawns, shops with it in stock, drops), its page found by name with
-     * redirects followed; called back with null when the wiki cannot be reached. Asks one thing at a time.
-     */
+    /** Null when the wiki cannot be reached. */
     void item(String name, Consumer<ItemSources> callback)
     {
-        HttpUrl url = HttpUrl.get(API).newBuilder()
-            .addQueryParameter("action", "query")
-            .addQueryParameter("prop", "revisions")
-            .addQueryParameter("rvprop", "content")
-            .addQueryParameter("rvslots", "main")
-            .addQueryParameter("redirects", "1")
-            .addQueryParameter("format", "json")
-            .addQueryParameter("formatversion", "2")
-            .addQueryParameter("titles", name)
-            .build();
-        boolean[] answered = new boolean[1];
-        get(url, body -> {
-            JsonObject query = gson.fromJson(body, JsonObject.class).getAsJsonObject("query");
-            if (query == null || !query.has("pages"))
+        HttpUrl url = api("action", "query", "prop", "revisions", "rvprop", "content", "rvslots", "main",
+            "redirects", "1", "format", "json", "formatversion", "2", "titles", name);
+        Runnable none = () -> callback.accept(null);
+        query(url, body -> {
+            JsonObject page = firstPage(body);
+            if (page == null)
             {
-                answered[0] = true;
-                callback.accept(null);
-                return;
+                return none;
             }
-            JsonObject page = query.getAsJsonArray("pages").get(0).getAsJsonObject();
             String title = page.has("title") ? page.get("title").getAsString() : name;
-            java.util.List<NpcSpawns.Group> spawns = new java.util.ArrayList<>();
+            List<NpcSpawns.Group> spawns = new ArrayList<>();
             if (page.has("revisions"))
             {
                 spawns.addAll(NpcSpawns.parse(title, content(page), NpcSpawns.ITEM_SPAWN_LINE).groups);
             }
-            answered[0] = true;
-            bucket(ItemSources.storeQuery(title), storeRows -> {
-                java.util.List<ItemSources.Store> stores = storeRows == null ? new java.util.ArrayList<>()
-                    : ItemSources.stores(storeRows);
+            return () -> bucket(ItemSources.storeQuery(title), storeRows -> {
+                List<ItemSources.Store> stores = storeRows == null ? new ArrayList<>() : ItemSources.stores(storeRows);
                 placeShops(stores, 0, () -> bucket(ItemSources.dropQuery(title), dropRows -> callback.accept(
-                    new ItemSources(title, spawns, stores, dropRows == null ? new java.util.ArrayList<>()
+                    new ItemSources(title, spawns, stores, dropRows == null ? new ArrayList<>()
                         : ItemSources.drops(dropRows)))));
             });
-        }, () -> {
-            if (!answered[0])
-            {
-                callback.accept(null);
-            }
-        });
+        }, Runnable::run, none);
     }
 
-    /** What a shop (by its wiki page) sells; called back with an empty list when nothing is found. */
-    void store(String shop, Consumer<java.util.List<ItemSources.Ware>> callback)
+    void store(String shop, Consumer<List<ItemSources.Ware>> callback)
     {
-        bucket(ItemSources.shopQuery(shop), rows -> callback.accept(rows == null ? new java.util.ArrayList<>()
+        bucket(ItemSources.shopQuery(shop), rows -> callback.accept(rows == null ? new ArrayList<>()
             : ItemSources.wares(rows)));
     }
 
-    /** Places the shops from {@code from} on by their pages' maps, a few pages per request, then runs {@code done}. */
-    private void placeShops(java.util.List<ItemSources.Store> stores, int from, Runnable done)
+    /** Places shops by their pages' maps, a few per request, then runs {@code done}. */
+    private void placeShops(List<ItemSources.Store> stores, int from, Runnable done)
     {
         if (from >= stores.size())
         {
             done.run();
             return;
         }
-        java.util.List<ItemSources.Store> part = stores.subList(from, Math.min(stores.size(), from + ItemSources.SHOPS_PER_QUERY));
-        java.util.List<String> pages = new java.util.ArrayList<>();
+        List<ItemSources.Store> part = stores.subList(from, Math.min(stores.size(), from + ItemSources.SHOPS_PER_QUERY));
+        List<String> pages = new ArrayList<>();
         for (ItemSources.Store store : part)
         {
             pages.add(store.shop);
@@ -378,38 +309,18 @@ final class WikiClient
         });
     }
 
-    /** The rows of a wiki bucket query; called back with null on failure. */
     private void bucket(String query, Consumer<JsonArray> callback)
     {
-        HttpUrl url = HttpUrl.get(API).newBuilder()
-            .addQueryParameter("action", "bucket")
-            .addQueryParameter("format", "json")
-            .addQueryParameter("query", query)
-            .build();
-        boolean[] answered = new boolean[1];
-        get(url, body -> {
-            JsonArray rows = ItemSources.rows(body);
-            answered[0] = true;
-            callback.accept(rows);
-        }, () -> {
-            if (!answered[0])
-            {
-                callback.accept(null);
-            }
-        });
+        query(api("action", "bucket", "format", "json", "query", query), ItemSources::rows, callback, null);
     }
 
-    /** Pictures loaded before, by file name or page and size: small, so all are kept. */
-    private final Map<String, java.awt.image.BufferedImage> pictures = new ConcurrentHashMap<>();
-    /** Pictures to load, one at a time, so a long list never floods the wiki. */
-    private final java.util.Deque<Runnable> pictureQueue = new java.util.ArrayDeque<>();
+    /** Small, so all are kept. */
+    private final Map<String, BufferedImage> pictures = new ConcurrentHashMap<>();
+    /** Loaded one at a time, so a long list never floods the wiki. */
+    private final Deque<Runnable> pictureQueue = new ArrayDeque<>();
     private boolean pictureBusy;
 
-    /**
-     * A picture file of the wiki by name ("Pot.png", an item's inventory picture); called back (on an OkHttp thread)
-     * with it, or null when it cannot be had.
-     */
-    void file(String name, Consumer<java.awt.image.BufferedImage> callback)
+    void file(String name, Consumer<BufferedImage> callback)
     {
         if (!ItemSources.imageFile(name).equals(name) || name.isEmpty())
         {
@@ -421,16 +332,13 @@ final class WikiClient
         picture("file:" + name, url, callback);
     }
 
-    /**
-     * The main pictures of several pages (monsters, say) as thumbnails of {@code size}, each called back when it
-     * arrives (or with null); one request for all their addresses, then one picture at a time.
-     */
-    void pageImages(java.util.List<String> titles, int size, java.util.function.BiConsumer<String, java.awt.image.BufferedImage> callback)
+    /** Thumbnails of several pages, each called back as it arrives. */
+    void pageImages(List<String> titles, int size, BiConsumer<String, BufferedImage> callback)
     {
-        java.util.List<String> wanted = new java.util.ArrayList<>();
+        List<String> wanted = new ArrayList<>();
         for (String title : titles)
         {
-            java.awt.image.BufferedImage known = pictures.get("page:" + size + ":" + title);
+            BufferedImage known = pictures.get("page:" + size + ":" + title);
             if (known != null)
             {
                 callback.accept(title, known);
@@ -444,32 +352,25 @@ final class WikiClient
         {
             return;
         }
-        HttpUrl url = HttpUrl.get(API).newBuilder()
-            .addQueryParameter("action", "query")
-            .addQueryParameter("prop", "pageimages")
-            .addQueryParameter("piprop", "thumbnail")
-            .addQueryParameter("pithumbsize", Integer.toString(size))
-            .addQueryParameter("pilimit", "50")
-            .addQueryParameter("format", "json")
-            .addQueryParameter("formatversion", "2")
-            .addQueryParameter("titles", String.join("|", wanted))
-            .build();
+        HttpUrl url = api("action", "query", "prop", "pageimages", "piprop", "thumbnail",
+            "pithumbsize", Integer.toString(size), "pilimit", "50", "format", "json", "formatversion", "2",
+            "titles", String.join("|", wanted));
         get(url, body -> {
-            JsonObject query = gson.fromJson(body, JsonObject.class).getAsJsonObject("query");
+            JsonObject query = answer(body);
             if (query == null || !query.has("pages"))
             {
                 return;
             }
             // Titles as asked: the answer may normalise them ("Custodian Stalker").
-            java.util.Map<String, String> asked = new java.util.HashMap<>();
+            Map<String, String> asked = new HashMap<>();
             if (query.has("normalized"))
             {
-                for (com.google.gson.JsonElement n : query.getAsJsonArray("normalized"))
+                for (JsonElement n : query.getAsJsonArray("normalized"))
                 {
                     asked.put(n.getAsJsonObject().get("to").getAsString(), n.getAsJsonObject().get("from").getAsString());
                 }
             }
-            for (com.google.gson.JsonElement element : query.getAsJsonArray("pages"))
+            for (JsonElement element : query.getAsJsonArray("pages"))
             {
                 JsonObject page = element.getAsJsonObject();
                 if (!page.has("thumbnail") || !page.has("title"))
@@ -487,20 +388,19 @@ final class WikiClient
         });
     }
 
-    /** A picture from the wiki, from memory when loaded before, else queued behind the others. */
-    private void picture(String key, HttpUrl url, Consumer<java.awt.image.BufferedImage> callback)
+    private void picture(String key, HttpUrl url, Consumer<BufferedImage> callback)
     {
-        java.awt.image.BufferedImage known = pictures.get(key);
+        BufferedImage known = pictures.get(key);
         if (known != null)
         {
             callback.accept(known);
             return;
         }
         Runnable load = () -> getBytes(url, bytes -> {
-            java.awt.image.BufferedImage image = null;
+            BufferedImage image = null;
             try
             {
-                image = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+                image = ImageIO.read(new ByteArrayInputStream(bytes));
             }
             catch (IOException | RuntimeException e)
             {
@@ -560,25 +460,13 @@ final class WikiClient
         next.run();
     }
 
-    /**
-     * A page's main picture as a small thumbnail (the monster in its infobox), loaded in turn with the other pictures;
-     * called back with null when it has none or it cannot be had.
-     */
-    void pageImage(String title, int size, Consumer<java.awt.image.BufferedImage> callback)
+    void pageImage(String title, int size, Consumer<BufferedImage> callback)
     {
-        HttpUrl url = HttpUrl.get(API).newBuilder()
-            .addQueryParameter("action", "query")
-            .addQueryParameter("prop", "pageimages")
-            .addQueryParameter("piprop", "thumbnail")
-            .addQueryParameter("pithumbsize", Integer.toString(size))
-            .addQueryParameter("redirects", "1")
-            .addQueryParameter("format", "json")
-            .addQueryParameter("formatversion", "2")
-            .addQueryParameter("titles", title)
-            .build();
+        HttpUrl url = api("action", "query", "prop", "pageimages", "piprop", "thumbnail",
+            "pithumbsize", Integer.toString(size), "redirects", "1", "format", "json", "formatversion", "2",
+            "titles", title);
         get(url, body -> {
-            JsonObject query = gson.fromJson(body, JsonObject.class).getAsJsonObject("query");
-            JsonObject page = query == null || !query.has("pages") ? null : query.getAsJsonArray("pages").get(0).getAsJsonObject();
+            JsonObject page = firstPage(body);
             if (page == null || !page.has("thumbnail"))
             {
                 callback.accept(null);
@@ -632,75 +520,54 @@ final class WikiClient
         });
     }
 
-    /** Wiki page titles starting with {@code prefix}, for suggestions; an empty list on failure. */
-    void suggest(String prefix, int limit, Consumer<java.util.List<String>> callback)
+    void suggest(String prefix, int limit, Consumer<List<String>> callback)
     {
-        HttpUrl url = HttpUrl.get(API).newBuilder()
-            .addQueryParameter("action", "opensearch")
-            .addQueryParameter("search", prefix)
-            .addQueryParameter("limit", Integer.toString(limit))
-            .addQueryParameter("namespace", "0")
-            .addQueryParameter("redirects", "resolve")
-            .addQueryParameter("format", "json")
-            .build();
-        boolean[] answered = new boolean[1];
-        get(url, body -> {
-            java.util.List<String> titles = new java.util.ArrayList<>();
-            JsonArray result = gson.fromJson(body, JsonArray.class);
-            if (result != null && result.size() > 1 && result.get(1).isJsonArray())
-            {
-                for (com.google.gson.JsonElement title : result.get(1).getAsJsonArray())
+        query(api("action", "opensearch", "search", prefix, "limit", Integer.toString(limit), "namespace", "0",
+            "redirects", "resolve", "format", "json"), body -> {
+                List<String> titles = new ArrayList<>();
+                JsonArray result = gson.fromJson(body, JsonArray.class);
+                if (result != null && result.size() > 1 && result.get(1).isJsonArray())
                 {
-                    titles.add(title.getAsString());
+                    for (JsonElement title : result.get(1).getAsJsonArray())
+                    {
+                        titles.add(title.getAsString());
+                    }
                 }
-            }
-            answered[0] = true;
-            callback.accept(titles);
-        }, () -> {
-            if (!answered[0])
-            {
-                callback.accept(java.util.Collections.emptyList());
-            }
-        });
+                return titles;
+            }, callback, Collections.emptyList());
     }
 
-    /**
-     * Monster and NPC pages left out of the suggestions, lower case: those whose spawns are nowhere one can go
-     * (instances such as the Realm of Memories, cutscenes; found by NpcAudit), and those the search finds no place for
-     * at all (found by MonsterRouteAudit; both in the test sources).
-     */
-    private static final java.util.Set<String> HIDDEN = hidden();
+    /** Lower-case pages left out: spawns nowhere one can go (NpcAudit), or no place found (MonsterRouteAudit). */
+    private static final Set<String> HIDDEN = hidden();
 
-    /** Whether the monster search leaves a page out of its suggestions. */
     static boolean hiddenFromSearch(String title)
     {
-        return HIDDEN.contains(title.toLowerCase(java.util.Locale.ROOT));
+        return HIDDEN.contains(title.toLowerCase(Locale.ROOT));
     }
 
-    private static java.util.Set<String> hidden()
+    private static Set<String> hidden()
     {
-        java.util.Set<String> names = new java.util.HashSet<>();
+        Set<String> names = new HashSet<>();
         readNames("data/npc_hidden.tsv", names);
         readNames("data/npc_no_location.tsv", names);
         return names;
     }
 
-    private static void readNames(String resource, java.util.Set<String> names)
+    private static void readNames(String resource, Set<String> names)
     {
-        java.io.InputStream in = WikiClient.class.getResourceAsStream(resource);
+        InputStream in = WikiClient.class.getResourceAsStream(resource);
         if (in == null)
         {
             return;
         }
-        try (java.io.BufferedReader reader = new java.io.BufferedReader(
-            new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8)))
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)))
         {
             String line;
             while ((line = reader.readLine()) != null)
             {
                 if (!line.startsWith("#") && !line.trim().isEmpty())
                 {
-                    names.add(line.trim().toLowerCase(java.util.Locale.ROOT));
+                    names.add(line.trim().toLowerCase(Locale.ROOT));
                 }
             }
         }
@@ -710,27 +577,19 @@ final class WikiClient
         }
     }
 
-    /**
-     * Monsters and NPCs whose name starts with {@code prefix}: the wiki's title suggestions, keeping only pages that
-     * list spawn locations ({@code {{LocLine}}}) or are about a monster, NPC or boss. An empty list on failure.
-     */
-    void suggestNpcs(String prefix, int limit, Consumer<java.util.List<String>> callback)
+    void suggestNpcs(String prefix, int limit, Consumer<List<String>> callback)
     {
-        // Pages with spawns, and boss, monster and NPC pages whose places are found another way (their variants, the
-        // place they are fought in).
         suggestWith(prefix, limit, "Template:LocLine|Template:Infobox Monster|Template:Infobox NPC|Template:Bosses"
             + "|Template:HasTask", HIDDEN, callback);
     }
 
-    /** Items whose name starts with {@code prefix}: the wiki's title suggestions that are item pages. */
-    void suggestItems(String prefix, int limit, Consumer<java.util.List<String>> callback)
+    void suggestItems(String prefix, int limit, Consumer<List<String>> callback)
     {
-        suggestWith(prefix, limit, "Template:Infobox Item", java.util.Collections.emptySet(), callback);
+        suggestWith(prefix, limit, "Template:Infobox Item", Collections.emptySet(), callback);
     }
 
-    /** The wiki's title suggestions, keeping only pages that use {@code template} and are not {@code hidden}. */
-    private void suggestWith(String prefix, int limit, String template, java.util.Set<String> hidden,
-        Consumer<java.util.List<String>> callback)
+    private void suggestWith(String prefix, int limit, String template, Set<String> hidden,
+        Consumer<List<String>> callback)
     {
         suggest(prefix, 25, titles -> {
             if (titles.isEmpty())
@@ -738,48 +597,48 @@ final class WikiClient
                 callback.accept(titles);
                 return;
             }
-            HttpUrl url = HttpUrl.get(API).newBuilder()
-                .addQueryParameter("action", "query")
-                .addQueryParameter("prop", "templates")
-                .addQueryParameter("tltemplates", template)
-                .addQueryParameter("tllimit", "max")
-                .addQueryParameter("redirects", "1")
-                .addQueryParameter("format", "json")
-                .addQueryParameter("formatversion", "2")
-                .addQueryParameter("titles", String.join("|", titles))
-                .build();
-            boolean[] answered = new boolean[1];
-            get(url, body -> {
-                java.util.Set<String> withTemplate = new java.util.HashSet<>();
-                JsonObject query = gson.fromJson(body, JsonObject.class).getAsJsonObject("query");
-                if (query != null && query.has("pages"))
-                {
-                    for (com.google.gson.JsonElement element : query.getAsJsonArray("pages"))
+            query(api("action", "query", "prop", "templates", "tltemplates", template, "tllimit", "max",
+                "redirects", "1", "format", "json", "formatversion", "2", "titles", String.join("|", titles)), body -> {
+                    Set<String> withTemplate = new HashSet<>();
+                    JsonObject query = answer(body);
+                    if (query != null && query.has("pages"))
                     {
-                        JsonObject page = element.getAsJsonObject();
-                        if (page.has("templates") && page.has("title"))
+                        for (JsonElement element : query.getAsJsonArray("pages"))
                         {
-                            withTemplate.add(page.get("title").getAsString());
+                            JsonObject page = element.getAsJsonObject();
+                            if (page.has("templates") && page.has("title"))
+                            {
+                                withTemplate.add(page.get("title").getAsString());
+                            }
                         }
                     }
-                }
-                java.util.List<String> kept = new java.util.ArrayList<>();
-                for (String title : titles)
-                {
-                    if (withTemplate.contains(title) && !hidden.contains(title.toLowerCase(java.util.Locale.ROOT))
-                        && kept.size() < limit)
+                    List<String> kept = new ArrayList<>();
+                    for (String title : titles)
                     {
-                        kept.add(title);
+                        if (withTemplate.contains(title) && !hidden.contains(title.toLowerCase(Locale.ROOT))
+                            && kept.size() < limit)
+                        {
+                            kept.add(title);
+                        }
                     }
-                }
-                answered[0] = true;
-                callback.accept(kept);
-            }, () -> {
-                if (!answered[0])
-                {
-                    callback.accept(java.util.Collections.emptyList());
-                }
-            });
+                    return kept;
+                }, callback, Collections.emptyList());
+        });
+    }
+
+    /** Calls back with the parsed answer, or once with {@code fallback} when there is none. */
+    private <T> void query(HttpUrl url, Function<String, T> parse, Consumer<T> callback, T fallback)
+    {
+        boolean[] answered = new boolean[1];
+        get(url, body -> {
+            T value = parse.apply(body);
+            answered[0] = true;
+            callback.accept(value);
+        }, () -> {
+            if (!answered[0])
+            {
+                callback.accept(fallback);
+            }
         });
     }
 
@@ -790,8 +649,7 @@ final class WikiClient
 
     private void get(HttpUrl url, Consumer<String> onBody, Runnable onFailure)
     {
-        Request request = new Request.Builder().url(url).build();
-        http.newCall(request).enqueue(new Callback()
+        http.newCall(new Request.Builder().url(url).build()).enqueue(new Callback()
         {
             @Override
             public void onFailure(Call call, IOException e)
@@ -811,8 +669,7 @@ final class WikiClient
                         onFailure.run();
                         return;
                     }
-                    onBody.accept(new String(TileCache.readBody(body, MAX_BODY_BYTES),
-                        java.nio.charset.StandardCharsets.UTF_8));
+                    onBody.accept(new String(TileCache.readBody(body, MAX_BODY_BYTES), StandardCharsets.UTF_8));
                 }
                 catch (IOException | RuntimeException e)
                 {

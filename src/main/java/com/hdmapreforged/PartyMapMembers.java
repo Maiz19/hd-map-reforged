@@ -8,23 +8,18 @@ import java.util.List;
 import java.util.Map;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * The last known location of each party member. Updated from party events (network threads) and read when
- * painting (Swing thread), so every method is synchronized.
- */
+/** Last known location of each party member: written from network threads, read on Swing, so all synchronized. */
 final class PartyMapMembers
 {
-    /** Members send a heartbeat every 30 seconds; after this without news the marker starts to fade. */
+    /** Heartbeats come every 30 s; after this without news the marker fades. */
     static final long FRESH_MILLIS = 75_000;
-    /** Over this time the marker fades to {@link #MIN_ALPHA}. */
     static final long FADE_MILLIS = 5 * 60_000;
-    /** After this without news the member is left off the map (they probably crashed or lost connection). */
+    /** After this without news the member is left off the map (probably crashed). */
     static final long GONE_MILLIS = 30 * 60_000;
     static final float MIN_ALPHA = 0.4f;
     /** The core Party plugin's location messages are coarser; ours win while they keep coming. */
     static final long OWN_MESSAGE_PRIORITY_MILLIS = 60_000;
 
-    /** What the map draws for one member. */
     static final class Marker
     {
         final long id;
@@ -63,10 +58,8 @@ final class PartyMapMembers
     }
 
     private final Map<Long, Member> members = new HashMap<>();
-    /** What each member last shared of their inventory, equipment and skills. */
     private final Map<Long, Gear> gear = new HashMap<>();
 
-    /** A member's inventory, equipment and skill levels, as last shared. */
     static final class Gear
     {
         final int[] inventory;
@@ -74,9 +67,9 @@ final class PartyMapMembers
         final int[] equipment;
         final int[] levels;
         final int[] boosted;
-        /** Experience per skill, or null when not shared (an older version). */
+        /** Null when not shared (an older version). */
         final int[] experience;
-        /** Run and special attack energy, 0 to 100, or -1 when not shared. */
+        /** 0 to 100, or -1 when not shared. */
         final int run;
         final int special;
         final long at;
@@ -95,7 +88,6 @@ final class PartyMapMembers
         }
     }
 
-    /** Experience gained in one skill, shown rising in the member's details. */
     static final class Drop
     {
         final int skill;
@@ -110,9 +102,7 @@ final class PartyMapMembers
         }
     }
 
-    /** How long an experience drop shows. */
     static final long DROP_MS = 2200;
-    /** Experience drops kept per member at most. */
     static final int MAX_DROPS = 16;
     private final Map<Long, List<Drop>> drops = new HashMap<>();
 
@@ -121,8 +111,7 @@ final class PartyMapMembers
         Gear before = gear.put(id, shared);
         if (before != null && before.experience != null && shared.experience != null)
         {
-            // What went up since the last share: experience drops.
-            List<Drop> list = drops.computeIfAbsent(id, k -> new java.util.ArrayList<>());
+            List<Drop> list = drops.computeIfAbsent(id, k -> new ArrayList<>());
             for (int k = 0; k < shared.experience.length; k++)
             {
                 int gained = shared.experience[k] - before.experience[k];
@@ -131,7 +120,7 @@ final class PartyMapMembers
                     list.add(new Drop(k, gained, shared.at));
                 }
             }
-            // Only read while the member's details are open: keep the list short either way.
+            // Only read while details are open: keep it short either way.
             list.removeIf(d -> shared.at - d.at > DROP_MS);
             if (list.size() > MAX_DROPS)
             {
@@ -140,7 +129,6 @@ final class PartyMapMembers
         }
     }
 
-    /** A valuable drop a member got, shown rising above them on the map. */
     static final class Loot
     {
         final int item;
@@ -157,7 +145,6 @@ final class PartyMapMembers
         }
     }
 
-    /** How long a drop shows. */
     static final long LOOT_MS = 3500;
     private final Map<Long, List<Loot>> loot = new HashMap<>();
 
@@ -165,7 +152,7 @@ final class PartyMapMembers
     {
         List<Loot> list = loot.computeIfAbsent(id, k -> new ArrayList<>());
         list.add(drop);
-        // A big pile at once shows its most valuable few.
+            // A big pile shows its most valuable few.
         if (list.size() > 4)
         {
             list.sort(java.util.Comparator.comparingLong((Loot l) -> -l.value));
@@ -173,7 +160,6 @@ final class PartyMapMembers
         }
     }
 
-    /** A member's drops still showing at {@code now}. */
     synchronized List<Loot> loot(long id, long now)
     {
         List<Loot> list = loot.get(id);
@@ -185,7 +171,7 @@ final class PartyMapMembers
         return new ArrayList<>(list);
     }
 
-    /** Whether any member has a drop showing: the map keeps drawing while they rise. */
+    /** The map keeps drawing while drops rise. */
     synchronized boolean anyLoot(long now)
     {
         for (List<Loot> list : loot.values())
@@ -199,25 +185,23 @@ final class PartyMapMembers
         return false;
     }
 
-    /** A member's experience drops still showing at {@code now}, oldest first. */
     synchronized List<Drop> drops(long id, long now)
     {
         List<Drop> list = drops.get(id);
         if (list == null)
         {
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
         }
         list.removeIf(d -> now - d.at > DROP_MS);
-        return new java.util.ArrayList<>(list);
+        return new ArrayList<>(list);
     }
 
-    /** What a member last shared, or null. */
     synchronized Gear gear(long id)
     {
         return gear.get(id);
     }
 
-    /** A location from this plugin on the member's side; a null point means they left the game. */
+    /** A location from our own message; a null point means they left the game. */
     synchronized void update(long id, WorldPoint point, int world, String name, long now)
     {
         Member member = members.computeIfAbsent(id, k -> new Member());
@@ -231,7 +215,7 @@ final class PartyMapMembers
         member.ownUpdated = now;
     }
 
-    /** A location from RuneLite's Party plugin, used only while no recent message of ours came from the member. */
+    /** A location from RuneLite's Party plugin, used only while no recent message of ours came. */
     synchronized boolean updateFromCore(long id, WorldPoint point, long now)
     {
         Member member = members.computeIfAbsent(id, k -> new Member());
@@ -244,7 +228,7 @@ final class PartyMapMembers
         return true;
     }
 
-    /** A name from RuneLite's party data, used when the member's own messages carry none. */
+    /** From RuneLite's party data, when the member's own messages carry none. */
     synchronized void name(long id, String name)
     {
         Member member = members.get(id);
@@ -284,7 +268,7 @@ final class PartyMapMembers
         return members.isEmpty();
     }
 
-    /** Members to draw now, oldest news first so the freshest end up on top. */
+    /** Oldest news first so the freshest end up on top. */
     synchronized List<Marker> markers(long now)
     {
         List<Marker> markers = new ArrayList<>();
@@ -302,7 +286,7 @@ final class PartyMapMembers
         return Collections.unmodifiableList(markers);
     }
 
-    /** Full until {@link #FRESH_MILLIS}, then fading linearly to {@link #MIN_ALPHA} over {@link #FADE_MILLIS}. */
+    /** Full until FRESH_MILLIS, then fading linearly to MIN_ALPHA over FADE_MILLIS. */
     static float alpha(long ageMillis)
     {
         if (ageMillis <= FRESH_MILLIS)

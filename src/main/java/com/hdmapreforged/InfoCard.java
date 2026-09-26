@@ -1,5 +1,6 @@
 package com.hdmapreforged;
 
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
@@ -10,14 +11,19 @@ import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.IntFunction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.Scrollable;
@@ -27,10 +33,7 @@ import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.util.LinkBrowser;
 
-/**
- * Details of the selected icon: requirements (ticked off when logged in), where it leads and what each trip needs,
- * a wiki summary and links. Also lists the teleports nearest a chosen point.
- */
+/** Details of the selected icon (requirements, destinations, links), or the teleports nearest a chosen point. */
 final class InfoCard extends JPanel implements Scrollable
 {
     private static final int MAX_LINKS = 60;
@@ -46,9 +49,7 @@ final class InfoCard extends JPanel implements Scrollable
     private WorldPoint nearestTo;
     private List<Poi> nearest = new ArrayList<>();
     private int textWidth = 160;
-    /** The route's steps, shown while no icon is selected; built for the card's text width. */
-    private java.util.function.IntFunction<javax.swing.JComponent> route;
-    /** Called after the card's content changed, so a floating card can resize to it. */
+    private IntFunction<JComponent> route;
     private Runnable onRebuilt = () -> { };
 
     InfoCard(MapView map, WikiClient wiki, ItemNames itemNames, HdMapReforgedConfig config)
@@ -74,36 +75,31 @@ final class InfoCard extends JPanel implements Scrollable
         rebuild();
     }
 
-    /** A shop's wares, from its wiki page, once known; null while not (or not a shop). */
     private List<ItemSources.Ware> wares;
     private boolean waresLoading;
-    /** Looks an item up in the item search. */
-    private java.util.function.Consumer<String> itemSearch;
+    private Consumer<String> itemSearch;
 
-    void setItemSearch(java.util.function.Consumer<String> itemSearch)
+    void setItemSearch(Consumer<String> itemSearch)
     {
         this.itemSearch = itemSearch;
     }
 
-    /** Adds a stop to the custom route being made, or null. */
-    private java.util.function.Consumer<Tour.Stop> stopAdder;
+    private Consumer<Tour.Stop> stopAdder;
 
-    void setStopAdder(java.util.function.Consumer<Tour.Stop> stopAdder)
+    void setStopAdder(Consumer<Tour.Stop> stopAdder)
     {
         this.stopAdder = stopAdder;
         rebuild();
     }
 
-    /** Asks for a route to a point, or null while there is no route feature. */
-    private java.util.function.Consumer<WorldPoint> router;
+    private Consumer<WorldPoint> router;
 
-    void setRouter(java.util.function.Consumer<WorldPoint> router)
+    void setRouter(Consumer<WorldPoint> router)
     {
         this.router = router;
         rebuild();
     }
 
-    /** Rebuilds with current unlock and item data. */
     void refresh()
     {
         rebuild();
@@ -117,7 +113,6 @@ final class InfoCard extends JPanel implements Scrollable
         waresLoading = false;
         if (poi != null && poi.type == PoiType.SHOP && poi.wikiQuery != null)
         {
-            // What it sells: its wiki page found by name (a search when the name is not the page's), then its stock.
             waresLoading = true;
             wiki.page(poi.wikiQuery, page -> {
                 if (page == null)
@@ -166,8 +161,7 @@ final class InfoCard extends JPanel implements Scrollable
         rebuild();
     }
 
-    /** Sets or clears the route section; {@code show} also brings it up in place of other content. */
-    void setRoute(java.util.function.IntFunction<javax.swing.JComponent> route, boolean show)
+    void setRoute(IntFunction<JComponent> route, boolean show)
     {
         this.route = route;
         if (show && route != null)
@@ -183,8 +177,7 @@ final class InfoCard extends JPanel implements Scrollable
         return route != null;
     }
 
-    /** Another section shown while no icon is selected, such as where a monster is found; null removes it. */
-    void setExtra(java.util.function.IntFunction<javax.swing.JComponent> extra)
+    void setExtra(IntFunction<JComponent> extra)
     {
         this.extra = extra;
         if (extra != null)
@@ -200,7 +193,7 @@ final class InfoCard extends JPanel implements Scrollable
         return extra != null;
     }
 
-    private java.util.function.IntFunction<javax.swing.JComponent> extra;
+    private IntFunction<JComponent> extra;
 
     void showNearest(WorldPoint point, List<Poi> found)
     {
@@ -211,10 +204,7 @@ final class InfoCard extends JPanel implements Scrollable
         rebuild();
     }
 
-    /**
-     * Builds the card again, but not while the map animates: building a card with many rows takes long enough to
-     * make the map stutter, as when clicking another teleport of the same item flies the map there.
-     */
+    /** Not while the map animates: building a card with many rows made the map's flight stutter. */
     private void rebuild()
     {
         if (!map.isAnimating())
@@ -229,7 +219,7 @@ final class InfoCard extends JPanel implements Scrollable
         }
         if (waiting == null)
         {
-            // Until then only the name, cheap to show, so the buttons of what was selected before cannot be used.
+            // Until then only the name, so the old selection's buttons cannot be used.
             removeAll();
             if (poi != null)
             {
@@ -265,7 +255,6 @@ final class InfoCard extends JPanel implements Scrollable
         }
         else if (poi == null && (extra != null || route != null))
         {
-            // A monster search and a route both stay in view: the search first, then the route.
             if (extra != null)
             {
                 add(extra.apply(textWidth));
@@ -355,7 +344,6 @@ final class InfoCard extends JPanel implements Scrollable
         add(wrap(buttons, textWidth));
         if (extra != null)
         {
-            // Back to what a search found, which this icon was picked from.
             add(Box.createVerticalStrut(4));
             JLabel back = link("← Back to the search results", () -> map.select(null));
             add(back);
@@ -375,18 +363,8 @@ final class InfoCard extends JPanel implements Scrollable
             {
                 for (Poi member : other.members())
                 {
-                    boolean usable = map.unlocks() == null || map.unlocks().usable(member.needs);
-                    if (!usable && config.onlyUsable())
-                    {
-                        continue;
-                    }
-                    String kind = member.type == PoiType.TELEPORT || teleports ? "" : "  (" + member.type.displayName + ")";
-                    add(text((usable ? "" : "✗ ") + member.name + kind, usable ? Color.WHITE : MISSING, false));
-                    List<Requirements.Line> needs = Requirements.describe(member.needs, itemNames);
-                    if (!needs.isEmpty())
-                    {
-                        addRequirements(needs, "    ");
-                    }
+                    addMember(member, member.type == PoiType.TELEPORT || teleports ? ""
+                        : "  (" + member.type.displayName + ")");
                 }
             }
         }
@@ -399,21 +377,10 @@ final class InfoCard extends JPanel implements Scrollable
         List<Poi> members = poi.members();
         if (members.size() > 1)
         {
-            // Several teleports land here: each with what it needs.
             heading("Ways to get here (" + members.size() + ")");
             for (Poi member : members)
             {
-                boolean usable = map.unlocks() == null || map.unlocks().usable(member.needs);
-                if (!usable && config.onlyUsable())
-                {
-                    continue;
-                }
-                add(text((usable ? "" : "✗ ") + member.name, usable ? Color.WHITE : MISSING, false));
-                List<Requirements.Line> needs = Requirements.describe(member.needs, itemNames);
-                if (!needs.isEmpty())
-                {
-                    addRequirements(needs, "    ");
-                }
+                addMember(member, "");
             }
         }
         else
@@ -437,15 +404,14 @@ final class InfoCard extends JPanel implements Scrollable
             String linkHeading = poi.type.isRandomDestination() ? "Can send you to (" + links.size() + ")"
                 : poi.type.isNetwork() ? "Travel to (" + links.size() + ")" : "Leads to";
             heading(linkHeading);
-            // Lines on the map to every destination: on by default, off for fairy rings (dozens of them).
             javax.swing.JCheckBox lines = new javax.swing.JCheckBox("Show lines on the map", map.linesShown(poi.type));
             lines.setOpaque(false);
             lines.setFocusable(false);
             lines.setFont(FontManager.getRunescapeSmallFont());
             lines.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
             lines.setAlignmentX(Component.LEFT_ALIGNMENT);
-            lines.setToolTipText("Draw lines from this " + poi.type.displayName.toLowerCase(java.util.Locale.ROOT)
-                + " to where it leads; remembered for every " + poi.type.displayName.toLowerCase(java.util.Locale.ROOT));
+            lines.setToolTipText("Draw lines from this " + poi.type.displayName.toLowerCase(Locale.ROOT)
+                + " to where it leads; remembered for every " + poi.type.displayName.toLowerCase(Locale.ROOT));
             PoiType type = poi.type;
             lines.addActionListener(e -> map.setLinesShown(type, lines.isSelected()));
             add(lines);
@@ -465,7 +431,7 @@ final class InfoCard extends JPanel implements Scrollable
                     entry.setToolTipText("You do not meet a requirement for this trip");
                 }
                 add(entry);
-                // Only what this trip needs on top of the stop's own requirements, which are listed above already.
+                // Only what this trip needs beyond the stop's own requirements, listed above.
                 List<Requirements.Line> tripNeeds = new ArrayList<>(Requirements.describe(link.needs, itemNames));
                 tripNeeds.removeIf(line -> ownLines.contains(line.text));
                 if (!tripNeeds.isEmpty() && !sameNeeds(link.needs, poi.needs))
@@ -488,10 +454,21 @@ final class InfoCard extends JPanel implements Scrollable
         }
     }
 
-    /**
-     * The buttons of a row, in as many rows as the width needs: a narrow card (the sidebar, the floating card)
-     * cannot show four buttons side by side.
-     */
+    private void addMember(Poi member, String kind)
+    {
+        boolean usable = map.unlocks() == null || map.unlocks().usable(member.needs);
+        if (!usable && config.onlyUsable())
+        {
+            return;
+        }
+        add(text((usable ? "" : "✗ ") + member.name + kind, usable ? Color.WHITE : MISSING, false));
+        List<Requirements.Line> needs = Requirements.describe(member.needs, itemNames);
+        if (!needs.isEmpty())
+        {
+            addRequirements(needs, "    ");
+        }
+    }
+
     static JPanel wrap(JPanel row, int width)
     {
         JPanel rows = new JPanel();
@@ -530,20 +507,17 @@ final class InfoCard extends JPanel implements Scrollable
         return rows;
     }
 
-    /** The wares' pictures, by item name, as they arrive. */
-    private final java.util.Map<String, java.awt.image.BufferedImage> warePictures = new java.util.LinkedHashMap<String,
-        java.awt.image.BufferedImage>(64, 0.75f, true)
+    private final Map<String, BufferedImage> warePictures = new java.util.LinkedHashMap<String,
+        BufferedImage>(64, 0.75f, true)
     {
         @Override
-        protected boolean removeEldestEntry(java.util.Map.Entry<String, java.awt.image.BufferedImage> eldest)
+        protected boolean removeEldestEntry(Map.Entry<String, BufferedImage> eldest)
         {
-            // The pictures of the last few shops looked at, not of every ware since the plugin started.
             return size() > MAX_WARE_PICTURES;
         }
     };
     private static final int MAX_WARE_PICTURES = 200;
-    /** The picture squares of the wares shown, by item, to fill in when a picture arrives. */
-    private final java.util.Map<String, JLabel> wareIcons = new java.util.HashMap<>();
+    private final Map<String, JLabel> wareIcons = new java.util.HashMap<>();
 
     private void loadWarePictures(Poi shop, List<ItemSources.Ware> list)
     {
@@ -569,7 +543,6 @@ final class InfoCard extends JPanel implements Scrollable
         }
     }
 
-    /** A shop's stock: each item with its picture, stock and price; an item opens its wiki page. */
     private void buildWares()
     {
         if (waresLoading)
@@ -600,17 +573,12 @@ final class InfoCard extends JPanel implements Scrollable
         }
     }
 
-    /** Room for a picture in a row: the size of an inventory slot. */
     static final int PICTURE = 36;
 
-    /**
-     * One row of a list with a picture: the picture (or an empty slot while it loads) on the left, the name as a link
-     * and a grey line under it; {@code where}, when given, adds a small "Where" link (an item's other places).
-     */
-    javax.swing.JComponent pictureRow(java.awt.image.BufferedImage picture, String name, String facts, Color factColor,
+    JComponent pictureRow(BufferedImage picture, String name, String facts, Color factColor,
         Runnable open, String tip, Runnable where)
     {
-        JPanel row = new JPanel(new java.awt.BorderLayout(8, 0));
+        JPanel row = new JPanel(new BorderLayout(8, 0));
         row.setOpaque(false);
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         JLabel icon = new JLabel();
@@ -623,7 +591,7 @@ final class InfoCard extends JPanel implements Scrollable
             icon.setIcon(SearchResults.fitted(picture));
         }
         wareIcons.put(name, icon);
-        row.add(icon, java.awt.BorderLayout.WEST);
+        row.add(icon, BorderLayout.WEST);
         JPanel words = new JPanel();
         words.setLayout(new BoxLayout(words, BoxLayout.Y_AXIS));
         words.setOpaque(false);
@@ -645,12 +613,11 @@ final class InfoCard extends JPanel implements Scrollable
             line.add(find);
         }
         words.add(line);
-        row.add(words, java.awt.BorderLayout.CENTER);
+        row.add(words, BorderLayout.CENTER);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Math.max(PICTURE, row.getPreferredSize().height)));
         return row;
     }
 
-    /** Wares listed at most. */
     private static final int MAX_WARES = 60;
 
     private static boolean sameNeeds(Needs a, Needs b)
@@ -658,7 +625,6 @@ final class InfoCard extends JPanel implements Scrollable
         return a.skills.equals(b.skills) && a.items.equals(b.items) && a.quests.equals(b.quests);
     }
 
-    /** Requirement lines, green or red when the player's state is known. */
     private void addRequirements(List<Requirements.Line> lines, String indent)
     {
         Unlocks unlocks = map.unlocks();
@@ -671,7 +637,6 @@ final class InfoCard extends JPanel implements Scrollable
         }
     }
 
-    /** Other teleports of the same item or spellbook. */
     private List<Poi> groupOf(Poi poi)
     {
         List<Poi> group = new ArrayList<>();
@@ -690,7 +655,6 @@ final class InfoCard extends JPanel implements Scrollable
         return group;
     }
 
-    /** The name of the group's own teleport on an icon, without the item name in front. */
     private String shortName(Poi poi)
     {
         Poi member = poi.memberOf(this.poi.group);
@@ -699,7 +663,6 @@ final class InfoCard extends JPanel implements Scrollable
         return colon > 0 ? name.substring(colon + 1).trim() : name;
     }
 
-    /** Selects the icon at a destination when there is one, so its own links show. */
     private void goTo(Poi.Link link)
     {
         for (Poi other : map.pois())
@@ -732,8 +695,7 @@ final class InfoCard extends JPanel implements Scrollable
         {
             label.setFont(label.getFont().deriveFont(Font.BOLD, label.getFont().getSize2D() + 1));
         }
-        // HTML labels wrap, but are slow to build; a card with dozens of destinations stays quick with plain labels
-        // wherever the text fits on one line.
+        // HTML labels wrap but are slow to build: plain labels wherever the text fits on one line.
         if (text.indexOf('\n') < 0 && label.getFontMetrics(label.getFont()).stringWidth(text) <= textWidth)
         {
             label.setText(text);
@@ -806,7 +768,6 @@ final class InfoCard extends JPanel implements Scrollable
         return visible.height - 16;
     }
 
-    /** The card always fits the width of its scroll pane, so text wraps instead of being cut off. */
     @Override
     public boolean getScrollableTracksViewportWidth()
     {

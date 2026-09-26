@@ -10,24 +10,18 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Tiles already scaled to the size they are drawn at. Between the wiki's zoom levels every tile is drawn smaller than
- * it is, and scaling each tile smoothly every frame was the most expensive part of painting; while the zoom level
- * stays the same (dragging, hovering, following the player) each tile is scaled once and then only copied. Swing
+ * Tiles pre-scaled to their drawn size: smooth scaling every frame was the most expensive part of painting. Swing
  * thread only.
  */
 final class ScaledTiles
 {
-    /** Tiles drawn larger than this are not kept: they would take a lot of memory and scale cheaply anyway. */
+    /** Larger tiles would take a lot of memory and scale cheaply anyway. */
     private static final int MAX_PIXELS = 512 * 512;
-    /** At most this many bytes of scaled copies (4 bytes a pixel), whatever the tile count allows. */
     static final long MAX_BYTES = 64L * 1024 * 1024;
 
     private static final class Entry
     {
-        /**
-         * The tile it was scaled from, only to tell whether the tile is still the same: weakly, so a tile the tile
-         * cache has let go of is not kept alive here.
-         */
+        /** Weak, so a tile the cache dropped is not kept alive here. */
         final WeakReference<BufferedImage> source;
         final BufferedImage scaled;
         final boolean smooth;
@@ -49,7 +43,6 @@ final class ScaledTiles
     private int limit = 64;
     private long bytes;
 
-    /** Keeps at least a frame's worth of tiles (within {@link #MAX_BYTES}). */
     void setLimit(int tiles)
     {
         limit = Math.max(16, tiles);
@@ -62,11 +55,7 @@ final class ScaledTiles
         bytes = 0;
     }
 
-    /**
-     * Draws {@code source} over the rectangle, from the scaled copy when there is one of the right size. A new copy
-     * is only made when {@code settled} (the zoom is not animating); otherwise the tile is scaled as it is drawn,
-     * using the interpolation already set on {@code g}.
-     */
+    /** A new copy is only made when {@code settled} (the zoom is not animating). */
     void draw(Graphics2D g, TileCache.Key key, BufferedImage source, int x, int y, int width, int height,
         boolean settled, boolean smooth)
     {
@@ -78,7 +67,6 @@ final class ScaledTiles
         {
             return;
         }
-        // At the tile's own size (on a scaled screen too: that only enlarges it, which is cheap) it is drawn as it is.
         if (dw == source.getWidth() && dh == source.getHeight() || width == source.getWidth()
             && height == source.getHeight() || (long) dw * dh > MAX_PIXELS
             || transform.getShearX() != 0 || transform.getShearY() != 0)

@@ -12,10 +12,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import net.runelite.client.ui.ColorScheme;
 
-/**
- * A panel floating over the map (the card, the search results, the custom routes): a slim bar with its title, a button
- * to fold it up to that bar and one to close it, over its content. Folded, it takes almost no room on a small map.
- */
+/** A panel floating over the map (card, search results, custom routes): a title bar with fold and close buttons. */
 final class Floating extends JPanel
 {
     static final int BAR = 24;
@@ -48,7 +45,7 @@ final class Floating extends JPanel
         add(bar, BorderLayout.NORTH);
     }
 
-    /** What it shows under its bar (moved here from wherever it was). */
+    /** Moved here from wherever it was. */
     void setContent(JComponent shown)
     {
         if (content != null && content.getParent() == this)
@@ -80,7 +77,7 @@ final class Floating extends JPanel
         repaint();
     }
 
-    /** The height to give it: only its bar when folded, else the bar and {@code contentHeight}. */
+    /** Only its bar when folded, else the bar and {@code contentHeight}. */
     int height(int contentHeight)
     {
         return BAR + 2 + (folded ? 0 : contentHeight);

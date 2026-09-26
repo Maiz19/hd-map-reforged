@@ -32,12 +32,12 @@ enum PoiType
     BANK("Bank", Layer.SERVICES, 0xF1C40F, "Bank"),
     ALTAR("Altar", Layer.SERVICES, 0xE8E8F0, "Altar"),
     ANVIL("Anvil", Layer.SERVICES, 0x95A5A6, "Anvil"),
-    // The game's map icons that the wiki tiles show baked in (MapIconLayer): never drawn, only hovered and clicked.
+    // Icons baked into the wiki tiles (MapIconLayer): never drawn, only hovered and clicked.
     SHOP("Shop", Layer.GAME_ICONS, 0xC8A060, null),
     QUEST_START("Quest start", Layer.GAME_ICONS, 0x3C8CE6, null),
     MAP_LINK("Map link", Layer.GAME_ICONS, 0x4AA3E8, null),
     GAME_ICON("Map icon", Layer.GAME_ICONS, 0xB8B8B8, null),
-    /** A place a search found that has no icon of its own (a monster's or item's spawns): only selected, never drawn. */
+    /** A search result without an icon of its own: only selected, never drawn. */
     FOUND("Search result", Layer.GAME_ICONS, 0x46DC5A, null);
 
     final String displayName;
@@ -54,13 +54,14 @@ enum PoiType
         this.wikiPage = wikiPage;
     }
 
-    /** Obelisks send you to a random other obelisk unless you have the means to choose. */
+    /** Obelisks send you to a random other obelisk unless you can choose. */
     boolean isRandomDestination()
     {
         return this == OBELISK;
     }
 
-    /** Networks: every stop can reach every other stop. */
+    /** Every stop reaches every other. */
+
     boolean isNetwork()
     {
         switch (this)

@@ -1,19 +1,30 @@
 package com.hdmapreforged;
 
 import java.awt.BasicStroke;
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import javax.swing.BorderFactory;
@@ -28,40 +39,24 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.util.LinkBrowser;
 
-/**
- * What a search found, on the map and in the card: where a monster or NPC is (its wiki page's location maps), where
- * an item can be had (its spawns, the shops with it in stock, the monsters dropping it), or every place of a kind
- * (all herb patches, all shark fishing spots). Each place is marked with arrows and labelled, and listed in the card.
- * Swing thread only.
- */
+/** What a search found (a monster, an item's sources, a kind of place), marked on the map and listed. Swing thread. */
 final class SearchResults implements MapView.Overlay
 {
-    /** Shows the list in the card, or removes it (null). */
     interface Card
     {
         void show(IntFunction<JComponent> section);
     }
 
-    /** Something found: places to mark, and more for the card. */
     static final class Result
     {
         final String title;
-        /** The wiki page for the Wiki button and the picture, or null. */
         final String page;
         final String summary;
         final List<NpcSpawns.Group> groups;
-        /** More of the card after the places (the monsters dropping an item), or null. */
         final IntFunction<JComponent> extra;
-        /** Where the places come from, at the bottom of the card. */
         final String credit;
-        /** The kind of place shown ("Yew trees"), which can be a stop of a custom route; or null. */
         String kind;
-        /**
-         * The lists to pick from ("Spawns", "Shops"…) with how many each has, so a result with many sources shows
-         * one at a time, in the card and on the map; empty for one list.
-         */
-        final java.util.LinkedHashMap<String, Integer> tabs = new java.util.LinkedHashMap<>();
-        /** The list shown, or null. */
+        final LinkedHashMap<String, Integer> tabs = new LinkedHashMap<>();
         String tab;
 
         Result(String title, String page, String summary, List<NpcSpawns.Group> groups, IntFunction<JComponent> extra,
@@ -75,7 +70,6 @@ final class SearchResults implements MapView.Overlay
             this.credit = credit;
         }
 
-        /** Whether a place is in the list shown. */
         boolean shows(NpcSpawns.Group group)
         {
             return tab == null || group.category == null || group.category.equals(tab);
@@ -88,37 +82,26 @@ final class SearchResults implements MapView.Overlay
     static final String OTHER = "Other";
 
     static final Color DOT = new Color(70, 220, 90);
-    /** Shops selling a searched item. */
     static final Color SHOP = new Color(255, 196, 60);
     private static final Color DOT_EDGE = new Color(0, 50, 10, 230);
     private static final Color LABEL_BACKGROUND = new Color(16, 16, 20, 215);
     private static final Font LABEL_FONT = new Font(Font.SANS_SERIF, Font.BOLD, 11);
     private static final Color LINK = ColorScheme.GRAND_EXCHANGE_LIMIT;
-    /** Places, and monsters dropping an item, listed before "Show all". */
     static final int SHOWN = 25;
 
     private final MapView view;
     private final WikiClient wiki;
     private final Card card;
-    /**
-     * Works out which of overlapping maps shows the given points (in the background), then runs the callback on the
-     * Swing thread; set by the plugin.
-     */
-    private java.util.function.BiConsumer<List<WorldPoint>, java.util.function.Consumer<java.util.Map<WorldPoint, BaseMap>>>
+    private BiConsumer<List<WorldPoint>, Consumer<Map<WorldPoint, BaseMap>>>
         regionCheck = (points, done) -> done.accept(Collections.emptyMap());
-    /** The map found to show each place's middle point. */
-    private java.util.Map<WorldPoint, BaseMap> placeMaps = Collections.emptyMap();
+    private Map<WorldPoint, BaseMap> placeMaps = Collections.emptyMap();
     private Result result;
-    /** What was shown before a monster was looked up from it (an item's drops), for Back; or null. */
     private Result previous;
-    /** What is being looked up, while the wiki answers. */
     private String loading;
     /** Counts lookups, so an answer to an older one is dropped. */
     private int request;
     private String failed;
-    /** The picture from the result's wiki page, or null. */
-    private java.awt.image.BufferedImage image;
-    /** Whether the long lists are shown whole. */
+    private BufferedImage image;
     private boolean allPlaces;
     private boolean allDrops;
 
@@ -130,20 +113,18 @@ final class SearchResults implements MapView.Overlay
         view.addOverlay(this);
     }
 
-    /** Adds a stop to the custom route being made, or null. */
-    private java.util.function.Consumer<Tour.Stop> stopAdder;
+    private Consumer<Tour.Stop> stopAdder;
 
-    void setStopAdder(java.util.function.Consumer<Tour.Stop> stopAdder)
+    void setStopAdder(Consumer<Tour.Stop> stopAdder)
     {
         this.stopAdder = stopAdder;
     }
 
-    void setRegionCheck(java.util.function.BiConsumer<List<WorldPoint>, java.util.function.Consumer<java.util.Map<WorldPoint, BaseMap>>> regionCheck)
+    void setRegionCheck(BiConsumer<List<WorldPoint>, Consumer<Map<WorldPoint, BaseMap>>> regionCheck)
     {
         this.regionCheck = regionCheck;
     }
 
-    /** Looks a monster or NPC up on the wiki and shows where it is. */
     void findMonster(String name)
     {
         previous = null;
@@ -153,8 +134,7 @@ final class SearchResults implements MapView.Overlay
     private void lookUpMonster(String name)
     {
         int id = startLoading(name);
-        // Read here, on the Swing thread; the result is worked out where the wiki's answer arrives, since looking
-        // through the map's places for those the page names takes a while (these lists are replaced, never changed).
+        // Read on the Swing thread; the result is worked out off it (slow), and these lists are replaced, never changed.
         BaseMaps maps = view.maps();
         List<PoiLoader.Place> labels = view.labels();
         List<Poi> pois = view.pois();
@@ -181,12 +161,7 @@ final class SearchResults implements MapView.Overlay
         });
     }
 
-    /**
-     * A monster's places: its spawns; when none is on a map one can see (a boss fought in an instance, a page about
-     * several kinds of monster without its own), first the place to go (the way into the boss's lair when known,
-     * else the place its page mentions most that the map knows), then the spawns only the wiki's map of everything
-     * draws. Null when there is nothing to show. Pure: safe off the Swing thread with lists that are not changed.
-     */
+    /** A monster's spawns; when none is on a visible map (instanced boss), first the place to go. Pure. */
     static Result monsterResult(NpcSpawns found, BaseMaps maps, List<PoiLoader.Place> labels, List<Poi> pois)
     {
         boolean seen = false;
@@ -197,13 +172,9 @@ final class SearchResults implements MapView.Overlay
         }
         if (!found.groups.isEmpty() && seen)
         {
-            int places = found.groups.size();
-            return new Result(found.page, found.page, found.spawnCount() + " spawns in " + places
-                + (places == 1 ? " place" : " places") + ", marked with green arrows. Click a place to go there.",
-                found.groups, null, null);
+            return new Result(found.page, found.page, found.spawnCount() + " spawns in " + places(found.groups.size())
+                + ", marked with green arrows. Click a place to go there.", found.groups, null, null);
         }
-        // Spawns only the wiki's map of everything draws (an instance, a temple of its own) are kept; the place to go
-        // comes first: the way into the boss's lair when known, else the place its page names most.
         PlaceLookup.Found place = PlaceLookup.boss(found.page);
         if (place == null)
         {
@@ -212,8 +183,7 @@ final class SearchResults implements MapView.Overlay
         if (place == null)
         {
             return found.groups.isEmpty() ? null : new Result(found.page, found.page, found.spawnCount() + " spawns in "
-                + found.groups.size() + (found.groups.size() == 1 ? " place" : " places") + ", only on the wiki's map "
-                + "of everything.", found.groups, null, null);
+                + places(found.groups.size()) + ", only on the wiki's map of everything.", found.groups, null, null);
         }
         List<NpcSpawns.Group> groups = new ArrayList<>();
         groups.add(new NpcSpawns.Group(place.name, place.name, "", false, -1, Collections.singletonList(place.point), null,
@@ -224,7 +194,6 @@ final class SearchResults implements MapView.Overlay
             null);
     }
 
-    /** Looks an item up on the wiki: its spawns, the shops with it in stock, and what drops it. */
     void findItem(String name)
     {
         previous = null;
@@ -250,27 +219,20 @@ final class SearchResults implements MapView.Overlay
         }));
     }
 
-    /** Every place of a kind, the nearest to the player first; {@code placeName} names a point's surroundings. */
     void showKind(KindIndex.Kind kind, Function<WorldPoint, String> placeName)
     {
         previous = null;
         request++;
         List<NpcSpawns.Group> groups = kindGroups(kind, placeName, view.player());
-        int n = groups.size();
-        Result shown = new Result(kind.label, kind.page, n + (n == 1 ? " place" : " places")
-            + ", marked with green arrows" + (view.player() != null ? ", nearest first" : "") + ". Click one to go there.",
+        Result shown = new Result(kind.label, kind.page, places(groups.size()) + ", marked with green arrows" + (view.player() != null ? ", nearest first" : "") + ". Click one to go there.",
             groups, null, kind.type == null ? "Skilling spots: RuneLite (BSD 2-Clause)" : null);
         shown.kind = kind.label;
         show(shown);
     }
 
-    /** Places of one kind this close together, in the same named place, are listed and labelled as one. */
     static final int TOGETHER = 24;
 
-    /**
-     * The places of a kind: those close together in the same town are one place with several arrows ("Catherby, 4
-     * spots"). Skilling spots are named by where they are, other things by their own name and where.
-     */
+    /** A kind's places, those close together in one town merged ("Catherby, 4 spots"). */
     static List<NpcSpawns.Group> kindGroups(KindIndex.Kind kind, Function<WorldPoint, String> placeName, WorldPoint player)
     {
         List<String> names = new ArrayList<>();
@@ -324,7 +286,6 @@ final class SearchResults implements MapView.Overlay
         return nearestFirst(groups, player);
     }
 
-    /** An item's places: spawns, then shops (gold), each the nearest first; its drops in the card below. */
     Result itemResult(ItemSources found, WorldPoint player)
     {
         List<NpcSpawns.Group> groups = new ArrayList<>();
@@ -371,7 +332,6 @@ final class SearchResults implements MapView.Overlay
         return store.price.isEmpty() ? stock : stock + " · " + store.price;
     }
 
-    /** Places sorted by how far their middle is from the player (straight line, any floor); unchanged without one. */
     static List<NpcSpawns.Group> nearestFirst(List<NpcSpawns.Group> groups, WorldPoint player)
     {
         List<NpcSpawns.Group> sorted = new ArrayList<>(groups);
@@ -380,6 +340,11 @@ final class SearchResults implements MapView.Overlay
             sorted.sort(java.util.Comparator.comparingLong(g -> distance(g.center(), player)));
         }
         return sorted;
+    }
+
+    private static String places(int n)
+    {
+        return n + (n == 1 ? " place" : " places");
     }
 
     private static long distance(WorldPoint a, WorldPoint b)
@@ -411,8 +376,6 @@ final class SearchResults implements MapView.Overlay
         view.repaint();
     }
 
-    /** Shows a result: at once, each place on the map its region belongs to; which of overlapping maps really shows
-     * it is checked on the tiles after, and the card and arrows follow when that is known. */
     void show(Result found)
     {
         loading = null;
@@ -421,7 +384,7 @@ final class SearchResults implements MapView.Overlay
         result = found;
         if (found.tab == null)
         {
-            for (java.util.Map.Entry<String, Integer> tab : found.tabs.entrySet())
+            for (Map.Entry<String, Integer> tab : found.tabs.entrySet())
             {
                 if (tab.getValue() > 0)
                 {
@@ -433,7 +396,6 @@ final class SearchResults implements MapView.Overlay
         image = null;
         allPlaces = false;
         allDrops = false;
-        // Stay where the map is: the places are listed, and clicking one goes there.
         if (found.page != null)
         {
             wiki.pageImage(found.page, 56, loaded -> SwingUtilities.invokeLater(() -> {
@@ -477,11 +439,10 @@ final class SearchResults implements MapView.Overlay
         view.repaint();
     }
 
-    /** Whether no wiki map draws this place yet (such as a new dungeon): going there would show only black. */
+    /** Whether no wiki map draws this place yet (a new dungeon): going there would show only black. */
     private boolean undrawn(NpcSpawns.Group group)
     {
         WorldPoint c = group.center();
-        // Checked and drawn by no map; or on no map at all, not even by region (going there would show black).
         return placeMaps.containsKey(c) ? placeMaps.get(c) == null : mapOf(group) == null;
     }
 
@@ -497,22 +458,16 @@ final class SearchResults implements MapView.Overlay
         {
             view.setFollowing(false);
             view.rememberForBack(map);
-            // Where the map draws it: a place the map draws elsewhere (the Dagannoth Kings' lair) would otherwise put the
-            // view at the edge of the map, in a corner.
+            // Where the map draws it: a place drawn elsewhere (Dagannoth Kings' lair) would otherwise land in a corner.
             view.showMap(map, MapView.shownOn(map, center), Math.max(view.targetZoom(), 2));
         }
         else
         {
             view.focus(center);
         }
-        // Its details in the card, with a route there: the map's own icon when there is one.
         view.select(iconOf(group, map));
     }
 
-    /**
-     * The icon whose details a place shows: its own (a patch, a bank), the map's shop icon beside a shop, else one
-     * made for it (a monster's or item's spawn place) with what the card lists about it.
-     */
     private Poi iconOf(NpcSpawns.Group group, BaseMap map)
     {
         if (group.poi != null)
@@ -541,25 +496,12 @@ final class SearchResults implements MapView.Overlay
         }
         String title = result == null ? group.name : result.title;
         String name = placeName(group, title);
-        List<String> facts = new ArrayList<>();
-        if (!group.levels.isEmpty())
-        {
-            facts.add("Level " + group.levels);
-        }
-        if (group.note != null && !group.note.isEmpty())
-        {
-            facts.add(group.note);
-        }
-        else if (group.note == null)
-        {
-            facts.add(group.points.size() + (group.points.size() == 1 ? " spawn" : " spawns"));
-        }
+        List<String> facts = facts(group);
         String wiki = shop ? group.name : result != null && result.page != null ? result.page : group.name;
         return new Poi(shop ? PoiType.SHOP : PoiType.FOUND, name.equals(title) || shop ? name : title + ": " + name,
             c, map, null, Needs.NONE, wiki, null, facts.isEmpty() ? null : String.join(" · ", facts));
     }
 
-    /** Shows one list of the result ("Dropped by"), as its button does. */
     void showTab(String tab)
     {
         if (result != null && result.tabs.containsKey(tab))
@@ -570,7 +512,6 @@ final class SearchResults implements MapView.Overlay
         }
     }
 
-    /** Goes to the listed place with a point at {@code at} (a kind's place picked in the search). */
     void lookAtPoint(WorldPoint at)
     {
         if (result == null || at == null)
@@ -587,7 +528,6 @@ final class SearchResults implements MapView.Overlay
         }
     }
 
-    /** Goes to the listed place of that number (of the list shown), as a click on it does. */
     void lookAt(int index)
     {
         if (result == null)
@@ -605,12 +545,11 @@ final class SearchResults implements MapView.Overlay
         }
     }
 
-    /** How far the map's shop icon may be from where a shop's wiki page puts it. */
     private static final int SHOP_ICON_RADIUS = 12;
 
     /** Each place's map, worked out once per result and tile check, not in every frame. */
-    private final java.util.Map<NpcSpawns.Group, java.util.Optional<BaseMap>> groupMaps = new java.util.IdentityHashMap<>();
-    private java.util.Map<WorldPoint, BaseMap> groupMapsFor;
+    private final Map<NpcSpawns.Group, java.util.Optional<BaseMap>> groupMaps = new IdentityHashMap<>();
+    private Map<WorldPoint, BaseMap> groupMapsFor;
     private BaseMaps groupMapsFrom;
 
     private BaseMap mapOf(NpcSpawns.Group group)
@@ -626,8 +565,7 @@ final class SearchResults implements MapView.Overlay
             .orElse(null);
     }
 
-    /** Each place's bounds (min x, min y, max x, max y), for skipping those out of view. */
-    private final java.util.Map<NpcSpawns.Group, int[]> groupBounds = new java.util.IdentityHashMap<>();
+    private final Map<NpcSpawns.Group, int[]> groupBounds = new IdentityHashMap<>();
 
     private int[] bounds(NpcSpawns.Group group)
     {
@@ -644,8 +582,7 @@ final class SearchResults implements MapView.Overlay
         });
     }
 
-    /** The map a place opens on: the one the tile check found, else the one its region belongs to, else its map id. */
-    static BaseMap mapOf(NpcSpawns.Group group, BaseMaps maps, java.util.Map<WorldPoint, BaseMap> placeMaps)
+    static BaseMap mapOf(NpcSpawns.Group group, BaseMaps maps, Map<WorldPoint, BaseMap> placeMaps)
     {
         if (maps == null)
         {
@@ -666,10 +603,9 @@ final class SearchResults implements MapView.Overlay
         return group.mapId >= 0 ? maps.byId(group.mapId) : null;
     }
 
-    /** A green arrow with its tip at {@code (x, y)}, pointing down; {@code r} sets its size. */
-    static java.awt.geom.Path2D arrow(double x, double y, double r)
+    static Path2D arrow(double x, double y, double r)
     {
-        java.awt.geom.Path2D arrow = new java.awt.geom.Path2D.Double();
+        Path2D arrow = new Path2D.Double();
         arrow.moveTo(x, y);
         arrow.lineTo(x - r * 1.2, y - r * 1.4);
         arrow.lineTo(x - r * 0.45, y - r * 1.4);
@@ -681,19 +617,23 @@ final class SearchResults implements MapView.Overlay
         return arrow;
     }
 
-    /** A small green arrow, for monsters in lists and the search button. */
-    static java.awt.image.BufferedImage dotIcon()
+    static BufferedImage dotIcon()
     {
-        return arrowIcon(DOT);
+        BufferedImage image = new BufferedImage(14, 14, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = antialiased(image);
+        Path2D arrow = arrow(7, 13, 4.4);
+        g.setColor(DOT);
+        g.fill(arrow);
+        g.setColor(DOT_EDGE);
+        g.draw(arrow);
+        g.dispose();
+        return image;
     }
 
-    /** A small gold arrow, for items in lists and the search button. */
-    static java.awt.image.BufferedImage itemIcon()
+    static BufferedImage itemIcon()
     {
-        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(14, 14, java.awt.image.BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-        // A little sack: a round body with a tied neck.
+        BufferedImage image = new BufferedImage(14, 14, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = antialiased(image);
         g.setColor(SHOP);
         g.fill(new java.awt.geom.Ellipse2D.Double(1.5, 4.5, 11, 9));
         g.fill(new java.awt.geom.Rectangle2D.Double(5, 2, 4, 4));
@@ -705,29 +645,18 @@ final class SearchResults implements MapView.Overlay
         return image;
     }
 
-    private static java.awt.image.BufferedImage arrowIcon(Color color)
+    private static Graphics2D antialiased(BufferedImage image)
     {
-        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(14, 14, java.awt.image.BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
-        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-        java.awt.geom.Path2D arrow = arrow(7, 13, 4.4);
-        g.setColor(color);
-        g.fill(arrow);
-        g.setColor(DOT_EDGE);
-        g.draw(arrow);
-        g.dispose();
-        return image;
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        return g;
     }
 
-    // ---- the card ----
 
     private JComponent section(int width)
     {
         dropIcons.clear();
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setOpaque(false);
-        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel panel = column();
         if (loading != null)
         {
             panel.add(text("Looking up " + loading + " on the wiki…", Color.WHITE, true, width));
@@ -743,12 +672,11 @@ final class SearchResults implements MapView.Overlay
         JLabel title = text(result.title, Color.WHITE, true, width - 70);
         if (image != null)
         {
-            // The monster's or item's picture beside its name.
-            JPanel head = new JPanel(new java.awt.BorderLayout(8, 0));
+            JPanel head = new JPanel(new BorderLayout(8, 0));
             head.setOpaque(false);
             head.setAlignmentX(Component.LEFT_ALIGNMENT);
-            head.add(new JLabel(new javax.swing.ImageIcon(image)), java.awt.BorderLayout.WEST);
-            head.add(title, java.awt.BorderLayout.CENTER);
+            head.add(new JLabel(new javax.swing.ImageIcon(image)), BorderLayout.WEST);
+            head.add(title, BorderLayout.CENTER);
             panel.add(head);
         }
         else
@@ -808,17 +736,10 @@ final class SearchResults implements MapView.Overlay
         return panel;
     }
 
-    /**
-     * The picked list's part beside the places: the shops the wiki gives no place for, or the monsters and other
-     * sources dropping the item.
-     */
     private JComponent itemExtra(List<ItemSources.Store> unplaced, List<ItemSources.Drop> drops, int width)
     {
         String tab = result == null ? null : result.tab;
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setOpaque(false);
-        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel panel = column();
         if (SHOPS.equals(tab) && !unplaced.isEmpty())
         {
             panel.add(Box.createVerticalStrut(8));
@@ -847,14 +768,12 @@ final class SearchResults implements MapView.Overlay
         return panel;
     }
 
-    /** Pictures of the monsters and other sources dropping the item shown, by page, as they arrive. */
-    private final java.util.Map<String, java.awt.image.BufferedImage> dropPictures = new java.util.LinkedHashMap<String,
-        java.awt.image.BufferedImage>(64, 0.75f, true)
+    private final Map<String, BufferedImage> dropPictures = new LinkedHashMap<String, BufferedImage>(64, 0.75f,
+        true)
     {
         @Override
-        protected boolean removeEldestEntry(java.util.Map.Entry<String, java.awt.image.BufferedImage> eldest)
+        protected boolean removeEldestEntry(Map.Entry<String, BufferedImage> eldest)
         {
-            // The pictures of the last few items looked up, not of every one since the plugin started.
             return size() > MAX_DROP_PICTURES;
         }
     };
@@ -884,13 +803,10 @@ final class SearchResults implements MapView.Overlay
         }));
     }
 
-    /** Room for a picture in a row. */
     private static final int PICTURE = 36;
-    /** The picture squares of the rows shown, by page, to fill in when a picture arrives. */
-    private final java.util.Map<String, JLabel> dropIcons = new java.util.HashMap<>();
+    private final Map<String, JLabel> dropIcons = new HashMap<>();
 
-    /** A picture made to fit its square, never enlarged. */
-    static javax.swing.Icon fitted(java.awt.image.BufferedImage picture)
+    static javax.swing.Icon fitted(BufferedImage picture)
     {
         double k = Math.min(1.0, (PICTURE - 2.0) / Math.max(picture.getWidth(), picture.getHeight()));
         return new javax.swing.ImageIcon(k >= 1 ? picture : picture.getScaledInstance(
@@ -898,14 +814,13 @@ final class SearchResults implements MapView.Overlay
             java.awt.Image.SCALE_SMOOTH));
     }
 
-    /** A row with a picture (or an empty square while it loads) on the left and the words beside it. */
-    private JComponent pictureRow(String key, java.awt.image.BufferedImage picture, JComponent name, JComponent facts)
+    private JComponent pictureRow(String key, BufferedImage picture, JComponent name, JComponent facts)
     {
-        JPanel row = new JPanel(new java.awt.BorderLayout(8, 0));
+        JPanel row = new JPanel(new BorderLayout(8, 0));
         row.setOpaque(false);
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         JLabel icon = new JLabel();
-        icon.setPreferredSize(new java.awt.Dimension(PICTURE, PICTURE));
+        icon.setPreferredSize(new Dimension(PICTURE, PICTURE));
         icon.setHorizontalAlignment(JLabel.CENTER);
         icon.setVerticalAlignment(JLabel.TOP);
         icon.setOpaque(true);
@@ -915,24 +830,20 @@ final class SearchResults implements MapView.Overlay
             icon.setIcon(fitted(picture));
         }
         dropIcons.put(key, icon);
-        JPanel iconBox = new JPanel(new java.awt.BorderLayout());
+        JPanel iconBox = new JPanel(new BorderLayout());
         iconBox.setOpaque(false);
-        iconBox.add(icon, java.awt.BorderLayout.NORTH);
-        row.add(iconBox, java.awt.BorderLayout.WEST);
+        iconBox.add(icon, BorderLayout.NORTH);
+        row.add(iconBox, BorderLayout.WEST);
         JPanel words = new JPanel();
         words.setLayout(new BoxLayout(words, BoxLayout.Y_AXIS));
         words.setOpaque(false);
         words.add(name);
         words.add(facts);
-        row.add(words, java.awt.BorderLayout.CENTER);
-        row.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, Math.max(PICTURE, row.getPreferredSize().height)));
+        row.add(words, BorderLayout.CENTER);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Math.max(PICTURE, row.getPreferredSize().height)));
         return row;
     }
 
-    /**
-     * Drop sources under a heading, the likeliest first: monsters link to their places (with Back to the item),
-     * other sources (chests, packs, rocks) to their wiki page.
-     */
     private void dropList(JPanel panel, List<ItemSources.Drop> drops, boolean npcs, int width)
     {
         if (drops.isEmpty())
@@ -957,7 +868,6 @@ final class SearchResults implements MapView.Overlay
             panel.add(Box.createVerticalStrut(5));
             int textWidth = width - PICTURE - 8;
             JLabel name = link(drop.monster, npcs ? () -> {
-                // Where that monster is: its own search, with Back to this item.
                 previous = result;
                 lookUpMonster(drop.monster);
             } : () -> LinkBrowser.browse(WikiClient.pageUrl(drop.monster)), textWidth);
@@ -974,14 +884,13 @@ final class SearchResults implements MapView.Overlay
         }
     }
 
-    /** The lists to pick from, two to a row, each with how many it has; empty ones cannot be picked. */
     private JComponent tabs(Result shown)
     {
         JPanel row = new JPanel(new java.awt.GridLayout(0, 2, 4, 4));
         row.setOpaque(false);
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         javax.swing.ButtonGroup group = new javax.swing.ButtonGroup();
-        for (java.util.Map.Entry<String, Integer> tab : shown.tabs.entrySet())
+        for (Map.Entry<String, Integer> tab : shown.tabs.entrySet())
         {
             javax.swing.JToggleButton button = new javax.swing.JToggleButton(tab.getKey() + " (" + tab.getValue() + ")",
                 tab.getKey().equals(shown.tab));
@@ -998,17 +907,13 @@ final class SearchResults implements MapView.Overlay
             group.add(button);
             row.add(button);
         }
-        row.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, row.getPreferredSize().height));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, row.getPreferredSize().height));
         return row;
     }
 
-    /** One place: its name as a link, and below it in grey the levels, spawns or note, members and which map. */
     private JComponent place(NpcSpawns.Group group, int width)
     {
-        JPanel row = new JPanel();
-        row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
-        row.setOpaque(false);
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel row = column();
         String where = placeName(group, result.title);
         boolean undrawn = undrawn(group);
         JLabel name = undrawn ? text(where, Color.WHITE, true, width) : link(where, () -> look(group), width);
@@ -1018,22 +923,7 @@ final class SearchResults implements MapView.Overlay
         {
             row.add(text("Not on the wiki map yet", new Color(255, 190, 120), false, width));
         }
-        List<String> facts = new ArrayList<>();
-        if (!group.levels.isEmpty())
-        {
-            facts.add("Level " + group.levels);
-        }
-        if (group.note != null)
-        {
-            if (!group.note.isEmpty())
-            {
-                facts.add(group.note);
-            }
-        }
-        else
-        {
-            facts.add(group.points.size() + (group.points.size() == 1 ? " spawn" : " spawns"));
-        }
+        List<String> facts = facts(group);
         if (group.members)
         {
             facts.add("Members");
@@ -1054,7 +944,24 @@ final class SearchResults implements MapView.Overlay
         return row;
     }
 
-    /** "Lava Maze"; with the group's own name when it differs from the title ("Hill Giant – Lava Maze"). */
+    private static List<String> facts(NpcSpawns.Group group)
+    {
+        List<String> facts = new ArrayList<>();
+        if (!group.levels.isEmpty())
+        {
+            facts.add("Level " + group.levels);
+        }
+        if (group.note == null)
+        {
+            facts.add(group.points.size() + (group.points.size() == 1 ? " spawn" : " spawns"));
+        }
+        else if (!group.note.isEmpty())
+        {
+            facts.add(group.note);
+        }
+        return facts;
+    }
+
     static String placeName(NpcSpawns.Group group, String title)
     {
         if (group.location.isEmpty())
@@ -1108,10 +1015,6 @@ final class SearchResults implements MapView.Overlay
         return buttons;
     }
 
-    /**
-     * The shown place nearest the player (on the same floor first, as the crow flies), that a map draws; null
-     * without a player or places.
-     */
     private NpcSpawns.Group closest()
     {
         WorldPoint me = view.player();
@@ -1130,7 +1033,6 @@ final class SearchResults implements MapView.Overlay
         return closest(shown, me);
     }
 
-    /** The place with a point nearest {@code me}: any point of it counts, not only its middle. */
     static NpcSpawns.Group closest(List<NpcSpawns.Group> groups, WorldPoint me)
     {
         NpcSpawns.Group best = null;
@@ -1148,6 +1050,15 @@ final class SearchResults implements MapView.Overlay
             }
         }
         return best;
+    }
+
+    private static JPanel column()
+    {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setOpaque(false);
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return panel;
     }
 
     private static JButton button(String text, Runnable action)
@@ -1207,12 +1118,11 @@ final class SearchResults implements MapView.Overlay
         return label;
     }
 
-    // ---- the map ----
 
     private static final BasicStroke EDGE = new BasicStroke(1.2f);
-    /** Arrows and labels as pictures, made once each: drawing hundreds of shapes and texts every frame was slow. */
-    private final java.util.Map<String, java.awt.image.BufferedImage> sprites = new java.util.HashMap<>();
-    private final java.util.Map<NpcSpawns.Group, WorldPoint> centers = new java.util.IdentityHashMap<>();
+    /** Arrows and labels as pictures made once: drawing hundreds of shapes and texts every frame was slow. */
+    private final Map<String, BufferedImage> sprites = new HashMap<>();
+    private final Map<NpcSpawns.Group, WorldPoint> centers = new IdentityHashMap<>();
 
     private WorldPoint center(NpcSpawns.Group group)
     {
@@ -1223,14 +1133,13 @@ final class SearchResults implements MapView.Overlay
         return centers.computeIfAbsent(group, NpcSpawns.Group::center);
     }
 
-    /** A place's label picture as last drawn: made again only when its colour or the screen's scale changes. */
     private static final class Tag
     {
         final Color color;
         final double device;
-        final java.awt.image.BufferedImage image;
+        final BufferedImage image;
 
-        Tag(Color color, double device, java.awt.image.BufferedImage image)
+        Tag(Color color, double device, BufferedImage image)
         {
             this.color = color;
             this.device = device;
@@ -1238,12 +1147,10 @@ final class SearchResults implements MapView.Overlay
         }
     }
 
-    /** The label picture of each place, so no text or key is put together for every place in every frame. */
-    private final java.util.Map<NpcSpawns.Group, Tag> tags = new java.util.IdentityHashMap<>();
-    /** The arrows by colour, size and screen scale packed in one number (see {@link #arrowSprite}). */
-    private final java.util.Map<Long, java.awt.image.BufferedImage> arrows = new java.util.HashMap<>();
+    private final Map<NpcSpawns.Group, Tag> tags = new IdentityHashMap<>();
+    private final Map<Long, BufferedImage> arrows = new HashMap<>();
 
-    private java.awt.image.BufferedImage groupTag(NpcSpawns.Group group, Color color, FontMetrics metrics, double device)
+    private BufferedImage groupTag(NpcSpawns.Group group, Color color, FontMetrics metrics, double device)
     {
         Tag tag = tags.get(group);
         if (tag == null || !tag.color.equals(color) || tag.device != device)
@@ -1256,8 +1163,7 @@ final class SearchResults implements MapView.Overlay
         return tag.image;
     }
 
-    /** An arrow of a colour and size, tip at the bottom middle, 2 pixels above the picture's edge. */
-    private java.awt.image.BufferedImage arrowSprite(Color fill, double r, double device)
+    private BufferedImage arrowSprite(Color fill, double r, double device)
     {
         long key = (long) fill.getRGB() << 32 | (Math.round(r * 4) & 0xffffL) << 16 | Math.round(device * 10) & 0xffffL;
         if (arrows.size() > 500)
@@ -1267,12 +1173,11 @@ final class SearchResults implements MapView.Overlay
         return arrows.computeIfAbsent(key, k -> {
             double w = r * 2.4 + 4;
             double h = r * 2.6 + 4;
-            java.awt.image.BufferedImage image = new java.awt.image.BufferedImage((int) Math.ceil(w * device),
-                (int) Math.ceil(h * device), java.awt.image.BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = image.createGraphics();
-            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            BufferedImage image = new BufferedImage((int) Math.ceil(w * device),
+                (int) Math.ceil(h * device), BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = antialiased(image);
             g.scale(device, device);
-            java.awt.geom.Path2D arrow = arrow(w / 2, h - 2, r);
+            Path2D arrow = arrow(w / 2, h - 2, r);
             g.setColor(fill);
             g.fill(arrow);
             g.setColor(DOT_EDGE);
@@ -1283,19 +1188,16 @@ final class SearchResults implements MapView.Overlay
         });
     }
 
-    /** A place's label: white text in a dark box with an edge of its colour, with a pixel of room around. */
-    private java.awt.image.BufferedImage labelSprite(String label, Color color, FontMetrics metrics, double device)
+    private BufferedImage labelSprite(String label, Color color, FontMetrics metrics, double device)
     {
         String key = "l" + color.getRGB() + "/" + Math.round(device * 10) + "/" + label;
         return sprites.computeIfAbsent(key, k -> {
             int width = metrics.stringWidth(label) + 10;
             int height = metrics.getHeight() + 2;
-            java.awt.image.BufferedImage image = new java.awt.image.BufferedImage((int) Math.ceil((width + 2) * device),
-                (int) Math.ceil((height + 2) * device), java.awt.image.BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = image.createGraphics();
-            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
-                java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            BufferedImage image = new BufferedImage((int) Math.ceil((width + 2) * device),
+                (int) Math.ceil((height + 2) * device), BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = antialiased(image);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             g.scale(device, device);
             g.setFont(LABEL_FONT);
             RoundRectangle2D box = new RoundRectangle2D.Double(1, 1, width, height, 8, 8);
@@ -1309,9 +1211,8 @@ final class SearchResults implements MapView.Overlay
             return image;
         });
     }
-    private static final java.util.Map<Color, Color> FADED = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<Color, Color> FADED = new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** A colour see-through, for places on another floor. */
     private static Color faded(Color color)
     {
         return FADED.computeIfAbsent(color, c -> new Color(c.getRed(), c.getGreen(), c.getBlue(), 110));
@@ -1346,10 +1247,8 @@ final class SearchResults implements MapView.Overlay
         }
         for (NpcSpawns.Group group : shown.groups)
         {
-            // Out of view (with room for the arrows and the label above): nothing to work out.
             int[] b = bounds(group);
-            // A place the map draws elsewhere (the Kalphite Lair) is shown on that drawing: the whole group moves
-            // as its first point does.
+            // A place the map draws elsewhere (the Kalphite Lair) moves as its first point does.
             WorldPoint first = group.points.get(0);
             WorldPoint moved = projection.shown(first);
             int dx = moved.getX() - first.getX();
@@ -1370,7 +1269,7 @@ final class SearchResults implements MapView.Overlay
             Color color = group.color != null ? group.color : DOT;
             boolean otherFloor = moved.getPlane() != projection.plane();
             Color fill = otherFloor ? faded(color) : color;
-            java.awt.image.BufferedImage arrow = arrowSprite(fill, r, device);
+            BufferedImage arrow = arrowSprite(fill, r, device);
             double half = arrow.getWidth() / device / 2;
             double tall = arrow.getHeight() / device - 2;
             for (WorldPoint p : group.points)
@@ -1381,18 +1280,16 @@ final class SearchResults implements MapView.Overlay
                 {
                     continue;
                 }
-                // An arrow pointing down at the tile, from a picture made once.
                 PoiIcons.blit(g, arrow, x - half, y - tall);
             }
             if (zoom < -1.5)
             {
                 continue;
             }
-            // One label per place, above its middle point.
             WorldPoint c = center(group);
             double x = projection.screenX(c.getX() + dx + 0.5);
             double y = projection.screenY(c.getY() + dy + 0.5) - r * 3 - 4;
-            java.awt.image.BufferedImage tag = groupTag(group, color, metrics, device);
+            BufferedImage tag = groupTag(group, color, metrics, device);
             double width = tag.getWidth() / device;
             if (x + width / 2.0 < 0 || x - width / 2.0 > projection.width() || y < -20 || y > projection.height() + 20)
             {

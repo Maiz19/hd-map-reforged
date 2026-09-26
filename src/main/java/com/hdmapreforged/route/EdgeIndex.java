@@ -15,7 +15,7 @@ final class EdgeIndex
         this.lists = lists;
     }
 
-    /** The edges of {@code edges} by where they start (not {@link Edge#ANYWHERE}), each index plus {@code offset}. */
+    /** By where they start (not {@link Edge#ANYWHERE}), each index plus {@code offset}. */
     static EdgeIndex of(List<Edge> edges, int offset)
     {
         IntMap slots = new IntMap(edges.size());
@@ -54,7 +54,6 @@ final class EdgeIndex
         return new EdgeIndex(slots, made);
     }
 
-    /** The edges starting at {@code node}, or null. */
     int[] get(int node)
     {
         int slot = slots.get(node);

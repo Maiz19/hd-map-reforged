@@ -25,20 +25,19 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import javax.swing.JComponent;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.Timer;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * The map itself: wiki tiles, icons, transport lines and the player. World coordinates grow east (x) and
- * north (y); one world unit is one game tile. {@code zoom} is a power of two in screen pixels per game tile,
- * matching the wiki's zoom levels, so it can go far beyond the in-game map in both directions.
- */
+/** The map: wiki tiles, icons, transport lines and the player. x grows east, y north, one unit per tile; zoom is log2 pixels per tile. */
 final class MapView extends JComponent
 {
     interface Listener
@@ -47,18 +46,14 @@ final class MapView extends JComponent
 
         void viewChanged();
 
-        /** The user asked which teleports and transports land nearest to a point. */
         void nearestRequested(WorldPoint point);
     }
 
-    /** Actions of the floating controls, when the map shows them (the full-screen map). */
     interface Chrome
     {
-        /** Opens the list of maps, anchored at a point of this view. */
         void pickMap(Point at);
     }
 
-    /** Close and maximise buttons for the map's own window over the game. */
     interface WindowControls
     {
         void close();
@@ -68,10 +63,7 @@ final class MapView extends JComponent
         boolean isMaximised();
     }
 
-    /**
-     * Where world points appear in the frame being painted. One world unit is one game tile; add 0.5 to a tile's
-     * coordinates for its middle.
-     */
+    /** Where world points appear in the frame being painted; add 0.5 to a tile for its middle. */
     interface Projection
     {
         double screenX(double worldX);
@@ -89,83 +81,62 @@ final class MapView extends JComponent
 
         int height();
 
-        /** Whether a point of the game lies on the map in view (any map when the combined map is shown). */
         boolean shows(WorldPoint point);
 
-        /**
-         * Where a point of the game is drawn on the map in view: itself, but for a part of the game the map draws
-         * elsewhere (the Kalphite Lair beside the desert caves, as floor 0). Overlays place what they draw here.
-         */
+        /** Where a game point is drawn on the map in view (the Kalphite Lair is drawn beside the desert caves). */
         default WorldPoint shown(WorldPoint point)
         {
             return point;
         }
     }
 
-    /** Something another part of the plugin draws over the map, such as a route or party members. */
     interface Overlay
     {
-        /** Drawn after the icons and before the player marker; antialiasing is on. */
         void paint(Graphics2D g, Projection projection);
     }
 
-    /** A small clickable panel painted over the map, such as the friends list. */
     interface Widget
     {
-        /** Paints itself in a view of {@code width} × {@code height}, above {@code bottom}; clickable parts go in {@code clicks}. */
         void paint(Graphics2D g, int width, int height, int bottom, Clicks clicks);
     }
 
-    /** Takes a left click on the map before the icons do (a friend's marker); true when it did something with it. */
+    /** Takes a left click before the icons do; true when used. */
     interface ClickCatcher
     {
         boolean clicked(Point at, Projection projection);
     }
 
-    /** Where a widget's clickable parts are. */
     interface Clicks
     {
         void add(RoundRectangle2D shape, Runnable action, String tooltip);
 
-        /** Whether the mouse is over this part, as painted in the last frame. */
         boolean hovered(RoundRectangle2D shape);
     }
 
-    /** Says which of our icons the map tiles already show (the game's own icon, baked in), so no badge is drawn. */
+    /** Which of our icons the tiles already show (baked in), so no badge is drawn. */
     interface BadgeCover
     {
         boolean covers(Poi poi, Projection projection);
     }
 
-    /** Adds entries to the map's right-click menu for the clicked world point. */
     interface MenuContributor
     {
         void contribute(JPopupMenu menu, WorldPoint point);
     }
 
-    /**
-     * Clickable icons this view does not draw itself, such as the game's icons baked into the wiki tiles. Asked only
-     * when none of the view's own icons is under the mouse, so those always win.
-     */
+    /** Clickable icons drawn by others (baked into tiles); asked only when none of ours is under the mouse. */
     interface HitLayer
     {
-        /** The icon at a point of the view, or null. */
         Poi hit(Point point, Projection projection);
 
-        /** Where the top middle of the name label of one of this layer's icons goes, or null when it is not one. */
         Point2D labelAnchor(Poi poi, Projection projection);
 
-        /**
-         * The screen middle of the icon that stands for a POI in this layer (the game's own icon baked into the
-         * tiles, also when it covers one of ours), or null.
-         */
         default Point2D iconCenter(Poi poi, Projection projection)
         {
             return null;
         }
     }
 
-    /** A floating control as painted in the last frame. */
     private static final class Control
     {
         final RoundRectangle2D shape;
@@ -186,17 +157,16 @@ final class MapView extends JComponent
     static final Font CONTROL_FONT = new Font(Font.SANS_SERIF, Font.BOLD, 13);
     static final int CONTROL = 34;
 
-    /** The width of the floor buttons (up, "Floor 0", down): the buttons above them are as wide. */
     static int floorGroupWidth(FontMetrics metrics)
     {
         return CONTROL * 2 + 4 + metrics.stringWidth("Floor 0") + 24;
     }
 
-    /** Where the buttons above the floor buttons end, over the game, for a view this high. */
     static int widgetBottom(int height)
     {
         return height - MARGIN - 18 - CONTROL - 8;
     }
+
     private static final int MARGIN = 12;
 
     static final double MIN_ZOOM = -5;
@@ -212,9 +182,8 @@ final class MapView extends JComponent
     private static final double SERVICES_MIN_ZOOM = 1;
     private static final double SAILING_MIN_ZOOM = -1.5;
     private static final double SKILLING_MIN_ZOOM = 1.5;
-    /** Agility shortcuts are many and close together: only shown when zoomed in further. */
     private static final double SHORTCUTS_MIN_ZOOM = 2;
-    /** Icons of other floors are only shown this close; further out they crowd the floor you look at. */
+    /** Other floors' icons crowd the floor in view further out. */
     private static final double OTHER_FLOORS_MIN_ZOOM = 2;
     private static final double ACTIVITIES_MIN_ZOOM = -1;
     private static final Font REGION_FONT = new Font(Font.SERIF, Font.BOLD, 17);
@@ -222,20 +191,17 @@ final class MapView extends JComponent
     private static final Color WILDERNESS_TEXT = new Color(255, 190, 180);
     private static final Color WILDERNESS_STRONG = new Color(255, 70, 50, 210);
     private static final Color WILDERNESS_FAINT = new Color(255, 70, 50, 130);
-    /** Level 1 and the teleport limits, solid; every fifth level dashed. */
     private static final BasicStroke WILDERNESS_LINE = new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
         null, 0f);
     private static final BasicStroke WILDERNESS_DASHED = new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
         10f, new float[]{5f, 4f}, 0f);
     private static final Color REGION_COLOR = new Color(255, 236, 190);
-    /** Wilderness level 1 starts at these y coordinates, on the surface and underground, between x 2944 and 3392. */
     private static final int[] WILDERNESS_STARTS = {3520, 9920};
     private static final int WILDERNESS_WEST = 2944;
     private static final int WILDERNESS_EAST = 3392;
     private static final int WILDERNESS_LEVELS = 56;
     private static final double EASE = 0.28;
 
-    /** An icon as drawn in the last frame, for mouse hit testing. */
     private static final class Drawn
     {
         final Poi poi;
@@ -283,21 +249,20 @@ final class MapView extends JComponent
     private Chrome chrome;
     private List<Control> controls = new ArrayList<>();
     private final List<Widget> widgets = new java.util.concurrent.CopyOnWriteArrayList<>();
-    /** Kinds of icons whose destination lines are not drawn (fairy rings, unless chosen). */
-    private java.util.Set<PoiType> linesOff = java.util.EnumSet.noneOf(PoiType.class);
+    /** Kinds whose destination lines are hidden. */
+    private Set<PoiType> linesOff = EnumSet.noneOf(PoiType.class);
     private java.util.function.Consumer<String> linesChoice = value -> { };
     private Control pressedControl;
     private Control hoveredControl;
     private Point pressed;
     private Point lastDrag;
     private boolean dragging;
-    /** True while the view animates or is dragged: tiles are then scaled the fast way. */
+    /** Animating or dragged: tiles scaled the fast way. */
     private boolean moving;
     private final List<Overlay> overlays = new ArrayList<>();
     private final ScaledTiles scaled = new ScaledTiles();
     private BadgeCover badgeCover;
     private WindowControls windowControls;
-    /** Where the selected icon's name was drawn this frame, for the button under it. */
     private final TextSprites text = new TextSprites();
     private final List<MenuContributor> menuContributors = new ArrayList<>();
     private final List<HitLayer> hitLayers = new ArrayList<>();
@@ -360,19 +325,16 @@ final class MapView extends JComponent
         }
     };
 
-    /** A point as the map in view draws it, as the point of the game it stands for (the inverse of {@link #shown}). */
     WorldPoint gamePoint(WorldPoint drawn)
     {
         return map == null ? drawn : WorldMapMoves.toWorld(map.id, drawn);
     }
 
-    /** Where a point of the game is drawn on the map in view; see {@link Projection#shown}. */
     WorldPoint shown(WorldPoint game)
     {
         return shownOn(map, game);
     }
 
-    /** Where a point of the game is drawn on a map: moved to the wiki's drawing of it where the map draws it elsewhere. */
     static WorldPoint shownOn(BaseMap on, WorldPoint game)
     {
         if (game == null || on == null)
@@ -381,7 +343,6 @@ final class MapView extends JComponent
         }
         if (on.id == BaseMap.FULL)
         {
-            // The map of everything puts every map's drawing together, moved parts where their maps draw them.
             WorldMapMoves.Drawn drawn = WorldMapMoves.drawn(game);
             return drawn != null ? drawn.point : game;
         }
@@ -389,10 +350,7 @@ final class MapView extends JComponent
         return drawn != null ? drawn : game;
     }
 
-    /**
-     * The map that shows a point of the game: the one that draws it elsewhere when some map does (the Kalphite Lair's
-     * floor 2 is on the Kharidian Desert Underground's drawing, as floor 0), else the map containing it; null for none.
-     */
+    /** The map showing a game point (one drawing it elsewhere first), or null. */
     BaseMap mapOf(WorldPoint game)
     {
         if (maps == null || game == null)
@@ -409,7 +367,7 @@ final class MapView extends JComponent
         setLinesOff(config.linesOff());
         following = config.followPlayer();
         setOpaque(true);
-        // The map never needs the keyboard, so typing keeps going to the game.
+        // Never takes focus, so typing goes to the game.
         setFocusable(false);
         setPreferredSize(new Dimension(225, 300));
         setMinimumSize(new Dimension(120, 120));
@@ -469,8 +427,7 @@ final class MapView extends JComponent
                 {
                     Control target = pressedControl;
                     pressedControl = null;
-                    // Compared with the button as it was pressed: the map repaints (tiles arriving) while the mouse
-                    // is down, which makes new control objects, so an identity check lost clicks.
+                    // Checked against the pressed shape: repaints while the mouse is down make new controls.
                     if (target.shape.contains(e.getPoint()) && e.getButton() == MouseEvent.BUTTON1)
                     {
                         target.action.run();
@@ -497,7 +454,7 @@ final class MapView extends JComponent
                     Poi.Link inside = mapBelow(hit);
                     if (inside != null)
                     {
-                        // A dungeon entrance or map link: straight in, its details in the card; Back returns.
+                        // A map link: go in; Back returns.
                         select(hit);
                         goIn(inside);
                     }
@@ -533,7 +490,6 @@ final class MapView extends JComponent
             @Override
             public void mouseExited(MouseEvent e)
             {
-                // Repainted only when something was highlighted.
                 if (hovered != null || hoveredControl != null)
                 {
                     hovered = null;
@@ -556,7 +512,6 @@ final class MapView extends JComponent
             @Override
             public void componentResized(java.awt.event.ComponentEvent e)
             {
-                // A smaller or larger window changes how far out one can zoom and how far the map can move.
                 double z = clampZoom(targetZoom);
                 if (z != targetZoom)
                 {
@@ -585,16 +540,14 @@ final class MapView extends JComponent
         repaint();
     }
 
-    /** Whether the lines from a selected icon of this kind to its destinations are drawn. */
     boolean linesShown(PoiType type)
     {
         return !linesOff.contains(type);
     }
 
-    /** The user's choice in an icon's card; {@code choice} gets the setting's new value to keep. */
     void setLinesShown(PoiType type, boolean shown)
     {
-        java.util.Set<PoiType> now = java.util.EnumSet.noneOf(PoiType.class);
+        Set<PoiType> now = EnumSet.noneOf(PoiType.class);
         now.addAll(linesOff);
         if (shown)
         {
@@ -614,10 +567,10 @@ final class MapView extends JComponent
         linesChoice.accept(value.toString());
     }
 
-    /** The kinds whose lines are hidden, as the setting keeps them ("FAIRY_RING,SPIRIT_TREE"). */
+    /** Setting format: "FAIRY_RING,SPIRIT_TREE". */
     void setLinesOff(String value)
     {
-        java.util.Set<PoiType> off = java.util.EnumSet.noneOf(PoiType.class);
+        Set<PoiType> off = EnumSet.noneOf(PoiType.class);
         for (String name : value == null ? new String[0] : value.split(","))
         {
             for (PoiType t : PoiType.values())
@@ -649,7 +602,6 @@ final class MapView extends JComponent
         clickCatchers.remove(catcher);
     }
 
-    /** How the map is shown now, for finding what is under the mouse. */
     Projection projection()
     {
         return projection;
@@ -694,7 +646,6 @@ final class MapView extends JComponent
         hitLayers.add(layer);
     }
 
-    /** The icon under the mouse, or null. */
     Poi hovered()
     {
         return hovered;
@@ -726,13 +677,13 @@ final class MapView extends JComponent
         repaint();
     }
 
-    /** Icons, ordered so the most useful ones win when icons overlap. */
+    /** Ordered so the most useful icons win when they overlap. */
     void setPois(List<Poi> pois)
     {
         setPois(pois, Collections.emptySet());
     }
 
-    /** {@code hidden}: of the icons, those not drawn (the planner's own passages); they still serve routes and search. */
+    /** {@code hidden} icons are not drawn but still serve routes and search. */
     void setPois(List<Poi> pois, Set<Poi> hidden)
     {
         List<Poi> ordered = new ArrayList<>(pois);
@@ -743,7 +694,6 @@ final class MapView extends JComponent
         repaint();
     }
 
-    /** Whether an icon is drawn at all (see {@link #setPois(List, Set)}). */
     boolean drawn(Poi poi)
     {
         return !hidden.contains(poi);
@@ -754,7 +704,6 @@ final class MapView extends JComponent
         return pois;
     }
 
-    /** Icons that are not drawn by the map itself (the game's icons baked into the tiles), for search. */
     void setSearchExtras(List<Poi> extras)
     {
         searchExtras = extras;
@@ -776,7 +725,6 @@ final class MapView extends JComponent
         repaint();
     }
 
-    /** What the player has unlocked, or null when unknown (logged out). */
     void setUnlocks(Unlocks unlocks)
     {
         this.unlocks = unlocks;
@@ -788,7 +736,6 @@ final class MapView extends JComponent
         return unlocks;
     }
 
-    /** Whether an icon passes the layer settings, zoom and the "only what I can use" filter. */
     boolean visible(Poi poi)
     {
         return visible(poi, new Filter());
@@ -800,7 +747,7 @@ final class MapView extends JComponent
         {
             return true;
         }
-        // An icon also stands for what is at the same place, such as a teleport landing at it.
+        // An icon also stands for what is at the same place (a teleport landing there).
         for (Poi other : poi.nearby())
         {
             if (filter.layerShown(other) && usable(other, filter.onlyUsable))
@@ -811,7 +758,6 @@ final class MapView extends JComponent
         return false;
     }
 
-    /** Whether any of the teleports an icon stands for passes the "only what I can use" filter. */
     boolean usable(Poi poi)
     {
         return usable(poi, config.onlyUsable());
@@ -829,7 +775,6 @@ final class MapView extends JComponent
         return false;
     }
 
-    /** False only when the filter is on and the requirements are certainly not met. */
     boolean usable(Needs needs)
     {
         return !config.onlyUsable() || unlocks == null || unlocks.usable(needs);
@@ -850,13 +795,11 @@ final class MapView extends JComponent
         return plane;
     }
 
-    /** The zoom the view is going to (the same as the zoom drawn when not animating). */
     double targetZoom()
     {
         return targetZoom;
     }
 
-    /** Where the view is heading: the world point that will be in the middle. */
     Point2D.Double targetCenter()
     {
         return new Point2D.Double(targetX, targetY);
@@ -893,7 +836,6 @@ final class MapView extends JComponent
         fireViewChanged();
     }
 
-    /** Shows a map, centered on {@code focus} or on the map's own center. */
     void showMap(BaseMap map, WorldPoint focus, double zoomLevel)
     {
         boolean changed = map != this.map;
@@ -910,48 +852,37 @@ final class MapView extends JComponent
         fireViewChanged();
     }
 
-    /** Selects an icon and brings it into view, switching maps if needed. */
     void focus(Poi poi)
     {
         setFollowing(false);
-        if (poi.map != null && !poi.isOn(map))
-        {
-            rememberForBack(poi.map);
-            showMap(poi.map, shownOn(poi.map, poi.location), Math.max(targetZoom, 1));
-        }
-        else
-        {
-            WorldPoint at = shown(poi.location);
-            plane = at.getPlane();
-            animateTo(at.getX() + 0.5, at.getY() + 0.5, Math.max(targetZoom, 1));
-            fireViewChanged();
-        }
+        lookAt(poi.map != null && !poi.isOn(map) ? poi.map : null, poi.location);
         select(poi);
     }
 
-    /** Looks at a point on whichever map contains it. */
     void focus(WorldPoint point)
     {
         setFollowing(false);
         BaseMap target = mapOf(point);
         if (target == null && maps != null && (map == null || map.id != BaseMap.FULL))
         {
-            // On no map of its own (an instance, the Ancient Guthixian Temple): the wiki's map of everything draws it,
-            // where the map in view shows only black.
+            // On no map of its own (an instance): the wiki's map of everything draws it.
             target = maps.byId(BaseMap.FULL);
         }
-        if (target != null && target != map && (map == null || map.id != BaseMap.FULL))
+        lookAt(target != null && target != map && (map == null || map.id != BaseMap.FULL) ? target : null, point);
+    }
+
+    private void lookAt(BaseMap other, WorldPoint game)
+    {
+        if (other != null)
         {
-            rememberForBack(target);
-            showMap(target, shownOn(target, point), Math.max(targetZoom, 1));
+            rememberForBack(other);
+            showMap(other, shownOn(other, game), Math.max(targetZoom, 1));
+            return;
         }
-        else
-        {
-            WorldPoint at = shown(point);
-            plane = at.getPlane();
-            animateTo(at.getX() + 0.5, at.getY() + 0.5, Math.max(targetZoom, 1));
-            fireViewChanged();
-        }
+        WorldPoint at = shown(game);
+        plane = at.getPlane();
+        animateTo(at.getX() + 0.5, at.getY() + 0.5, Math.max(targetZoom, 1));
+        fireViewChanged();
     }
 
     void select(Poi poi)
@@ -992,10 +923,8 @@ final class MapView extends JComponent
         return player;
     }
 
-    /** Zoom level when jumping to the player: close enough to see where you stand, with the area around it. */
     static final double PLAYER_ZOOM = 3;
 
-    /** The center button: follows the player again, zoomed to a level where the surroundings are readable. */
     void centerOnPlayer()
     {
         back.clear();
@@ -1009,7 +938,6 @@ final class MapView extends JComponent
         setFollowing(true);
     }
 
-    /** Opening the map: at once close up on the player (their map and floor), following them, without zooming in. */
     void jumpToPlayer()
     {
         if (player == null)
@@ -1017,7 +945,6 @@ final class MapView extends JComponent
             setFollowing(true);
             return;
         }
-        // The map the player is on (the surface, a dungeon), also when the map of everything was shown last.
         BaseMap containing = mapOf(player);
         if (containing != null)
         {
@@ -1035,7 +962,6 @@ final class MapView extends JComponent
         BaseMap containing = mapOf(player);
         if (containing != null && containing != map)
         {
-            // Into a dungeon: zoomed to that dungeon, not to where the view was.
             int[] area = areaOf(containing, player);
             showMap(containing, shownOn(containing, player), area != null ? fitZoom(area) : targetZoom);
             return;
@@ -1048,8 +974,6 @@ final class MapView extends JComponent
         }
         animateTo(at.getX() + 0.5, at.getY() + 0.5, targetZoom);
     }
-
-    // ---- view math ----
 
     private double scale()
     {
@@ -1101,7 +1025,6 @@ final class MapView extends JComponent
         targetY = y;
         if (map != null && getWidth() > 0 && getHeight() > 0)
         {
-            // Clamped for the zoom it ends at, so the animation always arrives.
             double scale = Math.pow(2, targetZoom);
             targetX = clampAxis(x, map.minX, map.maxX, getWidth() / 2.0 / scale);
             targetY = clampAxis(y, map.minY, map.maxY, getHeight() / 2.0 / scale);
@@ -1110,7 +1033,7 @@ final class MapView extends JComponent
         double pixels = Math.hypot(targetX - centerX, targetY - centerY) * scale;
         if (getWidth() > 0 && pixels > 3 * Math.max(getWidth(), getHeight()))
         {
-            // Far away: flying there would load every tile on the way and stutter; go there at once.
+            // Far away: flying would load every tile on the way; jump.
             jumpOrAnimate(true, x, y, targetZoom);
             return;
         }
@@ -1125,7 +1048,6 @@ final class MapView extends JComponent
         {
             return;
         }
-        // The world point under the cursor stays under the cursor while the zoom eases in.
         anchorScreen = at;
         anchorWorld = toWorld(at);
         targetZoom = next;
@@ -1138,16 +1060,13 @@ final class MapView extends JComponent
     {
         if (!Double.isFinite(z))
         {
-            // Never a zoom that is not a number (a map with broken bounds): the view would stay blank for good.
+            // A NaN zoom (broken map bounds) would blank the view for good.
             return Double.isFinite(targetZoom) ? targetZoom : 1;
         }
         return Math.max(minZoom(), Math.min(MAX_ZOOM, z));
     }
 
-    /**
-     * The furthest one can zoom out: the whole map just fits the view, so zooming out never leaves the map as a
-     * small picture in a black field.
-     */
+    /** The whole map just fits the view, so it never shrinks to a small picture in a black field. */
     double minZoom()
     {
         if (map == null || getWidth() <= 0 || getHeight() <= 0)
@@ -1160,10 +1079,7 @@ final class MapView extends JComponent
         return Math.max(MIN_ZOOM, Math.min(1, z));
     }
 
-    /**
-     * Keeps the map in view: the view may go past a map edge by a quarter of its size, and a map smaller than the
-     * view stays centered.
-     */
+    /** The view may pass a map edge by a quarter; a map smaller than the view stays centered. */
     private void clampCenter()
     {
         if (map == null || getWidth() <= 0 || getHeight() <= 0)
@@ -1241,7 +1157,6 @@ final class MapView extends JComponent
         repaint();
     }
 
-    /** Whether the view is moving or zooming on its own right now. */
     boolean isAnimating()
     {
         return animator.isRunning();
@@ -1262,8 +1177,6 @@ final class MapView extends JComponent
             listener.viewChanged();
         }
     }
-
-    // ---- painting ----
 
     @Override
     protected void paintComponent(Graphics graphics)
@@ -1320,6 +1233,11 @@ final class MapView extends JComponent
         }
     }
 
+    private int tileLevel()
+    {
+        return (int) Math.max(TileCache.MIN_ZOOM, Math.min(TileCache.MAX_ZOOM, Math.ceil(zoom - 1e-6)));
+    }
+
     private void paintTiles(Graphics2D g)
     {
         if (tiles.version() == null)
@@ -1327,7 +1245,7 @@ final class MapView extends JComponent
             paintNotice(g, "Loading map…");
             return;
         }
-        int level = (int) Math.max(TileCache.MIN_ZOOM, Math.min(TileCache.MAX_ZOOM, Math.ceil(zoom - 1e-6)));
+        int level = tileLevel();
         double span = TileCache.worldPerTile(level);
         double scale = scale();
         Point2D topLeft = toWorld(new Point(0, 0));
@@ -1346,10 +1264,10 @@ final class MapView extends JComponent
         boolean settled = zoom == targetZoom;
         boolean upscaled = scale * span > TileCache.TILE_SIZE * 1.01;
         boolean smooth = !(upscaled && config.crispPixels());
-        // Smooth scaling costs a lot on large windows; while the zoom animates the eye cannot tell the difference.
+        // Smooth scaling is costly on large windows and invisible while moving.
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, moving || !smooth
             ? RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR : RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        // Tiles nearest the middle are queued last, so they load first.
+        // Nearest the middle queued last, so loaded first.
         List<int[]> order = new ArrayList<>();
         for (int ty = y0; ty <= y1; ty++)
         {
@@ -1373,7 +1291,6 @@ final class MapView extends JComponent
             BufferedImage image = tiles.get(key);
             if (image == null && diskNow > 0 && System.nanoTime() < diskUntil)
             {
-                // Nothing on screen yet (just opened): read it from disk now instead of a frame of icons on black.
                 diskNow--;
                 image = tiles.fromDiskNow(key);
             }
@@ -1387,8 +1304,7 @@ final class MapView extends JComponent
                 paintFallback(g, level, tx, ty, left, top, right, bottom);
             }
         }
-        // Where nothing at all is loaded yet (a map just opened), a much coarser tile loads first: one covers 16 of
-        // these, so the whole view shows at once, blurry, until the sharp tiles arrive. Asked for last, so first.
+        // Where nothing is loaded yet, a tile two levels coarser (one covers 16) shows the whole view blurry at once.
         for (TileCache.Key coarse : standIns)
         {
             tiles.get(coarse);
@@ -1397,25 +1313,18 @@ final class MapView extends JComponent
         tiles.endFrame();
     }
 
-    /**
-     * Whether an icon on another floor than the one in view shows (faded): above ground, zoomed in, where a floor
-     * above is the same building; underground floors on the same spot are other places (the Kalphite Lair above the
-     * Kalphite Queen's chamber), so their icons are left out.
-     */
+    /** Other floors' icons show (faded) above ground when zoomed in; underground floors on one spot are different places. */
     private boolean showsOtherFloor(WorldPoint at)
     {
         return targetZoom >= OTHER_FLOORS_MIN_ZOOM && at.getY() < UNDERGROUND_Y;
     }
 
-    /** Where the dungeons start: south of here is above ground. */
     static final int UNDERGROUND_Y = 4800;
 
-    /** While a tile loads, a coarser tile that is already loaded is stretched over its place. */
     private void paintFallback(Graphics2D g, int level, int tx, int ty, int left, int top, int right, int bottom)
     {
         paintCoarser(g, level, tx, ty, left, top, right, bottom);
-        // Zooming out, the more detailed tiles of the level before are usually still loaded: they are drawn over the
-        // coarse stand-in (or the empty background), so the map does not flash blurry or black.
+        // Zooming out, the finer tiles of the level before are usually still loaded: drawn over, so nothing flashes.
         if (level < TileCache.MAX_ZOOM)
         {
             int midX = (left + right) / 2;
@@ -1440,18 +1349,16 @@ final class MapView extends JComponent
     }
 
     private final java.util.LinkedHashSet<TileCache.Key> standIns = new java.util.LinkedHashSet<>();
-    /** Tiles drawn in the last frame. */
     private int drawnTiles;
-    /** Tiles the first frame reads from disk at once, at most: a few dozen milliseconds, once. */
     private static final int FIRST_FRAME_DISK_TILES = 24;
-    /** And for at most this long (a slow disk): the rest loads in the background as usual. */
     private static final long FIRST_FRAME_DISK_NANOS = 60_000_000L;
 
     private void paintCoarser(Graphics2D g, int level, int tx, int ty, int left, int top, int right, int bottom)
     {
+        TileCache.Key standIn = new TileCache.Key(map.id, level - 2, plane, Math.floorDiv(tx, 4), Math.floorDiv(ty, 4));
         if (level - 2 >= TileCache.MIN_ZOOM)
         {
-            standIns.add(new TileCache.Key(map.id, level - 2, plane, Math.floorDiv(tx, 4), Math.floorDiv(ty, 4)));
+            standIns.add(standIn);
         }
         for (int coarser = level - 1; coarser >= TileCache.MIN_ZOOM; coarser--)
         {
@@ -1467,8 +1374,7 @@ final class MapView extends JComponent
                 g.drawImage(parent, left, top, right, bottom, sx, sy, sx + part, sy + part, null);
                 if (coarser >= level - 2)
                 {
-                    // A near stand-in is showing already.
-                    standIns.remove(new TileCache.Key(map.id, level - 2, plane, Math.floorDiv(tx, 4), Math.floorDiv(ty, 4)));
+                    standIns.remove(standIn);
                 }
                 return;
             }
@@ -1477,10 +1383,7 @@ final class MapView extends JComponent
 
     private static final Layer[] LAYERS = Layer.values();
 
-    /**
-     * Which icon layers show, from the settings and the zoom being zoomed to, read once per frame instead of for
-     * each of thousands of icons.
-     */
+    /** Which layers show, read once per frame rather than per icon. */
     private final class Filter
     {
         private final boolean[] layers = new boolean[LAYERS.length];
@@ -1532,10 +1435,7 @@ final class MapView extends JComponent
             && selected.type == PoiType.TELEPORT;
     }
 
-    /**
-     * Lines from the selected icon to where it leads. All lines of one style go into one path and are stroked
-     * together, and the end dots are drawn from a cached image: a fairy ring has over fifty destinations.
-     */
+    /** Lines from the selected icon to where it leads: one path per style, stroked together (fairy rings have 50+). */
     private void paintLinks(Graphics2D g)
     {
         if (selected == null || !selected.isOn(map) || !linesShown(selected.type))
@@ -1545,7 +1445,6 @@ final class MapView extends JComponent
         WorldPoint from = shown(selected.location);
         double sx = screenX(from.getX() + 0.5);
         double sy = screenY(from.getY() + 0.5);
-        // From the middle of the icon one sees: the game's own, when that stands for it.
         for (HitLayer layer : hitLayers)
         {
             Point2D at = layer.iconCenter(selected, projection);
@@ -1583,10 +1482,8 @@ final class MapView extends JComponent
             {
                 continue;
             }
-            // A gentle arc, so lines to places in a row stay distinguishable.
             double mx = (sx + dx) / 2 - (dy - sy) * 0.18;
             double my = (sy + dy) / 2 + (dx - sx) * 0.18;
-            // The curve lies within the triangle of its end and control points: skip it when that is out of view.
             if (Math.max(sx, Math.max(dx, mx)) < -8 || Math.min(sx, Math.min(dx, mx)) > getWidth() + 8
                 || Math.max(sy, Math.max(dy, my)) < -8 || Math.min(sy, Math.min(dy, my)) > getHeight() + 8)
             {
@@ -1601,10 +1498,9 @@ final class MapView extends JComponent
                 endUsable.add(usable);
             }
         }
-        // Dashed: a random destination, or one whose requirements you do not meet (then grey).
-        float[] dash = LINK_DASH;
-        stroke(g, lockedLines, LOCKED_LINK, width, dash);
-        stroke(g, usableLines, color, width, random ? dash : null);
+        // Dashed: a random destination, or a locked one (grey).
+        stroke(g, lockedLines, LOCKED_LINK, width, LINK_DASH);
+        stroke(g, usableLines, color, width, random ? LINK_DASH : null);
         for (int i = 0; i < ends.size(); i++)
         {
             double[] end = ends.get(i);
@@ -1623,8 +1519,7 @@ final class MapView extends JComponent
         {
             return;
         }
-        // Stroking wide antialiased curves is costly: the dark edge that keeps lines readable is one stroke under
-        // the colored one, with butt caps (round caps on every dash cost more and do not show at this width).
+        // Wide antialiased curves are costly: one dark stroke under the colored one, butt caps.
         g.setStroke(linkStroke(width + 2.2f, dash));
         g.setColor(LINK_SHADOW);
         g.draw(lines);
@@ -1633,9 +1528,8 @@ final class MapView extends JComponent
         g.draw(lines);
     }
 
-    /** The links' strokes and see-through colours, made once: only a few widths and colours are ever used. */
-    private static final java.util.Map<String, BasicStroke> LINK_STROKES = new java.util.concurrent.ConcurrentHashMap<>();
-    private static final java.util.Map<Color, Color> LINK_COLORS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, BasicStroke> LINK_STROKES = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<Color, Color> LINK_COLORS = new java.util.concurrent.ConcurrentHashMap<>();
 
     private static BasicStroke linkStroke(float width, float[] dash)
     {
@@ -1651,10 +1545,8 @@ final class MapView extends JComponent
     private void paintIcons(Graphics2D g)
     {
         double size = iconSize();
-        // Zoomed out, icons need more room each, or they cover the map. Which icons make way is decided on a grid
-        // fixed to the world, in half zoom level steps, so dragging or a zoom animation never makes icons blink.
-        // Decided on the zoom being zoomed to, not the one passing by during the animation: icons then change once
-        // when zooming starts instead of popping in and out on the way.
+        // Zoomed out, icons need more room. Which make way is decided on a world-fixed grid, in half-zoom steps of the
+        // target zoom, so dragging or zoom animation never makes icons blink.
         double step = Math.floor(targetZoom * 2) / 2;
         double cellWorld = iconSize(step) * (step < -1 ? 1.5 : step < 1 ? 1.15 : 0.9) / Math.pow(2, step);
         occupied.clear();
@@ -1682,14 +1574,11 @@ final class MapView extends JComponent
             }
             double x = screenX(at.getX() + 0.5);
             double y = screenY(at.getY() + 0.5);
-            // Every icon claims its cell, also when hovered or just out of view, so hovering or dragging never
-            // lets another icon of the same cell pop up in its place.
+            // Every icon claims its cell, even hovered or just out of view, so no neighbour pops up in its place.
             boolean free = occupied.add(cellKey(at.getX() + 0.5, at.getY() + 0.5, cellWorld));
-            // The tile at the icon's drawn place is the one that shows the game's icon.
             if (badgeCover != null && badgeCover.covers(poi, projection) && tileShown(at))
             {
-                // The tile shows the game's icon here, which hovers and clicks as this one (and gets the ring when
-                // selected): no second icon on top, also not while it is selected.
+                // The tile shows the game's icon, which acts as this one: no second icon on top, also when selected.
                 continue;
             }
             if (x < -size || y < -size || x > w + size || y > h + size)
@@ -1722,13 +1611,10 @@ final class MapView extends JComponent
         drawn = frame;
     }
 
-    /** The cells icons took in the frame being painted (reused, so a frame boxes no numbers). */
     private final LongSet occupied = new LongSet();
-    /** Where each icon is drawn on {@link #shownCacheMap}; cleared with new icons or maps. */
-    private final java.util.Map<Poi, WorldPoint> shownCache = new java.util.IdentityHashMap<>();
+    private final Map<Poi, WorldPoint> shownCache = new java.util.IdentityHashMap<>();
     private BaseMap shownCacheMap;
 
-    /** Where an icon is drawn on the map in view ({@link #shown}), worked out once per map. */
     private WorldPoint shownCached(Poi poi)
     {
         if (shownCacheMap != map)
@@ -1745,7 +1631,7 @@ final class MapView extends JComponent
         return at;
     }
 
-    /** A set of longs without boxing: open addressing, grown as needed, emptied for every frame. */
+    /** A set of longs without boxing (open addressing), emptied every frame. */
     static final class LongSet
     {
         private long[] keys = new long[256];
@@ -1807,18 +1693,14 @@ final class MapView extends JComponent
         }
     }
 
-    /**
-     * Whether the wiki tile at a point is loaded at the level in view: only then does it show the game's icon there
-     * (a coarser stand-in has none, and a missing tile shows nothing).
-     */
+    /** Whether the tile at a point is loaded at the level in view: only then does it show the game's icon. */
     private boolean tileShown(WorldPoint point)
     {
-        int level = (int) Math.max(TileCache.MIN_ZOOM, Math.min(TileCache.MAX_ZOOM, Math.ceil(zoom - 1e-6)));
+        int level = tileLevel();
         return tiles.peek(new TileCache.Key(map.id, level, plane, TileCache.tileIndex(point.getX(), level),
             TileCache.tileIndex(point.getY(), level))) != null;
     }
 
-    /** Grid cell of a world point, for deciding which of several close icons is drawn. */
     static long cellKey(double worldX, double worldY, double cellWorld)
     {
         return ((long) (int) Math.floor(worldX / cellWorld) << 32) | ((int) Math.floor(worldY / cellWorld) & 0xffffffffL);
@@ -1829,22 +1711,17 @@ final class MapView extends JComponent
         return iconSize(zoom);
     }
 
-    /** Icons shrink when zoomed far out and grow a little past the wiki's most detailed level. */
     private double iconSize(double z)
     {
         return config.iconSize() * iconScale(z);
     }
 
-    /**
-     * How large icons are at a zoom, as a part of the chosen icon size: smooth in the zoom, so icons never jump while
-     * zooming. Smaller far out, the full size from zoom 0, and growing with the tiles past their most detailed level.
-     */
+    /** Icon scale at a zoom, smooth so icons never jump: smaller far out, full from zoom 0, growing past the finest tiles. */
     static double iconScale(double z)
     {
         return z <= -3 ? 0.75 : z < 0 ? 0.75 + (z + 3) / 3 * 0.25 : z > 3 ? Math.min(3, Math.pow(2, z - 3)) : 1.0;
     }
 
-    /** Kingdom names when zoomed out, then islands and settlements; overlapping names are skipped. */
     private void paintPlaceNames(Graphics2D g)
     {
         if (map.id != BaseMap.SURFACE && map.id != BaseMap.FULL)
@@ -1897,11 +1774,7 @@ final class MapView extends JComponent
         }
     }
 
-
-    /**
-     * Wilderness level lines every five levels, with the level 20 and 30 teleport limits emphasised. Level n starts
-     * at {@code start + (n - 1) * 8} tiles north of the Wilderness edge.
-     */
+    /** Wilderness level lines every five levels, with the level 20 and 30 teleport limits; level n starts 8(n-1) tiles north. */
     private void paintWilderness(Graphics2D g)
     {
         if (zoom < -1.5 || maps == null)
@@ -1967,7 +1840,6 @@ final class MapView extends JComponent
         PlayerMarker.paint(g, x, y, zoom, at.getPlane() != plane);
     }
 
-    /** When you are out of view, an arrow at the edge of the map points to where you are. */
     private void paintPlayerPointer(Graphics2D g, double x, double y, int margin)
     {
         double cx = getWidth() / 2.0;
@@ -2022,9 +1894,7 @@ final class MapView extends JComponent
         g.drawString(text, (getWidth() - metrics.stringWidth(text)) / 2, getHeight() / 2);
     }
 
-    // ---- mouse ----
-
-    /** The icon a click at a point of the view would take (tests outside the game use it as a click). */
+    /** The icon a click here would take (tests use it as a click). */
     Poi iconAt(Point p)
     {
         return hit(p);
@@ -2040,7 +1910,7 @@ final class MapView extends JComponent
             {
                 if (mapBelow(d.poi) == null)
                 {
-                    // One of ours on the game's map link (a lever, a pier, a cave): the click goes where the link does.
+                    // One of ours on the game's map link: the click goes where the link does.
                     for (HitLayer layer : hitLayers)
                     {
                         Poi under = layer.hit(p, projection);
@@ -2064,16 +1934,13 @@ final class MapView extends JComponent
         return null;
     }
 
-    /** Shows floating controls for the full-screen map; null hides them. */
     void setChrome(Chrome chrome)
     {
         this.chrome = chrome;
         repaint();
     }
 
-    /**
-     * The widgets (such as the friends tab), after the other controls so those win a click where they overlap.
-     */
+    /** Painted after the other controls, so those win a click where they overlap. */
     private void paintWidgets(Graphics2D g, List<Control> painted, int bottom)
     {
         Clicks clicks = new Clicks()
@@ -2108,10 +1975,6 @@ final class MapView extends JComponent
         return null;
     }
 
-    /**
-     * The game view map's controls: map list top left, floor bottom left, zoom and follow
-     * bottom right. Painted like the icons, so they stay sharp at any size.
-     */
     private void paintControls(Graphics2D g)
     {
         List<Control> painted = new ArrayList<>();
@@ -2127,7 +1990,6 @@ final class MapView extends JComponent
         int h = getHeight();
         g.setFont(CONTROL_FONT);
         FontMetrics metrics = g.getFontMetrics();
-
         String mapName = (map == null ? "Map" : map.name) + "  ▾";
         int mapWidth = metrics.stringWidth(mapName) + 28;
         Control mapPicker = control(painted, MARGIN, MARGIN, mapWidth, CONTROL,
@@ -2137,7 +1999,6 @@ final class MapView extends JComponent
         backOffset = mapWidth + 6;
         paintBack(g, painted);
         g.setFont(CONTROL_FONT);
-
         WindowControls window = windowControls;
         if (window != null)
         {
@@ -2166,7 +2027,6 @@ final class MapView extends JComponent
                 g.draw(new Rectangle2D.Double(mx - 6, my - 6, 12, 12));
             }
         }
-
         int right = w - MARGIN - CONTROL;
         int bottom = h - MARGIN - 18 - CONTROL;
         Control out = control(painted, right, bottom, CONTROL, CONTROL, () -> zoomBy(-1), "Zoom out");
@@ -2200,7 +2060,6 @@ final class MapView extends JComponent
         g.draw(new Line2D.Double(fx - 11, fy, fx - 7, fy));
         g.draw(new Line2D.Double(fx + 7, fy, fx + 11, fy));
         g.fill(new Ellipse2D.Double(fx - 2.5, fy - 2.5, 5, 5));
-
         Control up = control(painted, MARGIN, bottom, CONTROL, CONTROL, () -> setPlane(plane + 1), "Floor up");
         String floor = "Floor " + plane;
         int floorWidth = metrics.stringWidth(floor) + 24;
@@ -2216,17 +2075,15 @@ final class MapView extends JComponent
         g.fill(triangle(up.shape.getCenterX(), up.shape.getCenterY(), true));
         g.setColor(plane > 0 ? Color.WHITE : Color.GRAY);
         g.fill(triangle(down.shape.getCenterX(), down.shape.getCenterY(), false));
-        // Above the floor, zoom and follow buttons, so it never covers them.
         paintWidgets(g, painted, widgetBottom(h));
         controls = painted;
     }
 
-    /** A short message on the map ("Added to My route"), gone after a few seconds; or null. */
+    /** A short message on the map ("Added to My route"), or null. */
     private String toast;
     private long toastUntil;
-    private final javax.swing.Timer toastTimer = new javax.swing.Timer(3000, e -> repaint());
+    private final Timer toastTimer = new Timer(3000, e -> repaint());
 
-    /** Shows a short message on the map for a few seconds. */
     void showToast(String text)
     {
         toast = text;
@@ -2257,13 +2114,8 @@ final class MapView extends JComponent
         g.drawString(text, (float) (x + 12), (float) (y + 13 + (metrics.getAscent() - metrics.getDescent()) / 2.0));
     }
 
-    /** How far right of the margin the Back button starts: past the map list when that is painted. */
     private int backOffset;
 
-    /**
-     * After going into a dungeon or to another map: a button back to where the map was, at the top left (beside the
-     * map list over the game). Also paints the short message, if any.
-     */
     private void paintBack(Graphics2D g, List<Control> painted)
     {
         paintToast(g);
@@ -2276,12 +2128,10 @@ final class MapView extends JComponent
         FontMetrics metrics = g.getFontMetrics();
         String text = to.name;
         int width = metrics.stringWidth(text) + 40;
-        // Like the other controls: beside the map list over the game, at the top left elsewhere.
         double x = MARGIN + backOffset;
         Control go = control(painted, x, MARGIN, width, CONTROL, this::goBack, "Back to " + to.name
             + " (or the mouse's back button)");
         paintControl(g, go);
-        // A back arrow, then the map it returns to.
         double cy = go.shape.getCenterY();
         double ax = x + 15;
         g.setColor(Color.WHITE);
@@ -2291,7 +2141,6 @@ final class MapView extends JComponent
         g.draw(new Line2D.Double(ax - 5, cy, ax - 1, cy + 4));
         g.drawString(text, (float) (x + 27), (float) (cy + metrics.getAscent() / 2.0 - 2));
     }
-
 
     private static Control control(List<Control> into, double x, double y, double width, double height, Runnable action, String tip)
     {
@@ -2341,16 +2190,13 @@ final class MapView extends JComponent
         return path;
     }
 
-    /** As a mouse move over the map does (development benchmarks). */
+    /** Development benchmarks. */
     void hoverAt(Point p)
     {
         updateHover(p);
     }
 
-    /**
-     * Hover changes repaint the map only when what is highlighted (an icon or a control) changes, since a full
-     * repaint of a large map on every mouse move is expensive.
-     */
+    /** Repaints only when what is highlighted changes: a full repaint per mouse move is expensive. */
     private void updateHover(Point p)
     {
         Control overControl = control(p);
@@ -2391,13 +2237,11 @@ final class MapView extends JComponent
         }
     }
 
-    /** "Go in", or "Go out" for a way up to the surface. */
     static String goInText(Poi.Link inside)
     {
         return inside.map.id == BaseMap.SURFACE ? "Go out" : "Go in";
     }
 
-    /** Where the view was before another map was opened, for the Back button. */
     private static final class Back
     {
         final BaseMap map;
@@ -2419,10 +2263,7 @@ final class MapView extends JComponent
     private static final int MAX_BACK = 12;
     private final java.util.ArrayDeque<Back> back = new java.util.ArrayDeque<>();
 
-    /**
-     * Another map is about to be opened by the player (into a dungeon, a search result, the map list): Back returns
-     * to the map and spot shown now. Automatic changes (following the player, opening) call {@link #showMap} alone.
-     */
+    /** Before the player opens another map: Back returns here. Automatic changes call {@link #showMap} alone. */
     void rememberForBack(BaseMap next)
     {
         if (map == null || next == map)
@@ -2436,14 +2277,12 @@ final class MapView extends JComponent
         }
     }
 
-    /** The map Back returns to, or null when there is none. */
     BaseMap backMap()
     {
         Back top = back.peek();
         return top == null || top.map == map ? null : top.map;
     }
 
-    /** Back to the map and spot shown before another map was opened. */
     void goBack()
     {
         Back top = back.poll();
@@ -2455,7 +2294,6 @@ final class MapView extends JComponent
         showMap(top.map, new WorldPoint((int) Math.floor(top.x), (int) Math.floor(top.y), top.plane), top.zoom);
     }
 
-    /** Shows the map a passage leads to, at the spot you arrive. */
     void goIn(Poi.Link inside)
     {
         setFollowing(false);
@@ -2463,27 +2301,21 @@ final class MapView extends JComponent
         int[] area = areaOf(inside.map, inside.point);
         if (area != null)
         {
-            // The dungeon one comes into, all of it in view, not every dungeon its map holds.
             showMap(inside.map, new WorldPoint((area[0] + area[2]) / 2, (area[1] + area[3]) / 2,
                 shownOn(inside.map, inside.point).getPlane()), fitZoom(area));
             return;
         }
-        // Close up on where you come out, like the centre button.
         showMap(inside.map, shownOn(inside.map, inside.point), Math.max(targetZoom, PLAYER_ZOOM));
     }
 
-    /**
-     * The walkable area around a point (a dungeon, cave or room), as {minX, minY, maxX, maxY}; null when not known
-     * (no route data yet) or too large to be one dungeon. Set by the route feature once its map is loaded.
-     */
-    private java.util.function.Function<WorldPoint, int[]> areaBounds = p -> null;
+    /** Walkable area around a point as {minX, minY, maxX, maxY}; null when unknown or too large. Set by the route feature. */
+    private Function<WorldPoint, int[]> areaBounds = p -> null;
 
-    void setAreaBounds(java.util.function.Function<WorldPoint, int[]> areaBounds)
+    void setAreaBounds(Function<WorldPoint, int[]> areaBounds)
     {
         this.areaBounds = areaBounds;
     }
 
-    /** The area to fit on a dungeon's map (never on the surface, the map of everything or a floor above). */
     private int[] areaOf(BaseMap on, WorldPoint point)
     {
         if (on == null || on.id == BaseMap.SURFACE || on.id == BaseMap.FULL)
@@ -2496,13 +2328,11 @@ final class MapView extends JComponent
         {
             return area;
         }
-        // Found where the area is in the game; shown where the map draws it.
         int dx = drawn.getX() - point.getX();
         int dy = drawn.getY() - point.getY();
         return new int[]{area[0] + dx, area[1] + dy, area[2] + dx, area[3] + dy};
     }
 
-    /** A zoom that shows an area whole, with a margin; never closer than the player zoom. */
     private double fitZoom(int[] area)
     {
         double w = Math.max(100, getWidth() - 80);
@@ -2511,10 +2341,7 @@ final class MapView extends JComponent
         return clampZoom(Math.min(PLAYER_ZOOM, Math.log(fit) / Math.log(2)));
     }
 
-    /**
-     * Where an icon leads when that is another map (a dungeon below an entrance, say), or another floor of a dungeon
-     * (the Kalphite Queen's chamber below the lair); null otherwise.
-     */
+    /** Where an icon leads when that is another map or another dungeon floor; null otherwise. */
     static Poi.Link mapBelow(Poi poi)
     {
         if (poi == null || poi.target == null && poi.type != PoiType.DUNGEON_ENTRANCE && poi.type != PoiType.MAP_EXIT
@@ -2526,8 +2353,7 @@ final class MapView extends JComponent
         {
             boolean elsewhere = link.map != poi.map || poi.location.getY() >= UNDERGROUND_Y
                 && link.point.getPlane() != poi.location.getPlane()
-                // The game's own map links jump within one map too (a cave's other part, a level drawn beside the
-                // first, Keldagrim's tunnel and city), as its world map does.
+                // The game's map links jump within one map too (Keldagrim's tunnel and city).
                 || poi.type == PoiType.MAP_LINK && (link.point.getPlane() != poi.location.getPlane()
                     || Math.max(Math.abs(link.point.getX() - poi.location.getX()),
                         Math.abs(link.point.getY() - poi.location.getY())) > 12);
@@ -2549,15 +2375,13 @@ final class MapView extends JComponent
         Poi clicked = hit(e.getPoint());
         if (clicked != null)
         {
-            // Its details in the card, without going in (a left click goes into a dungeon).
             select(clicked);
         }
         Poi.Link inside = mapBelow(clicked);
         if (inside != null)
         {
-            // A dungeon entrance, ladder or map link: open the map it leads to, at the spot you arrive.
             JMenuItem open = new JMenuItem("Open " + inside.map.name);
-            open.setFont(open.getFont().deriveFont(java.awt.Font.BOLD));
+            open.setFont(open.getFont().deriveFont(Font.BOLD));
             open.addActionListener(a -> goIn(inside));
             menu.add(open);
             menu.addSeparator();
@@ -2574,8 +2398,7 @@ final class MapView extends JComponent
             me.addActionListener(a -> centerOnPlayer());
             menu.add(me);
         }
-        // The spot clicked is where the map draws it; in the game it may be elsewhere (the Dagannoth Kings' lair, drawn on
-        // the Waterbirth map over where Ardougne's underground is): a route or stop goes to the game's own spot.
+        // A route or stop goes to the game's own spot, which the map may draw elsewhere (Dagannoth Kings' lair).
         WorldPoint point = gamePoint(new WorldPoint(x, y, plane));
         JMenuItem nearest = new JMenuItem("Nearest teleports to here");
         nearest.addActionListener(a -> {

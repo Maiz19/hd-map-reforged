@@ -10,19 +10,14 @@ public final class Route
 {
     public enum Outcome
     {
-        /** The target itself, or the walkable tile next to a blocked target. */
         FOUND,
-        /** The target cannot be reached: the route leads to the nearest spot that can. */
         NEAREST,
-        /** Nothing could be reached at all (the start is not on the map). */
         NONE,
         CANCELLED
     }
 
-    /** Something on a walk to cut through, such as "Chop-down Vines (bring an axe)". */
     public static final class Obstacle
     {
-        /** Packed tile. */
         public final int at;
         public final String text;
 
@@ -33,7 +28,6 @@ public final class Route
         }
     }
 
-    /** One part of the route. */
     public static final class Step
     {
         public enum Kind
@@ -42,17 +36,14 @@ public final class Route
         }
 
         public final Kind kind;
-        /** Packed nodes: all tiles walked or sea blocks sailed, or the two ends of a jump. */
+        /** Packed: all tiles walked or sea blocks sailed, or the two ends of a jump. */
         public final int[] points;
         public final String name;
         public final String detail;
-        /** Half ticks this step takes. */
         public final int cost;
-        /** Doors on a walk. */
         public final int doors;
-        /** Obstacles on a walk to cut through (vines, jungle, webs): tile and what it takes. */
         public final List<Obstacle> obstacles;
-        /** The kind of teleport or transport ("Hot air balloon"), to leave out all of that kind; or null. */
+        /** Teleport or transport kind ("Hot air balloon"), to leave out all of that kind; or null. */
         public final String category;
 
         public Step(Kind kind, int[] points, String name, String detail, int cost, int doors)
@@ -98,17 +89,13 @@ public final class Route
     public final List<Step> steps;
     /** Half ticks. */
     public final int cost;
-    /** Packed tile the user asked for. */
     public final int target;
-    /** Packed tile the route ends on (differs from {@link #target} when that is blocked or unreachable), or -1. */
     public final int end;
-    /** True when every reachable place was searched: the target is certainly out of reach. */
     public final boolean exhausted;
-    /** True when the search stopped at its node limit. */
     public final boolean limited;
     public final int nodes;
 
-    /** Half ticks the route takes: its steps, without the extra weight of teleports the player keeps for longer trips. */
+    /** Without the extra weight of teleports kept for longer trips. */
     public int time()
     {
         int t = 0;
@@ -132,13 +119,9 @@ public final class Route
         this.nodes = nodes;
     }
 
-    /** How far from the route the player may be for {@link #ahead} to still find where they are on it. */
     public static final int NEAR = 12;
 
-    /**
-     * What is still ahead of the player, like a navigation app: the steps already done are dropped, and the walk (or
-     * sail) the player is on starts where they are. The route itself when the player is not near it.
-     */
+    /** What is still ahead of the player, like a navigation app; the route itself when the player is not near it. */
     public Route ahead(int player)
     {
         if (player < 0 || steps.isEmpty())
@@ -153,7 +136,6 @@ public final class Route
             Step step = steps.get(s);
             if (step.isJump())
             {
-                // Standing where a jump lands: everything up to it is done.
                 int landing = step.last();
                 if (sameLevel(player, landing) && Tiles.distance(player, landing) <= 2)
                 {
@@ -175,10 +157,9 @@ public final class Route
                 long d = dx * dx + dy * dy;
                 if (Tiles.isSea(point))
                 {
-                    // Sea blocks are coarse: the boat may be anywhere in one.
                     d /= (long) Tiles.CELL * Tiles.CELL;
                 }
-                // Ties go to the later point, so a route that passes a spot twice follows the player forward.
+                // Ties go to the later point, so a route passing a spot twice follows the player forward.
                 if (d <= bestDistance)
                 {
                     bestStep = s;
@@ -227,13 +208,11 @@ public final class Route
         return Tiles.isSea(a) || Tiles.isSea(b) || Tiles.z(a) == Tiles.z(b);
     }
 
-    /** Whether the route stops short of the tile asked for (blocked tile, or out of reach). */
     public boolean snapped()
     {
         return end >= 0 && end != target;
     }
 
-    /** Game ticks, rounded up. */
     public int ticks()
     {
         return (cost + 1) / 2;
@@ -241,14 +220,7 @@ public final class Route
 
     public boolean has(Step.Kind kind)
     {
-        for (Step step : steps)
-        {
-            if (step.kind == kind)
-            {
-                return true;
-            }
-        }
-        return false;
+        return first(kind) != null;
     }
 
     public Step first(Step.Kind kind)

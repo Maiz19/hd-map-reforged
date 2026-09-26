@@ -1,24 +1,22 @@
 package com.hdmapreforged;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.Reader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * Builds map icons from the bundled data: our travel tables (teleports, transport networks, routes, shortcuts and
- * passages, built from the OSRS Wiki and the game cache by {@code local-development/tools/travel-data}), the game's
- * map icons ({@code map_icons.tsv}: banks, altars, anvils, map links) and RuneLite's world map lists (named dungeons,
- * transports, moorings, altars and more). Rows describing the same place are merged into one icon.
- */
+/** Builds map icons from the bundled travel tables, game map icons and RuneLite lists; same-place rows merge. */
 final class PoiLoader
 {
     interface Source
@@ -31,7 +29,6 @@ final class PoiLoader
     static final String ROUTES = "transport_routes.tsv";
     static final String SHORTCUTS = "shortcuts.tsv";
 
-    /** A named spot: a map label, or a name for stops and destinations that the tables leave unnamed. */
     static final class Place
     {
         final WorldPoint point;
@@ -47,7 +44,6 @@ final class PoiLoader
         }
     }
 
-    /** Rows of one table that describe the same place. */
     private static final class Cluster
     {
         final String key;
@@ -76,7 +72,7 @@ final class PoiLoader
             return false;
         }
 
-        /** The member tile nearest the middle, so the icon sits on a real tile. */
+        /** Nearest the middle, so the icon sits on a real tile. */
         WorldPoint center()
         {
             double x = 0;
@@ -130,9 +126,8 @@ final class PoiLoader
     private final Source source;
     private final List<Poi> pois = new ArrayList<>();
     private final List<Place> places = new ArrayList<>();
-    /** RuneLite's dungeon list, read once for this loader and {@link MapIconLoader}. */
     private List<Tsv.Row> dungeonRows;
-    private static final java.util.regex.Pattern LEVEL = java.util.regex.Pattern.compile("\\d{1,3}");
+    private static final Pattern LEVEL = Pattern.compile("\\d{1,3}");
 
     private PoiLoader(BaseMaps maps, Source source)
     {
@@ -150,10 +145,7 @@ final class PoiLoader
         return load(maps, source, labels(source), icons, dungeonRows(source));
     }
 
-    /**
-     * With the tables others read too already parsed ({@link MapData} reads each once): the place names, the game's
-     * map icons and RuneLite's dungeon list.
-     */
+    /** With the shared tables already parsed ({@link MapData} reads each once). */
     static List<Poi> load(BaseMaps maps, Source source, List<Place> labels, List<MapIconLoader.Entry> icons,
         List<Tsv.Row> dungeons) throws IOException
     {
@@ -182,24 +174,19 @@ final class PoiLoader
         return loader.pois;
     }
 
-    /** Boats this far apart are not of one network. */
     private static final int ROWBOAT_REACH = 500;
-    /** Boats this close are ends of one crossing, whatever they are called. */
     private static final int ROWBOAT_PAIR = 60;
 
     /**
-     * Rowboats with several stops, which RuneLite's list names without saying where they go ("Rowboat to
-     * Molch/Molch Island/Shayzien"): each boat names the other stops of its network, so the stop a boat is at is the
-     * one of the network's names it does not name. Once each boat's own stop is known, it leads to the boats of the
-     * stops it names. Boats whose own stop cannot be told (a network of which a boat is missing) keep no lines.
+     * RuneLite names multi-stop rowboats by the other stops ("Rowboat to Molch/Shayzien"), so a boat's own stop is the
+     * network name it does not list; it then links to the boats of the stops it names.
      */
     static void linkRowboats(List<Poi> pois)
     {
         List<Poi> boats = new ArrayList<>();
-        Map<Poi, List<String>> names = new java.util.IdentityHashMap<>();
+        Map<Poi, List<String>> names = new IdentityHashMap<>();
         for (Poi poi : pois)
         {
-            // Every rowboat helps tell the stops apart; only those without a way get one.
             if (poi.type == PoiType.BOAT && poi.name.startsWith("Rowboat to "))
             {
                 List<String> stops = new ArrayList<>();
@@ -214,7 +201,6 @@ final class PoiLoader
                 names.put(poi, stops);
             }
         }
-        // Networks: boats near each other that name a stop in common.
         List<List<Poi>> networks = new ArrayList<>();
         for (Poi boat : boats)
         {
@@ -224,10 +210,8 @@ final class PoiLoader
                 for (Poi other : network)
                 {
                     int d = chebyshev(other.location, boat.location);
-                    // Close by, or naming a stop in common ("North Custodia Pass" and "South Custodia Pass" are two
-                    // ends of one crossing).
                     if (d <= ROWBOAT_PAIR || d <= ROWBOAT_REACH
-                        && !java.util.Collections.disjoint(names.get(other), names.get(boat)))
+                        && !Collections.disjoint(names.get(other), names.get(boat)))
                     {
                         if (joined == null)
                         {
@@ -245,12 +229,12 @@ final class PoiLoader
             }
             if (joined == null)
             {
-                networks.add(new ArrayList<>(java.util.Collections.singletonList(boat)));
+                networks.add(new ArrayList<>(Collections.singletonList(boat)));
             }
         }
         for (List<Poi> network : networks)
         {
-            java.util.Set<String> all = new java.util.LinkedHashSet<>();
+            Set<String> all = new LinkedHashSet<>();
             for (Poi boat : network)
             {
                 all.addAll(names.get(boat));
@@ -258,7 +242,7 @@ final class PoiLoader
             Map<String, Poi> at = new HashMap<>();
             for (Poi boat : network)
             {
-                java.util.Set<String> own = new java.util.LinkedHashSet<>(all);
+                Set<String> own = new LinkedHashSet<>(all);
                 own.removeAll(names.get(boat));
                 if (own.size() == 1)
                 {
@@ -283,7 +267,6 @@ final class PoiLoader
         }
     }
 
-    /** Map labels: regions, islands and settlements. */
     static List<Place> labels(Source source) throws IOException
     {
         List<Place> labels = new ArrayList<>();
@@ -303,7 +286,6 @@ final class PoiLoader
         return labels;
     }
 
-    /** RuneLite's dungeon list, without comment lines. */
     static List<Tsv.Row> dungeonRows(Source source) throws IOException
     {
         return read(source, "runelite_dungeons.tsv");
@@ -330,7 +312,6 @@ final class PoiLoader
         return rows;
     }
 
-    /** Teleports that work from anywhere: an icon at each destination. */
     private void teleports() throws IOException
     {
         Set<String> seen = new HashSet<>();
@@ -353,7 +334,6 @@ final class PoiLoader
         }
     }
 
-    /** Networks: each stop's icon leads to every other stop, with what travelling there needs. */
     private void networks() throws IOException
     {
         Map<String, List<Tsv.Row>> byNetwork = new LinkedHashMap<>();
@@ -397,7 +377,6 @@ final class PoiLoader
         }
     }
 
-    /** Boats, carts, carpets and levers: each stop lists where it goes, with that trip's needs. */
     private void routes() throws IOException
     {
         Map<PoiType, List<Cluster>> byType = new LinkedHashMap<>();
@@ -449,7 +428,6 @@ final class PoiLoader
         }
     }
 
-    /** The quests every trip from a stop needs: what using the stop at all needs. */
     private static Needs sharedQuests(List<Needs> trips)
     {
         List<String> shared = null;
@@ -492,7 +470,6 @@ final class PoiLoader
         }
     }
 
-    /** {@code "Lever"} becomes {@code "Lever (near Edgeville)"}, or names the separate map it is on. */
     private String withPlace(String name, WorldPoint at)
     {
         String place = nearest(places, at, PLACE_RADIUS);
@@ -508,7 +485,6 @@ final class PoiLoader
         return name;
     }
 
-    /** "Near Varrock", or the map's name, for a spot the tables leave unnamed. */
     private String nameNear(WorldPoint point)
     {
         String place = nearest(places, point, PLACE_RADIUS);
@@ -520,35 +496,26 @@ final class PoiLoader
         return map != null ? map.name : point.getX() + ", " + point.getY();
     }
 
-    /**
-     * Ladders, stairs and holes that lead from one wiki map to another: our passage table, and the game's own map
-     * links that know where they lead.
-     */
     private void passages(List<MapIconLoader.Entry> icons) throws IOException
     {
-        // Only the game's own map links, whose destination the game knows. The guessed pairs of passages.tsv (a
-        // way down paired with one 6400 tiles north) led too often to the wrong place, or to none at all.
-        List<WorldPoint[]> ends = new ArrayList<>();
+        // Only the game's own map links: guessed passage pairs too often led to the wrong place.
+        List<Cluster> clusters = new ArrayList<>();
         for (MapIconLoader.Entry icon : icons)
         {
-            if (icon.target != null)
+            if (icon.target == null)
             {
-                ends.add(new WorldPoint[]{icon.location, icon.target});
+                continue;
             }
-        }
-        List<Cluster> clusters = new ArrayList<>();
-        for (WorldPoint[] end : ends)
-        {
-            BaseMap from = map(end[0]);
-            BaseMap to = map(end[1]);
+            BaseMap from = map(icon.location);
+            BaseMap to = map(icon.target);
             if (from == null || to == null || from == to || to.id == BaseMap.FULL)
             {
                 continue;
             }
-            Cluster cluster = add(clusters, Integer.toString(to.id), to.name, end[0], null, 12);
+            Cluster cluster = add(clusters, Integer.toString(to.id), to.name, icon.location, null, 12);
             if (cluster.links.isEmpty())
             {
-                cluster.links.add(new Poi.Link(to.name, end[1], to, Needs.NONE));
+                cluster.links.add(new Poi.Link(to.name, icon.target, to, Needs.NONE));
             }
         }
         for (Cluster cluster : clusters)
@@ -563,7 +530,6 @@ final class PoiLoader
         }
     }
 
-    /** Agility shortcuts: an icon at each side, leading to the other. */
     private void shortcuts() throws IOException
     {
         for (Tsv.Row row : read(SHORTCUTS))
@@ -586,7 +552,6 @@ final class PoiLoader
         }
     }
 
-    /** Banks, altars and anvils: the game's own map icons of that kind, named after the place they are in. */
     private void services(List<MapIconLoader.Entry> icons, String kind, PoiType type)
     {
         List<Cluster> clusters = new ArrayList<>();
@@ -613,10 +578,7 @@ final class PoiLoader
         }
     }
 
-    /**
-     * RuneLite's dungeon list names entrances well: passages near one take its name, and dungeons without a known
-     * passage get an icon of their own.
-     */
+    /** Passages near a RuneLite dungeon take its name; the others get an icon of their own. */
     private void runeliteDungeons() throws IOException
     {
         for (Tsv.Row row : dungeonRows != null ? dungeonRows : read("runelite_dungeons.tsv"))
@@ -655,7 +617,6 @@ final class PoiLoader
         return copy;
     }
 
-    /** RuneLite's transport points that the route tables do not already cover. */
     private void runeliteTransports() throws IOException
     {
         for (Tsv.Row row : read("runelite_transports.tsv"))
@@ -707,7 +668,6 @@ final class PoiLoader
         return PoiType.TRANSPORT;
     }
 
-    /** Moorings, salvage spots, altars, courses, patches and minigames from RuneLite's lists. */
     private void runeliteList(String file, PoiType type, String levelSkill) throws IOException
     {
         for (Tsv.Row row : read(file))
@@ -724,28 +684,15 @@ final class PoiLoader
             String level = row.get("Level").trim();
             if (levelSkill != null && LEVEL.matcher(level).matches())
             {
-                // Anything but a plain level ("?", "varies") needs nothing that can be checked.
                 needs = Needs.skill(Integer.parseInt(level), levelSkill);
             }
             String group = type == PoiType.SALVAGE || type == PoiType.FARMING_PATCH ? name : null;
-            String wikiQuery;
-            if (type == PoiType.FARMING_PATCH)
-            {
-                wikiQuery = name.split("/")[0] + " patch";
-            }
-            else if (type == PoiType.SALVAGE)
-            {
-                wikiQuery = type.wikiPage;
-            }
-            else
-            {
-                wikiQuery = name;
-            }
+            String wikiQuery = type == PoiType.FARMING_PATCH ? name.split("/")[0] + " patch"
+                : type == PoiType.SALVAGE ? type.wikiPage : name;
             pois.add(new Poi(type, shown, at, map(at), group, needs, wikiQuery, null, null));
         }
     }
 
-    /** Teleports with the same name in several places, such as house teleports, get the place added. */
     private void nameDuplicateTeleports()
     {
         Map<String, Integer> counts = new HashMap<>();
@@ -771,10 +718,7 @@ final class PoiLoader
         }
     }
 
-    /**
-     * Teleports that land on the same spot, such as a spell and its tablet, become one icon listing every way to
-     * get there, instead of icons drawn over each other.
-     */
+    /** Teleports landing on one spot (a spell and its tablet) become one icon. */
     private void stackTeleports()
     {
         List<List<Poi>> stacks = new ArrayList<>();
@@ -825,15 +769,12 @@ final class PoiLoader
 
     private static final int STACK_RADIUS = 4;
 
-    /**
-     * {@code "Cemetery Teleport / tablet"} when the others are the same teleport in another form, else the first
-     * name with how many more ways there are, such as {@code "Varrock Teleport (+2)"}.
-     */
+    /** {@code "Cemetery Teleport / tablet"}, else {@code "Varrock Teleport (+2)"}. */
     static String stackName(List<Poi> stack)
     {
         String first = stack.get(0).name;
         String base = teleportBase(first);
-        Set<String> forms = new java.util.LinkedHashSet<>();
+        Set<String> forms = new LinkedHashSet<>();
         for (Poi other : stack.subList(1, stack.size()))
         {
             String form = teleportForm(other.name);
@@ -846,18 +787,16 @@ final class PoiLoader
         return first + " / " + String.join(" / ", forms);
     }
 
-    private static final java.util.regex.Pattern DASH_NOTE = java.util.regex.Pattern.compile("\\s*–.*$");
-    private static final java.util.regex.Pattern TELEPORT_FORM = java.util.regex.Pattern.compile("(\\s+teleport)?(\\s+(tablet|scroll))?$");
-    private static final java.util.regex.Pattern NUMBERING = java.util.regex.Pattern.compile("^\\d+[.:]\\s*");
+    private static final Pattern DASH_NOTE = Pattern.compile("\\s*–.*$");
+    private static final Pattern TELEPORT_FORM = Pattern.compile("(\\s+teleport)?(\\s+(tablet|scroll))?$");
+    private static final Pattern NUMBERING = Pattern.compile("^\\d+[.:]\\s*");
 
-    /** "Cemetery Teleport", "Cemetery tablet" and "Nardah teleport scroll" give "cemetery" and "nardah". */
     static String teleportBase(String name)
     {
         String lower = DASH_NOTE.matcher(name.toLowerCase(Locale.ROOT)).replaceFirst("").trim();
         return TELEPORT_FORM.matcher(lower).replaceFirst("").trim();
     }
 
-    /** "tablet" or "scroll" for other forms of a teleport, null otherwise. */
     private static String teleportForm(String name)
     {
         String lower = DASH_NOTE.matcher(name.toLowerCase(Locale.ROOT)).replaceFirst("").trim();
@@ -884,7 +823,6 @@ final class PoiLoader
         return false;
     }
 
-    /** Keeps names that read well as "near …": no numbering, notes or generic words. */
     private void addPlace(WorldPoint at, String name)
     {
         String clean = NUMBERING.matcher(name.trim()).replaceFirst("");
@@ -904,7 +842,6 @@ final class PoiLoader
         int bestDistance = radius + 1;
         for (Place place : candidates)
         {
-            // A place on another floor still names the area, but one on the same floor is preferred.
             int d = place.point.distanceTo2D(point) + (place.point.getPlane() == point.getPlane() ? 0 : 4);
             if (d < bestDistance)
             {

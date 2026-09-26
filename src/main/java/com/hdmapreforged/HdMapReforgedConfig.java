@@ -194,7 +194,7 @@ public interface HdMapReforgedConfig extends Config
         return Keybind.NOT_SET;
     }
 
-    /** Kinds of icons whose lines to their destinations are hidden, chosen in the icon's card ("Show lines"). */
+    /** Icon kinds whose destination lines are hidden. */
     @ConfigItem(keyName = "linesOff", name = "", description = "", hidden = true)
     default String linesOff()
     {
@@ -290,7 +290,6 @@ public interface HdMapReforgedConfig extends Config
     {
         return 1000;
     }
-
 
     enum UpdateCheck
     {

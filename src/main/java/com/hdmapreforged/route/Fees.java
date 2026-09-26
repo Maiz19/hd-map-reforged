@@ -9,13 +9,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Entrances that ask a fee or a one-off payment the plugin cannot check ({@code fees.tsv}), such as the two ways into
- * Brimhaven Dungeon. The route says what they take, and a one-off payment weighs as extra time so a free way wins.
- */
+/** Entrance fees the plugin cannot check ({@code fees.tsv}), weighed as extra time so a free way wins. */
 public final class Fees
 {
-    /** Within this many tiles of an entrance's listed tile, a passage or link is that entrance. */
     private static final int NEAR = 2;
 
     public static final class Fee
@@ -43,7 +39,6 @@ public final class Fees
     {
     }
 
-    /** The fee of the entrance at or right next to a tile, or null. */
     public static Fee at(int x, int y, int plane)
     {
         for (Fee fee : FEES)
@@ -82,13 +77,11 @@ public final class Fees
                 }
                 catch (NumberFormatException | ArrayIndexOutOfBoundsException e)
                 {
-                    // Skipped.
                 }
             }
         }
         catch (IOException e)
         {
-            // No fees then.
         }
         return Collections.unmodifiableList(fees);
     }

@@ -9,6 +9,7 @@ import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Shape;
 import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
 import javax.swing.SwingUtilities;
@@ -18,11 +19,7 @@ import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
-/**
- * A small button over the game after logging in, out of a party that was joined before: "Rejoin party" and a cross to
- * dismiss it. One left click rejoins; nothing happens without it. It can be moved like any overlay (Alt-drag). The
- * click on it is taken by the button, every other click goes to the game as usual.
- */
+/** "Rejoin party" over the game after login, with a cross to dismiss; clicks on it are consumed, others go to the game. */
 final class RejoinButton extends Overlay
 {
     private static final Color FILL = new Color(20, 21, 25, 215);
@@ -36,12 +33,11 @@ final class RejoinButton extends Overlay
     private final Runnable rejoin;
     private final Runnable dismiss;
     private volatile boolean showing;
-    /** Where the two parts were drawn, relative to the overlay; empty before the first frame. */
+    /** Relative to the overlay; empty before the first frame. */
     private volatile Rectangle joinArea = new Rectangle();
     private volatile Rectangle closeArea = new Rectangle();
     private volatile Point mouse;
 
-    /** The mouse on the game canvas: clicks on the button, and where it is for hovering. */
     final MouseAdapter clicks = new MouseAdapter()
     {
         @Override
@@ -104,7 +100,6 @@ final class RejoinButton extends Overlay
     {
         this.rejoin = rejoin;
         this.dismiss = dismiss;
-        // Bottom left, just above the chat box; can be moved like any overlay.
         setPosition(OverlayPosition.BOTTOM_LEFT);
         setLayer(OverlayLayer.ABOVE_WIDGETS);
     }
@@ -114,7 +109,7 @@ final class RejoinButton extends Overlay
         showing = show;
     }
 
-    /** A point on the canvas as a point on the button, or null when the button has not been drawn yet. */
+    /** Null before the button was drawn. */
     private Point local(Point canvas)
     {
         Rectangle bounds = getBounds();
@@ -137,8 +132,8 @@ final class RejoinButton extends Overlay
         FontMetrics metrics = g.getFontMetrics();
         String text = "Rejoin party";
         int height = 18;
-        // A small people mark, the text, a thin divider and the cross.
-        int markWidth = 14;
+        int markWidth
+ = 14;
         int joinWidth = 6 + markWidth + metrics.stringWidth(text) + 6;
         int closeWidth = 15;
         int width = joinWidth + 1 + closeWidth;
@@ -152,7 +147,7 @@ final class RejoinButton extends Overlay
         g.fill(shape);
         if (onJoin || onClose)
         {
-            java.awt.Shape clip = g.getClip();
+            Shape clip = g.getClip();
             g.clip(shape);
             g.setColor(onJoin ? JOIN_HOVER : HOVER);
             g.fill(onJoin ? join : close);

@@ -10,11 +10,8 @@ import java.util.List;
 import net.runelite.api.coords.WorldPoint;
 
 /**
- * Where the world map draws a part of the game somewhere else than it is (the Kalphite Lair beside the desert caves,
- * its floor 2 drawn as floor 0), or an upper floor as the ground floor (the God Wars Dungeon's boss rooms): the OSRS
- * Wiki's map does the same, so the coordinates of its location lines are where a place is drawn, not where it is.
- * Turns them into the game's own, which the player, the route planner and the map icons use. From
- * {@code data/world_map_moves.tsv}, built from the game cache.
+ * Where the world map (and the wiki's) draws part of the game elsewhere (the Kalphite Lair beside the desert caves,
+ * floor 2 as floor 0): turns drawn coordinates into the game's own. From {@code data/world_map_moves.tsv}.
  */
 @lombok.extern.slf4j.Slf4j
 final class WorldMapMoves
@@ -51,15 +48,13 @@ final class WorldMapMoves
     {
     }
 
-    /** Where a point a wiki map with id {@code mapId} draws is in the game; the point itself where nothing moves. */
     static WorldPoint toWorld(int mapId, WorldPoint drawn)
     {
         Move found = null;
-        // The file lists whole map squares before zones, so a zone's move (finer) wins, as in the game.
+        // Whole map squares are listed before zones, so a zone's move (finer) wins, as in the game.
         for (Move move : MOVES)
         {
-            if (move.map == mapId && drawn.getX() >= move.x && drawn.getX() < move.x + move.width
-                && drawn.getY() >= move.y && drawn.getY() < move.y + move.height)
+            if (move.map == mapId && inside(move, drawn.getX(), drawn.getY()))
             {
                 found = move;
             }
@@ -68,21 +63,16 @@ final class WorldMapMoves
         {
             return drawn;
         }
-        // The floor drawn counts up from the lowest floor moved, as far as the floors it moves.
         int plane = found.plane + Math.min(drawn.getPlane(), found.planes - 1);
         return new WorldPoint(drawn.getX() + found.dx, drawn.getY() + found.dy, Math.min(3, plane));
     }
 
-    /**
-     * Whether the map with id {@code mapId} draws a moved part of the game at this spot (the Dagannoth Kings' lair on the
-     * Waterbirth Dungeon map, over where Ardougne's underground is in the game): what is really at the spot is not
-     * what that map shows there.
-     */
+    /** Whether map {@code mapId} draws a moved part of the game at this spot (the Dagannoth Kings' lair). */
     static boolean covers(int mapId, int x, int y)
     {
         for (Move move : MOVES)
         {
-            if (move.map == mapId && x >= move.x && x < move.x + move.width && y >= move.y && y < move.y + move.height)
+            if (move.map == mapId && inside(move, x, y))
             {
                 return true;
             }
@@ -90,7 +80,6 @@ final class WorldMapMoves
         return false;
     }
 
-    /** Where a map draws a point of the game: the map's id and the point as drawn there. */
     static final class Drawn
     {
         final int map;
@@ -103,10 +92,6 @@ final class WorldMapMoves
         }
     }
 
-    /**
-     * Where the map with id {@code mapId} draws a point of the game when it draws it elsewhere (the inverse of
-     * {@link #toWorld(int, WorldPoint)}), or null when that map does not move it.
-     */
     static WorldPoint toDrawn(int mapId, WorldPoint game)
     {
         Move found = null;
@@ -120,11 +105,6 @@ final class WorldMapMoves
         return found == null ? null : drawnBy(found, game);
     }
 
-    /**
-     * The map that draws a point of the game elsewhere, and where: the Kalphite Lair (floor 2) on the Kharidian Desert
-     * Underground beside the desert caves, as floor 0. Null when no map moves it. When several do, the last listed
-     * (the finest) wins, as in {@link #toWorld(int, WorldPoint)}.
-     */
     static Drawn drawn(WorldPoint game)
     {
         Move found = null;
@@ -138,14 +118,15 @@ final class WorldMapMoves
         return found == null ? null : new Drawn(found.map, drawnBy(found, game));
     }
 
-    /** Whether a move takes this point of the game: in its area as it is in the game, on one of its floors. */
     private static boolean moves(Move move, WorldPoint game)
     {
-        int x = game.getX() - move.dx;
-        int y = game.getY() - move.dy;
         int floor = game.getPlane() - move.plane;
-        return x >= move.x && x < move.x + move.width && y >= move.y && y < move.y + move.height && floor >= 0
-            && floor < move.planes;
+        return inside(move, game.getX() - move.dx, game.getY() - move.dy) && floor >= 0 && floor < move.planes;
+    }
+
+    private static boolean inside(Move move, int x, int y)
+    {
+        return x >= move.x && x < move.x + move.width && y >= move.y && y < move.y + move.height;
     }
 
     private static WorldPoint drawnBy(Move move, WorldPoint game)
@@ -153,7 +134,6 @@ final class WorldMapMoves
         return new WorldPoint(game.getX() - move.dx, game.getY() - move.dy, game.getPlane() - move.plane);
     }
 
-    /** {@link #toWorld(int, WorldPoint)} for each point. */
     static List<WorldPoint> toWorld(int mapId, List<WorldPoint> drawn)
     {
         List<WorldPoint> points = new ArrayList<>(drawn.size());
@@ -200,7 +180,6 @@ final class WorldMapMoves
         }
         catch (IOException e)
         {
-            // Then points stay as drawn.
             log.warn("Could not read world_map_moves.tsv", e);
         }
         return moves;

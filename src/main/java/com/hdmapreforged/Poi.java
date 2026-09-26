@@ -8,12 +8,11 @@ import net.runelite.api.coords.WorldPoint;
 /** An icon on the map. */
 final class Poi
 {
-    /** Where an icon leads, and what that particular trip needs. */
     static final class Link
     {
         final String label;
         final WorldPoint point;
-        /** The map containing {@link #point}, or null when the wiki has no map for it. */
+        /** Null when the wiki has no map for it. */
         final BaseMap map;
         final Needs needs;
 
@@ -29,20 +28,18 @@ final class Poi
     final PoiType type;
     final String name;
     final WorldPoint location;
-    /** The map containing {@link #location}, or null. */
     final BaseMap map;
-    /** Icons sharing a group (such as all Ardougne cloak teleports) are highlighted together; may be null. */
+    /** Highlighted together (such as all Ardougne cloak teleports); may be null. */
     final String group;
     final Needs needs;
     final String wikiQuery;
-    /** The map an entrance or passage leads to, or null. */
+    /** Where an entrance or passage leads, or null. */
     final BaseMap target;
-    /** An extra line for the detail card, or null. */
     final String note;
     private final List<Link> links = new ArrayList<>();
-    /** Teleports landing on the same spot, shown as this one icon; empty for a single teleport. */
+    /** Teleports stacked on this icon; empty for a single one. */
     private final List<Poi> members = new ArrayList<>();
-    /** Other things at the same place that this icon stands for (a teleport landing at a portal, say). */
+    /** Other things at the same place this icon stands for. */
     private final List<Poi> nearby = new ArrayList<>();
 
     Poi(PoiType type, String name, WorldPoint location, BaseMap map, String group, Needs needs, String wikiQuery,
@@ -74,7 +71,6 @@ final class Poi
         members.add(member);
     }
 
-    /** The teleports this icon stands for: those stacked on it, or just itself. */
     List<Poi> members()
     {
         return members.isEmpty() ? Collections.singletonList(this) : Collections.unmodifiableList(members);
@@ -85,13 +81,12 @@ final class Poi
         nearby.add(poi);
     }
 
-    /** Other things this icon stands for, at the same place. */
     List<Poi> nearby()
     {
         return Collections.unmodifiableList(nearby);
     }
 
-    /** Icons with the things they stand for at the same place, for code that needs every teleport and transport. */
+    /** Icons with the things they stand for. */
     static List<Poi> flatten(List<Poi> pois)
     {
         List<Poi> all = new ArrayList<>(pois.size() + 16);
@@ -103,13 +98,11 @@ final class Poi
         return all;
     }
 
-    /** Whether this icon, or a teleport stacked on it, belongs to a group. */
     boolean hasGroup(String group)
     {
         return memberOf(group) != null;
     }
 
-    /** The teleport of a group this icon stands for, or null. */
     Poi memberOf(String group)
     {
         if (group == null)

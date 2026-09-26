@@ -8,17 +8,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Predicate;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * The passages the route planner trusts to lead somewhere else (the game's own map links, map_link_passages.tsv, and
- * the hand links with their source, links.tsv): for icons of the game's that say "dungeon" but have no map link, where
- * the passage beside them leads. Nothing here is guessed; see local-development/APPROACH.md.
- */
+/** The planner's trusted passages, for game "dungeon" icons without a map link. Nothing guessed; see APPROACH.md. */
 final class TrustedPassages
 {
     private static final String[] TABLES = {"map_link_passages.tsv", "links.tsv"};
-    /** How near the icon the passage must start, in tiles. */
     static final int RADIUS = 2;
 
     private static volatile List<WorldPoint[]> passages;
@@ -27,12 +23,8 @@ final class TrustedPassages
     {
     }
 
-    /**
-     * Where a passage starting beside a point leads to another place (a far leap or another floor), or null. A way on
-     * underground wins over a way up to the surface: a dungeon marker stands for the dungeon it leads into (Waterbirth's
-     * ladder goes both up to the island and down to the sub-levels; the game's map link beside it already goes up).
-     */
-    static WorldPoint leadsFrom(WorldPoint at, java.util.function.Predicate<WorldPoint> surface)
+    /** A way underground wins over one up to the surface (Waterbirth's ladder goes both ways). */
+    static WorldPoint leadsFrom(WorldPoint at, Predicate<WorldPoint> surface)
     {
         WorldPoint best = null;
         int bestScore = Integer.MAX_VALUE;
@@ -99,7 +91,6 @@ final class TrustedPassages
         }
         catch (IOException | RuntimeException e)
         {
-            // Without the table, no icon gets a way in from it.
         }
     }
 

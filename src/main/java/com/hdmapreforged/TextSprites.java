@@ -11,10 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Outlined map text, rendered once and then copied: each outlined label is nine antialiased strings, and a map
- * full of place names drew thousands of them per frame. Swing thread only.
- */
+/** Outlined map text, rendered once then copied (each label is nine antialiased strings). Swing thread only. */
 final class TextSprites
 {
     private static final int LIMIT = 1500;
@@ -62,10 +59,7 @@ final class TextSprites
         }
     };
 
-    /**
-     * Draws text with a dark outline, its baseline starting at {@code (x, y)}, as {@code g.drawString} would with
-     * the given font.
-     */
+    /** Like {@code g.drawString} with the given font, outlined. */
     void draw(Graphics2D g, String text, Font font, float x, float y, Color color)
     {
         AffineTransform transform = g.getTransform();
@@ -92,7 +86,8 @@ final class TextSprites
         PoiIcons.blit(g, sprite, x - 2, y - ascent - 2);
     }
 
-    /** Text with a dark outline, drawn directly. */
+    /** Drawn directly, not cached. */
+
     static void outlined(Graphics2D g, String text, float x, float y, Color color)
     {
         g.setColor(OUTLINE);

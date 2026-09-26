@@ -15,16 +15,10 @@ import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * The last routes planned, in a plain text file of the player's own ({@code routes.log} in the plugin's folder), so a
- * wrong route can be looked at afterwards: where it went from and to, the player's Sailing and boat, and every step with
- * its tiles and what it needs; also the way anyone could go when the player's way did not arrive. Nothing is sent
- * anywhere. Only while switched on (a setting); written in the order the routes came, whatever thread writes.
- */
+/** The last routes planned, in a local {@code routes.log} for looking at wrong routes; only with the setting on. */
 @Slf4j
 final class RouteLog
 {
-    /** Routes kept, newest last. */
     static final int KEEP = 30;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -32,7 +26,7 @@ final class RouteLog
     private final Executor io;
     private final BooleanSupplier enabled;
     private final Deque<String> entries = new ArrayDeque<>();
-    /** Numbers the texts to write, so an older one never overwrites a newer (the executor may run them in any order). */
+    /** So an older text never overwrites a newer (the executor may run them in any order). */
     private long added;
     private long written;
     private final Object writing = new Object();
@@ -42,7 +36,6 @@ final class RouteLog
         this(file, io, () -> true);
     }
 
-    /** {@code enabled}: whether routes are written now (the setting). */
     RouteLog(File file, Executor io, BooleanSupplier enabled)
     {
         this.file = file;
@@ -50,7 +43,7 @@ final class RouteLog
         this.enabled = enabled;
     }
 
-    /** Adds a route: {@code what} says which (the player's way, the way anyone could go). Swing thread. */
+    /** Swing thread. */
     void add(String what, int start, int target, PlayerState state, Route route)
     {
         if (!enabled.getAsBoolean())
@@ -74,7 +67,7 @@ final class RouteLog
         {
             text.append("  ").append(route.outcome).append(route.exhausted ? " (searched everything)" : "")
                 .append(route.limited ? " (stopped at the search limit)" : "").append(", ")
-                // The time the trip takes, as the route card says it; not the planner's weights.
+                // As the route card says it; not the planner's weights.
                 .append((route.time() + 1) / 2).append(" ticks, ends at ")
                 .append(route.end >= 0 ? Tiles.format(route.end) : "-").append('\n');
             for (Route.Step step : route.steps)
@@ -104,7 +97,6 @@ final class RouteLog
         io.execute(() -> write(number, all));
     }
 
-    /** Writes the routes as they were at {@code number}, unless a later text was written already. */
     private void write(long number, String all)
     {
         synchronized (writing)
@@ -114,24 +106,19 @@ final class RouteLog
                 return;
             }
             written = number;
-            write(all);
-        }
-    }
-
-    private void write(String all)
-    {
-        try
-        {
-            File dir = file.getParentFile();
-            if (dir != null && !dir.isDirectory() && !dir.mkdirs())
+            try
             {
-                return;
+                File dir = file.getParentFile();
+                if (dir != null && !dir.isDirectory() && !dir.mkdirs())
+                {
+                    return;
+                }
+                Files.write(file.toPath(), all.getBytes(StandardCharsets.UTF_8));
             }
-            Files.write(file.toPath(), all.getBytes(StandardCharsets.UTF_8));
-        }
-        catch (IOException e)
-        {
-            log.debug("Could not write {}", file, e);
+            catch (IOException e)
+            {
+                log.debug("Could not write {}", file, e);
+            }
         }
     }
 }

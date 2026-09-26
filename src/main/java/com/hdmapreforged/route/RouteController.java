@@ -1,5 +1,8 @@
 package com.hdmapreforged.route;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -9,21 +12,10 @@ import java.util.function.LongSupplier;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * When to search, so it never happens too often. The user asks for a route to a tile ("Path to here"); the search
- * runs on a background executor, one at a time. Later, when the player strays from the route (walked elsewhere,
- * teleported), the route is searched again automatically, but:
- * <ul>
- * <li>never while a search runs;</li>
- * <li>with a growing pause between automatic searches ({@link #FIRST_BACKOFF_MS}, doubling up to
- * {@link #MAX_BACKOFF_MS});</li>
- * <li>at most {@link #MAX_AUTOMATIC} automatic searches per target;</li>
- * <li>not at all for a target a finished (exhausted) search proved unreachable, until the user does something or a
- * setting changes;</li>
- * <li>not while the start is unknown or the player is in an instance other than their house (the position there is
- * a copy of some template, and would make every tick look like a stray).</li>
- * </ul>
- * All methods are called from one thread (Swing); results come back through {@code callbacks}, also when a search
- * fails.
+ * When to search, so it never happens too often: one search at a time; when the player strays, automatic searches
+ * with a doubling pause, at most {@link #MAX_AUTOMATIC} per target, none for a target proved unreachable (until a user
+ * action) and none in instances other than the house (their positions are template copies). Called on one thread
+ * (Swing); results come back through {@code callbacks}, also when a search fails.
  */
 @Slf4j
 public final class RouteController
@@ -31,10 +23,10 @@ public final class RouteController
     public static final long FIRST_BACKOFF_MS = 3_000;
     public static final long MAX_BACKOFF_MS = 60_000;
     public static final int MAX_AUTOMATIC = 6;
-    /** How far (tiles) the player may be from the route before it counts as left. */
+    /** Tiles from the route before the player counts as having left it. */
     public static final int STRAY = 12;
 
-    /** Builds a search for a target from the player's current state, or returns null when it cannot (no start). */
+    /** Builds a search for a target, or null when there is no start. */
     public interface Requests extends IntFunction<RouteRequest>
     {
     }
@@ -49,16 +41,16 @@ public final class RouteController
     private int target = -1;
     private Route route;
     private AtomicBoolean running;
-    /** A search the user asked for while another ran; started when that one ends. */
+    /** A user search asked for while another ran; started when that one ends. */
     private boolean pendingUser;
     private int automatic;
     private long backoff = FIRST_BACKOFF_MS;
     private long nextAutomatic;
-    /** Targets a finished search proved unreachable, with where that search started from. */
-    private final java.util.Map<Integer, Integer> unreachable = new java.util.HashMap<>();
+    /** Targets proved unreachable, with where that search started from. */
+    private final Map<Integer, Integer> unreachable = new HashMap<>();
     private int searchesStarted;
     private String status;
-    /** When a search could not start for want of a position, and when it may be tried again (see playerMoved). */
+    /** A search could not start for want of a position, and when to try again. */
     private boolean noStart;
     private long nextStartTry;
 
@@ -73,7 +65,6 @@ public final class RouteController
         this.clock = clock;
     }
 
-    /** "Path to here": a user action. */
     public void setTarget(int target)
     {
         userAction();
@@ -84,26 +75,17 @@ public final class RouteController
         changed.accept(this);
     }
 
-    /**
-     * A route planned already (the next part of a custom route, from the stop before): shown as found, without a
-     * search. When the player leaves it, it is searched again as usual.
-     */
+    /** A route planned already (a custom route's next part): shown as found, without a search. */
     public void show(int target, Route planned)
     {
         userAction();
-        if (running != null)
-        {
-            running.set(true);
-            running = null;
-        }
-        pendingUser = false;
+        cancelRunning();
         this.target = target;
         route = planned;
         status = null;
         changed.accept(this);
     }
 
-    /** "Clear path": a user action. */
     public void clear()
     {
         userAction();
@@ -111,16 +93,21 @@ public final class RouteController
         route = null;
         status = null;
         noStart = false;
+        cancelRunning();
+        changed.accept(this);
+    }
+
+    private void cancelRunning()
+    {
         if (running != null)
         {
             running.set(true);
             running = null;
         }
         pendingUser = false;
-        changed.accept(this);
     }
 
-    /** A setting that changes routes (or the player's unlocks, bank) changed: search again once. */
+    /** A setting that changes routes (or unlocks, bank) changed: search again once. */
     public void settingsChanged()
     {
         userAction();
@@ -138,15 +125,12 @@ public final class RouteController
         nextAutomatic = 0;
     }
 
-    /**
-     * Where the player is now ({@code player} packed, or -1 when unknown), and whether an automatic search may run
-     * at all (false in instances other than the house). Starts a search when the player left the route.
-     */
+    /** {@code player} packed or -1; starts a search when the player left the route. */
     public void playerMoved(int player, boolean automaticAllowed)
     {
         if (target >= 0 && running == null && route == null && noStart && player >= 0)
         {
-            // Asked for where the position was not known: tried again once it is, now and then.
+            // Asked for where the position was unknown: retried now and then once it is known.
             long now = clock.getAsLong();
             if (now >= nextStartTry)
             {
@@ -161,14 +145,13 @@ public final class RouteController
         }
         if (onRoute(player))
         {
-            // Back on the way: long trips (a dungeon with detours) get their automatic searches again.
+            // Back on the way: long trips get their automatic searches again.
             backoff = FIRST_BACKOFF_MS;
             automatic = 0;
             return;
         }
         long now = clock.getAsLong();
-        // Unreachable from where that search started; from somewhere else (past a door, off a stepping stone) it may
-        // not be.
+        // Unreachable from where that search started; from elsewhere (past a door) it may not be.
         Integer from = unreachable.get(target);
         boolean stillUnreachable = from != null && (from < 0 || near(player, from, STRAY));
         if (stillUnreachable || automatic >= MAX_AUTOMATIC || now < nextAutomatic)
@@ -181,31 +164,26 @@ public final class RouteController
         start(false);
     }
 
-    /** How close to the end of the route counts as arrived. */
     public static final int ARRIVED = 3;
 
-    /**
-     * Whether the player has reached the end of the route (or the tile asked for): within {@link #ARRIVED} tiles, on
-     * the same floor.
-     */
+    /** Within {@link #ARRIVED} tiles of the route's end (or the tile asked for), on the same floor. */
     public boolean arrived(int player)
     {
         if (player < 0 || route == null || Tiles.isSea(player))
         {
             return false;
         }
-        // A route that cannot get there ends where it gets stuck (a door, a gate): that is no arrival.
+        // A route that cannot get there ends where it gets stuck: no arrival.
         int end = route.outcome != Route.Outcome.FOUND ? -1 : route.end >= 0 ? route.end : target;
         return end >= 0 && Tiles.z(end) == Tiles.z(player) && Tiles.distance(player, end) <= ARRIVED
             || target >= 0 && Tiles.z(target) == Tiles.z(player) && Tiles.distance(player, target) <= ARRIVED;
     }
 
-    /** Whether the player is on or near the route (or past its end). */
     boolean onRoute(int player)
     {
         if (route.steps.isEmpty())
         {
-            // Already there; or no start found, which a later position may fix (within the backoff and cap).
+            // Already there; or no start found, which a later position may fix.
             return route.end >= 0 && near(player, route.end, STRAY);
         }
         if (route.end >= 0 && near(player, route.end, STRAY))
@@ -247,7 +225,7 @@ public final class RouteController
         {
             if (user)
             {
-                // The user's newest request wins: stop the old search, start this one when it ends.
+                // The newest user request wins: start it when the old one ends.
                 running.set(true);
                 pendingUser = true;
             }
@@ -276,13 +254,12 @@ public final class RouteController
                 }
                 catch (Throwable e)
                 {
-                    // Out of memory, a bug: said in the log, and the controller is free for the next search.
                     log.warn("Route search to {} failed", Tiles.format(searched), e);
                 }
                 finally
                 {
                     Route done = result != null ? result : new Route(Route.Outcome.NONE,
-                        java.util.Collections.emptyList(), 0, searched, -1, false, false, 0);
+                        Collections.emptyList(), 0, searched, -1, false, false, 0);
                     callbacks.execute(() -> finished(cancel, searched, from, done));
                 }
             });
@@ -336,7 +313,7 @@ public final class RouteController
         return running != null;
     }
 
-    /** A message instead of a route (searching, no start), or null. */
+    /** A message instead of a route, or null. */
     public String status()
     {
         return status;
@@ -347,7 +324,8 @@ public final class RouteController
         return unreachable.containsKey(target);
     }
 
-    /** For tests: how many searches were started. */
+    /** For tests. */
+
     public int searchesStarted()
     {
         return searchesStarted;

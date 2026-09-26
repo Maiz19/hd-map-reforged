@@ -9,32 +9,26 @@ import java.util.Map;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.events.PluginMessage;
 
-/**
- * Talking to the Shortest Path plugin, if the player has it, through RuneLite's plugin messages: its public
- * message format only, none of its code. Plugins such as Quest Helper send it directions this way; routes asked for
- * on this map can be handed to it too.
- */
+/** Talking to the Shortest Path plugin through RuneLite plugin messages (its public message format only). */
 final class ShortestPathBridge
 {
     static final String NAMESPACE = "shortestpath";
     static final String PATH = "path";
     static final String CLEAR = "clear";
     static final String TARGET = "target";
-    /** The plugin's name in RuneLite's plugin list. */
     static final String PLUGIN_NAME = "Shortest Path";
-    /** Jumps and targets read from one message at most: messages come from other plugins. */
+    /** Cap per message: messages come from other plugins. */
     static final int MAX_POINTS = 64;
 
     private ShortestPathBridge()
     {
     }
 
-    /** "Show a path to here" for Shortest Path. */
     static PluginMessage path(WorldPoint target)
     {
         Map<String, Object> data = new HashMap<>();
         data.put(TARGET, target);
-        // Ask it to tell which transports its path uses, so this map can draw the route too.
+        // Ask it to tell which transports its path uses, so we can draw the route too.
         Map<String, Object> config = new HashMap<>();
         config.put("postTransports", true);
         data.put("config", config);
@@ -43,7 +37,7 @@ final class ShortestPathBridge
 
     static final String TRANSPORTS = "transports";
 
-    /** One jump of Shortest Path's route: a transport or teleport, from where to where. */
+    /** A transport or teleport of Shortest Path's route. */
     static final class Jump
     {
         final WorldPoint from;
@@ -63,7 +57,7 @@ final class ShortestPathBridge
         return NAMESPACE.equals(message.getNamespace()) && TRANSPORTS.equals(message.getName());
     }
 
-    /** The transports of Shortest Path's current route, in order; empty when unreadable. */
+    /** In order; empty when unreadable. */
     static List<Jump> jumps(PluginMessage message)
     {
         Map<String, Object> data = message.getData();
@@ -105,10 +99,7 @@ final class ShortestPathBridge
         return NAMESPACE.equals(message.getNamespace()) && CLEAR.equals(message.getName());
     }
 
-    /**
-     * The targets of a path message: a WorldPoint, a packed point, or a collection of either. Empty when there is
-     * none or it is unreadable.
-     */
+    /** A WorldPoint, a packed point, or a collection of either; empty when none or unreadable. */
     static List<WorldPoint> targets(PluginMessage message)
     {
         Map<String, Object> data = message.getData();
@@ -140,10 +131,7 @@ final class ShortestPathBridge
         return points.isEmpty() ? Collections.emptyList() : points;
     }
 
-    /**
-     * A WorldPoint, or a point packed as x | y << 15 | plane << 30 (the message format); -1 means none. Null too for a
-     * point outside the game world.
-     */
+    /** A WorldPoint, or packed as x | y << 15 | plane << 30 (-1 none); null outside the game world. */
     static WorldPoint point(Object value)
     {
         WorldPoint point = null;
@@ -163,7 +151,8 @@ final class ShortestPathBridge
         return HdMapPartyLocation.plausible(point) ? point : null;
     }
 
-    /** Of several targets, the one nearest to where the player is (or the first when that is unknown). */
+    /** The target nearest the player (the first when unknown). */
+
     static WorldPoint nearest(List<WorldPoint> targets, WorldPoint from)
     {
         WorldPoint best = null;

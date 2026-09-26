@@ -24,7 +24,7 @@ final class KnownVersion
         this.checkedAt = checkedAt;
     }
 
-    /** Whether the wiki should be asked again. A check time in the future (a changed clock) counts as due. */
+    /** A check time in the future (a changed clock) counts as due. */
     boolean due(HdMapReforgedConfig.UpdateCheck check, long now)
     {
         if (check.days < 0)
@@ -34,7 +34,8 @@ final class KnownVersion
         return check.days == 0 || now < checkedAt || now - checkedAt >= check.days * DAY_MS;
     }
 
-    /** The stored version, or null when missing or unusable. */
+    /** Null when missing or unusable. */
+
     static KnownVersion read(File file)
     {
         if (!file.isFile())

@@ -8,14 +8,10 @@ import java.util.List;
 import java.util.Locale;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * What the game's Hunter training, Fishing spot, Mining site and Rare trees icons stand for: the creatures, fish,
- * rocks or trees there and their levels, from RuneLite's world map lists ({@code runelite_skill_spots.tsv}).
- */
+/** What the game's Hunter, Fishing, Mining and Rare trees icons stand for, from RuneLite's world map lists. */
 final class SkillSpots
 {
     static final String FILE = "runelite_skill_spots.tsv";
-    /** How far a baked icon may be from the listed spot. */
     private static final int RADIUS = 12;
 
     static final class Spot
@@ -24,7 +20,7 @@ final class SkillSpots
         /** hunter, fishing, mining or trees. */
         final String kind;
         final String name;
-        /** The lowest level any of it needs, or 0 when not known. */
+        /** The lowest level any of it needs, or 0. */
         final int level;
         final String details;
 
@@ -79,7 +75,6 @@ final class SkillSpots
         return new SkillSpots(spots);
     }
 
-    /** The kind of spot a game map icon shows, or null for icons of other things. */
     static String kindOf(String iconName)
     {
         switch (iconName.toLowerCase(Locale.ROOT))
@@ -97,7 +92,6 @@ final class SkillSpots
         }
     }
 
-    /** The listed spot nearest a game map icon of that kind, or null. */
     Spot near(String iconName, WorldPoint at)
     {
         String kind = kindOf(iconName);
@@ -119,7 +113,6 @@ final class SkillSpots
         return best;
     }
 
-    /** The skill each kind of spot trains. */
     static String skill(String kind)
     {
         switch (kind)
@@ -135,7 +128,6 @@ final class SkillSpots
         }
     }
 
-    /** The icon for a spot: its name, what is there with levels, and the lowest level as requirement. */
     static Poi poi(Spot spot, WorldPoint at, BaseMap map, String place)
     {
         String skill = skill(spot.kind);

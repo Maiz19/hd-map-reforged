@@ -12,19 +12,13 @@ import java.util.function.BooleanSupplier;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * Decides which wiki map shows a place when several maps' bounds contain it, by looking at each candidate map's
- * tile there: the wiki leaves areas a map does not show black. Works for any map version, so a new wiki map needs
- * no plugin update. Blocking; run on a background thread.
- */
+/** Which wiki map shows a place several maps' bounds contain, by each one's tiles. Blocking; background thread. */
 @Slf4j
 final class RegionResolver
 {
-    /** At zoom 0 one game tile is one pixel, so a region is a 64×64 block of a 256×256 tile. */
     private static final int ZOOM = 0;
     private static final int REGION = 64;
     private static final int MIN_LIT = 24;
-    /** Drawn tiles an 8×8 zone needs to count as drawn by a map. */
     private static final int ZONE_LIT = 3;
 
     private final TileCache tiles;
@@ -34,7 +28,6 @@ final class RegionResolver
         this.tiles = tiles;
     }
 
-    /** Maps whose bounds contain the tile; the combined map never counts. */
     static List<BaseMap> candidates(BaseMaps maps, int x, int y)
     {
         List<BaseMap> found = new ArrayList<>();
@@ -48,20 +41,17 @@ final class RegionResolver
         return found;
     }
 
-    /**
-     * Whether a place needs checking: several maps claim it, or a single map other than the surface (dungeon map
-     * bounds are loose, and some areas are shown only on the combined map).
-     */
+    /** Several maps claim it, or one other than the surface (dungeon bounds are loose). */
     static boolean needsCheck(BaseMaps maps, int x, int y)
     {
-        List<BaseMap> found = candidates(maps, x, y);
+        return doubtful(candidates(maps, x, y));
+    }
+
+    private static boolean doubtful(List<BaseMap> found)
+    {
         return found.size() > 1 || found.size() == 1 && found.get(0).id != BaseMap.SURFACE;
     }
 
-    /**
-     * Resolves every not yet checked region, among those of {@code points}, that more than one map claims.
-     * Returns how many regions were added to {@code table}.
-     */
     int resolve(String version, BaseMaps maps, RegionTable table, Collection<WorldPoint> points, BooleanSupplier cancelled)
     {
         Map<Integer, WorldPoint> regions = new LinkedHashMap<>();
@@ -94,10 +84,6 @@ final class RegionResolver
         return added;
     }
 
-    /**
-     * Resolves every region of the world that more than one map claims, or a single map other than the surface
-     * (building the bundled table). Returns how many regions were added.
-     */
     int resolveAll(String version, BaseMaps maps, RegionTable table, BooleanSupplier cancelled)
     {
         int minX = Integer.MAX_VALUE;
@@ -116,7 +102,6 @@ final class RegionResolver
         }
         Map<TileCache.Key, BufferedImage> images = new HashMap<>();
         int added = 0;
-        // Column by column, so the tiles of one 256-wide strip are read together.
         for (int rx = minX & ~63; rx < maxX; rx += REGION)
         {
             for (int ry = minY & ~63; ry < maxY; ry += REGION)
@@ -143,14 +128,10 @@ final class RegionResolver
         return added;
     }
 
-    /** Whether any tile of a region needs a check (a dungeon map's bounds reaching into part of it). */
     private static boolean needsCheckAnywhere(BaseMaps maps, int rx, int ry)
     {
-        List<BaseMap> found = candidatesIn(maps, rx, ry);
-        return found.size() > 1 || found.size() == 1 && found.get(0).id != BaseMap.SURFACE;
+        return doubtful(candidatesIn(maps, rx, ry));
     }
-
-    /** Maps whose bounds reach into a region; the combined map never counts. */
     static List<BaseMap> candidatesIn(BaseMaps maps, int rx, int ry)
     {
         List<BaseMap> found = new ArrayList<>();
@@ -166,9 +147,8 @@ final class RegionResolver
     }
 
     /**
-     * Looks at every candidate map's tiles (all floors) over one region: which maps draw it, and when several, which
-     * of them draw each 8×8 zone. False when a tile could not be read (tried again another time). When no candidate
-     * had a single tile there, the answer is kept for this session only: the wiki may have been missing them briefly.
+     * Which candidate maps draw a region (all floors), and each 8×8 zone. False when a tile could not be read. With no
+     * tile at all the answer is kept for this session only: the wiki may have been missing them briefly.
      */
     private boolean resolveRegion(String version, BaseMaps maps, RegionTable table, int rx, int ry,
         Map<TileCache.Key, BufferedImage> images)
@@ -223,13 +203,11 @@ final class RegionResolver
         {
             whole &= mask == (1 << Math.min(6, ids.length)) - 1;
         }
-        // Zones where several maps share a region, or where its one map draws only part of it (the rest belongs to the
-        // map of everything, or to no map); none where one map draws all of it.
+        // Zone masks unless one map draws the whole region.
         table.put(RegionTable.regionId(rx, ry), ids, whole ? null : masks);
         return true;
     }
 
-    /** Drawn pixels (one per game tile at zoom 0) of a map's floor over a region, added up per zone too. */
     private int count(String version, BaseMap map, int rx, int ry, int plane, int[] zones,
         Map<TileCache.Key, BufferedImage> images, boolean[] anyTile) throws IOException
     {

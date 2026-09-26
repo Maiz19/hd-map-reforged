@@ -15,6 +15,7 @@ import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /** Vector map icons, so they stay sharp at every zoom level and interface scale. */
 final class PoiIcons
@@ -26,18 +27,14 @@ final class PoiIcons
     {
     }
 
-    /** Rendered badges by type, size and screen scale; icons are drawn from these instead of shape by shape. */
+    /** Rendered badges by type, size and screen scale. */
     private static final Map<Long, BufferedImage> SPRITES = new ConcurrentHashMap<>();
     private static final int MAX_SPRITES = 4000;
 
-    /**
-     * Same as {@link #paint}, from a cached image: a map with hundreds of icons draws them each frame, and painting
-     * each badge's shapes, strokes and glyph every time was the largest cost of a frame.
-     */
+    /** {@link #paint} from a cached image: painting hundreds of badges shape by shape was most of a frame's cost. */
     static void paintCached(Graphics2D g, PoiType type, double cx, double cy, double size, boolean emphasised)
     {
-        AffineTransform transform = g.getTransform();
-        double device = Math.max(1, Math.min(4, Math.abs(transform.getScaleX())));
+        double device = device(g.getTransform());
         // Quarter pixels of badge size, so zooming changes the image in small steps.
         int quarter = (int) Math.round(size * 4);
         int deviceTenths = (int) Math.round(device * 10);
@@ -53,31 +50,23 @@ final class PoiIcons
             {
                 SPRITES.clear();
             }
-            int pixels = (int) Math.ceil(extent * device);
-            sprite = new BufferedImage(pixels, pixels, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D sg = sprite.createGraphics();
-            sg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            sg.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
-            sg.scale(device, device);
-            paint(sg, type, extent / 2, extent / 2, drawnSize, emphasised);
-            sg.dispose();
+            sprite = sprite(extent, device, sg -> {
+                sg.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+                paint(sg, type, extent / 2, extent / 2, drawnSize, emphasised);
+            });
             SPRITES.put(key, sprite);
         }
         blit(g, sprite, cx - extent / 2, cy - extent / 2);
     }
 
-    /**
-     * Draws a sprite made at the screen's own resolution with its top left at {@code (x, y)}, on whole screen
-     * pixels: a plain copy. Placed on fractions of a pixel, Java2D resamples the image for every draw, which made
-     * the map slow with hundreds of icons and names; half a pixel off is not seen.
-     */
+    /** Draws a screen-resolution sprite on whole screen pixels: at fractions Java2D resamples it each draw (slow). */
     static void blit(Graphics2D g, BufferedImage sprite, double x, double y)
     {
         AffineTransform transform = g.getTransform();
         if ((transform.getType() & (AffineTransform.TYPE_GENERAL_ROTATION | AffineTransform.TYPE_QUADRANT_ROTATION
             | AffineTransform.TYPE_GENERAL_TRANSFORM | AffineTransform.TYPE_FLIP)) != 0)
         {
-            double device = Math.max(1, Math.min(4, Math.abs(transform.getScaleX())));
+            double device = device(transform);
             AffineTransform place = new AffineTransform(transform);
             place.translate(x, y);
             place.scale(1 / device, 1 / device);
@@ -94,42 +83,48 @@ final class PoiIcons
     /** A white dot with a coloured rim, marking where a line ends; from a cached image. */
     static void paintDot(Graphics2D g, double cx, double cy, Color rim)
     {
-        AffineTransform transform = g.getTransform();
-        double device = Math.max(1, Math.min(4, Math.abs(transform.getScaleX())));
+        double device = device(g.getTransform());
         long key = (1L << 62) | ((long) (rim.getRGB() & 0xffffffffL) << 8) | (int) Math.round(device * 10);
         double extent = 13;
         BufferedImage sprite = SPRITES.get(key);
         if (sprite == null)
         {
-            int pixels = (int) Math.ceil(extent * device);
-            sprite = new BufferedImage(pixels, pixels, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D sg = sprite.createGraphics();
-            sg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            sg.scale(device, device);
-            double r = 4.5;
-            double c = extent / 2;
-            sg.setColor(Color.WHITE);
-            sg.fill(new Ellipse2D.Double(c - r, c - r, r * 2, r * 2));
-            sg.setColor(rim);
-            sg.setStroke(new BasicStroke(2f));
-            sg.draw(new Ellipse2D.Double(c - r, c - r, r * 2, r * 2));
-            sg.dispose();
+            sprite = sprite(extent, device, sg -> {
+                Ellipse2D dot = new Ellipse2D.Double(extent / 2 - 4.5, extent / 2 - 4.5, 9, 9);
+                sg.setColor(Color.WHITE);
+                sg.fill(dot);
+                sg.setColor(rim);
+                sg.setStroke(new BasicStroke(2f));
+                sg.draw(dot);
+            });
             SPRITES.put(key, sprite);
         }
         blit(g, sprite, cx - extent / 2, cy - extent / 2);
     }
 
-    /** Forgets drawn icons, such as when the game's own icons became available. */
+    private static double device(AffineTransform transform)
+    {
+        return Math.max(1, Math.min(4, Math.abs(transform.getScaleX())));
+    }
+
+    private static BufferedImage sprite(double extent, double device, Consumer<Graphics2D> draw)
+    {
+        int pixels = (int) Math.ceil(extent * device);
+        BufferedImage sprite = new BufferedImage(pixels, pixels, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D sg = sprite.createGraphics();
+        sg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        sg.scale(device, device);
+        draw.accept(sg);
+        sg.dispose();
+        return sprite;
+    }
+
     static void clearCache()
     {
         SPRITES.clear();
     }
 
-    /**
-     * The icon for a type centered on {@code (cx, cy)}: the game's own map icon where it has one for this kind of
-     * place (drawn at {@code size}, like the icons in the map tiles), else a round badge in the type's color with a
-     * white symbol.
-     */
+    /** The game's own map icon for the type if it has one, else a round badge in the type's color with a glyph. */
     static void paint(Graphics2D g, PoiType type, double cx, double cy, double size, boolean emphasised)
     {
         BufferedImage game = GameIconSprites.get(type);
@@ -174,7 +169,7 @@ final class PoiIcons
         // Pixel art: crisp when enlarged, smooth when made smaller.
         copy.setRenderingHint(RenderingHints.KEY_INTERPOLATION, scale >= 1
             ? RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR : RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        copy.drawImage(icon, new java.awt.geom.AffineTransform(scale, 0, 0, scale, cx - w / 2, cy - h / 2), null);
+        copy.drawImage(icon, new AffineTransform(scale, 0, 0, scale, cx - w / 2, cy - h / 2), null);
         copy.dispose();
     }
 
@@ -194,277 +189,213 @@ final class PoiIcons
                 }
                 break;
             case SPIRIT_TREE:
-            {
-                Path2D tree = new Path2D.Double();
-                tree.moveTo(x, y - s);
-                tree.lineTo(x + s * 0.8, y + s * 0.35);
-                tree.lineTo(x - s * 0.8, y + s * 0.35);
-                tree.closePath();
-                g.fill(tree);
-                g.fill(new Rectangle2D.Double(x - s * 0.15, y + s * 0.3, s * 0.3, s * 0.7));
+                g.fill(poly(x, y, s, 0, -1, 0.8, 0.35, -0.8, 0.35));
+                g.fill(rect(x, y, s, -0.15, 0.3, 0.3, 0.7));
                 break;
-            }
             case GNOME_GLIDER:
-            {
-                Path2D glider = new Path2D.Double();
-                glider.moveTo(x, y - s * 0.7);
-                glider.lineTo(x + s, y + s * 0.5);
-                glider.lineTo(x, y + s * 0.15);
-                glider.lineTo(x - s, y + s * 0.5);
-                glider.closePath();
-                g.fill(glider);
+                g.fill(poly(x, y, s, 0, -0.7, 1, 0.5, 0, 0.15, -1, 0.5));
                 break;
-            }
             case BALLOON:
-                g.fill(new Ellipse2D.Double(x - s * 0.7, y - s, s * 1.4, s * 1.4));
-                g.draw(new Line2D.Double(x - s * 0.4, y + s * 0.2, x - s * 0.25, y + s * 0.65));
-                g.draw(new Line2D.Double(x + s * 0.4, y + s * 0.2, x + s * 0.25, y + s * 0.65));
-                g.fill(new Rectangle2D.Double(x - s * 0.3, y + s * 0.6, s * 0.6, s * 0.4));
+                g.fill(oval(x, y, s, -0.7, -1, 1.4, 1.4));
+                line(g, x, y, s, -0.4, 0.2, -0.25, 0.65);
+                line(g, x, y, s, 0.4, 0.2, 0.25, 0.65);
+                g.fill(rect(x, y, s, -0.3, 0.6, 0.6, 0.4));
                 break;
             case QUETZAL:
-            {
-                Path2D bird = new Path2D.Double();
-                bird.moveTo(x - s, y - s * 0.2);
-                bird.quadTo(x - s * 0.4, y - s * 0.5, x, y + s * 0.3);
-                bird.quadTo(x + s * 0.4, y - s * 0.5, x + s, y - s * 0.2);
-                g.draw(bird);
+                g.draw(new Pen(x, y, s).m(-1, -0.2).q(-0.4, -0.5, 0, 0.3).q(0.4, -0.5, 1, -0.2));
                 break;
-            }
             case MUSHTREE:
                 g.fill(new Arc2D.Double(x - s, y - s * 0.9, s * 2, s * 1.6, 0, 180, Arc2D.CHORD));
-                g.fill(new Rectangle2D.Double(x - s * 0.22, y - s * 0.1, s * 0.44, s * 1.05));
+                g.fill(rect(x, y, s, -0.22, -0.1, 0.44, 1.05));
                 break;
             case OBELISK:
-            {
-                Path2D obelisk = new Path2D.Double();
-                obelisk.moveTo(x, y - s);
-                obelisk.lineTo(x + s * 0.35, y - s * 0.6);
-                obelisk.lineTo(x + s * 0.3, y + s);
-                obelisk.lineTo(x - s * 0.3, y + s);
-                obelisk.lineTo(x - s * 0.35, y - s * 0.6);
-                obelisk.closePath();
-                g.fill(obelisk);
+                g.fill(poly(x, y, s, 0, -1, 0.35, -0.6, 0.3, 1, -0.3, 1, -0.35, -0.6));
                 break;
-            }
             case BOAT:
             case CHARTER:
-            {
-                Path2D hull = new Path2D.Double();
-                hull.moveTo(x - s, y + s * 0.25);
-                hull.lineTo(x + s, y + s * 0.25);
-                hull.lineTo(x + s * 0.55, y + s * 0.8);
-                hull.lineTo(x - s * 0.55, y + s * 0.8);
-                hull.closePath();
-                g.fill(hull);
-                Path2D sail = new Path2D.Double();
-                sail.moveTo(x - s * 0.05, y - s);
-                sail.lineTo(x - s * 0.05, y + s * 0.1);
-                sail.lineTo(x - s * 0.75, y + s * 0.1);
-                sail.closePath();
-                g.fill(sail);
+                g.fill(poly(x, y, s, -1, 0.25, 1, 0.25, 0.55, 0.8, -0.55, 0.8));
+                g.fill(poly(x, y, s, -0.05, -1, -0.05, 0.1, -0.75, 0.1));
                 if (type == PoiType.CHARTER)
                 {
-                    Path2D second = new Path2D.Double();
-                    second.moveTo(x + s * 0.1, y - s * 0.75);
-                    second.lineTo(x + s * 0.1, y + s * 0.1);
-                    second.lineTo(x + s * 0.7, y + s * 0.1);
-                    second.closePath();
-                    g.fill(second);
+                    g.fill(poly(x, y, s, 0.1, -0.75, 0.1, 0.1, 0.7, 0.1));
                 }
                 break;
-            }
             case CANOE:
                 g.fill(new Arc2D.Double(x - s, y - s * 0.7, s * 2, s * 1.4, 180, 180, Arc2D.CHORD));
-                g.draw(new Line2D.Double(x + s * 0.2, y - s, x - s * 0.3, y + s * 0.4));
+                line(g, x, y, s, 0.2, -1, -0.3, 0.4);
                 break;
             case CARPET:
-            {
-                Path2D carpet = new Path2D.Double();
-                carpet.moveTo(x - s, y - s * 0.3);
-                carpet.quadTo(x - s * 0.5, y - s * 0.7, x, y - s * 0.3);
-                carpet.quadTo(x + s * 0.5, y + s * 0.1, x + s, y - s * 0.3);
-                carpet.lineTo(x + s, y + s * 0.35);
-                carpet.quadTo(x + s * 0.5, y + s * 0.75, x, y + s * 0.35);
-                carpet.quadTo(x - s * 0.5, y - s * 0.05, x - s, y + s * 0.35);
-                carpet.closePath();
-                g.fill(carpet);
+                g.fill(new Pen(x, y, s).m(-1, -0.3).q(-0.5, -0.7, 0, -0.3).q(0.5, 0.1, 1, -0.3).l(1, 0.35)
+                    .q(0.5, 0.75, 0, 0.35).q(-0.5, -0.05, -1, 0.35).z());
                 break;
-            }
             case MINECART:
             {
-                Path2D cart = new Path2D.Double();
-                cart.moveTo(x - s, y - s * 0.55);
-                cart.lineTo(x + s, y - s * 0.55);
-                cart.lineTo(x + s * 0.7, y + s * 0.35);
-                cart.lineTo(x - s * 0.7, y + s * 0.35);
-                cart.closePath();
-                g.fill(cart);
+                g.fill(poly(x, y, s, -1, -0.55, 1, -0.55, 0.7, 0.35, -0.7, 0.35));
                 double w = s * 0.26;
                 g.fill(new Ellipse2D.Double(x - s * 0.5 - w, y + s * 0.5 - w, w * 2, w * 2));
                 g.fill(new Ellipse2D.Double(x + s * 0.5 - w, y + s * 0.5 - w, w * 2, w * 2));
                 break;
             }
             case PORTAL:
-                g.draw(new Ellipse2D.Double(x - s * 0.6, y - s, s * 1.2, s * 2));
-                g.draw(new Ellipse2D.Double(x - s * 0.25, y - s * 0.5, s * 0.5, s));
+                g.draw(oval(x, y, s, -0.6, -1, 1.2, 2));
+                g.draw(oval(x, y, s, -0.25, -0.5, 0.5, 1));
                 break;
             case LEVER:
                 g.fill(new RoundRectangle2D.Double(x - s * 0.7, y + s * 0.45, s * 1.4, s * 0.45, s * 0.2, s * 0.2));
-                g.draw(new Line2D.Double(x, y + s * 0.5, x + s * 0.45, y - s * 0.6));
-                g.fill(new Ellipse2D.Double(x + s * 0.25, y - s, s * 0.5, s * 0.5));
+                line(g, x, y, s, 0, 0.5, 0.45, -0.6);
+                g.fill(oval(x, y, s, 0.25, -1, 0.5, 0.5));
                 break;
             case DUNGEON_ENTRANCE:
-            {
-                Path2D arch = new Path2D.Double();
-                arch.moveTo(x - s * 0.85, y + s);
-                arch.lineTo(x - s * 0.85, y - s * 0.1);
-                arch.quadTo(x - s * 0.85, y - s, x, y - s);
-                arch.quadTo(x + s * 0.85, y - s, x + s * 0.85, y - s * 0.1);
-                arch.lineTo(x + s * 0.85, y + s);
-                arch.closePath();
-                g.fill(arch);
+                g.fill(new Pen(x, y, s).m(-0.85, 1).l(-0.85, -0.1).q(-0.85, -1, 0, -1).q(0.85, -1, 0.85, -0.1).l(0.85, 1)
+                    .z());
                 g.setColor(OUTLINE);
                 g.fill(arrow(x, y + s * 0.05, s * 0.55, true));
                 break;
-            }
             case MAP_EXIT:
             case MAP_LINK:
                 g.fill(arrow(x, y, s, false));
                 break;
             case BANK:
-            {
-                g.fill(new Rectangle2D.Double(x - s * 0.9, y - s * 0.35, s * 1.8, s * 1.2));
-                Path2D lid = new Path2D.Double();
-                lid.moveTo(x - s * 0.9, y - s * 0.45);
-                lid.quadTo(x, y - s * 1.2, x + s * 0.9, y - s * 0.45);
-                lid.closePath();
-                g.fill(lid);
+                g.fill(rect(x, y, s, -0.9, -0.35, 1.8, 1.2));
+                g.fill(new Pen(x, y, s).m(-0.9, -0.45).q(0, -1.2, 0.9, -0.45).z());
                 g.setColor(OUTLINE);
-                g.fill(new Rectangle2D.Double(x - s * 0.15, y - s * 0.2, s * 0.3, s * 0.45));
+                g.fill(rect(x, y, s, -0.15, -0.2, 0.3, 0.45));
                 break;
-            }
             case ALTAR:
                 g.setColor(OUTLINE);
-                g.fill(new Rectangle2D.Double(x - s * 0.17, y - s, s * 0.34, s * 2));
-                g.fill(new Rectangle2D.Double(x - s * 0.7, y - s * 0.45, s * 1.4, s * 0.34));
+                g.fill(rect(x, y, s, -0.17, -1, 0.34, 2));
+                g.fill(rect(x, y, s, -0.7, -0.45, 1.4, 0.34));
                 break;
             case ANVIL:
-            {
-                Path2D anvil = new Path2D.Double();
-                anvil.moveTo(x - s, y - s * 0.5);
-                anvil.lineTo(x + s * 0.75, y - s * 0.5);
-                anvil.quadTo(x + s * 0.75, y, x + s * 0.3, y);
-                anvil.lineTo(x + s * 0.3, y + s * 0.3);
-                anvil.lineTo(x + s * 0.65, y + s * 0.75);
-                anvil.lineTo(x - s * 0.65, y + s * 0.75);
-                anvil.lineTo(x - s * 0.3, y + s * 0.3);
-                anvil.lineTo(x - s * 0.3, y);
-                anvil.quadTo(x - s * 0.8, y - s * 0.05, x - s, y - s * 0.5);
-                anvil.closePath();
-                g.fill(anvil);
+                g.fill(new Pen(x, y, s).m(-1, -0.5).l(0.75, -0.5).q(0.75, 0, 0.3, 0).l(0.3, 0.3).l(0.65, 0.75)
+                    .l(-0.65, 0.75).l(-0.3, 0.3).l(-0.3, 0).q(-0.8, -0.05, -1, -0.5).z());
                 break;
-            }
             case TRANSPORT:
-                g.draw(new Line2D.Double(x - s * 0.9, y - s * 0.3, x + s * 0.8, y - s * 0.3));
+                line(g, x, y, s, -0.9, -0.3, 0.8, -0.3);
                 g.fill(arrowHead(x + s, y - s * 0.3, s * 0.45, 1));
-                g.draw(new Line2D.Double(x + s * 0.9, y + s * 0.4, x - s * 0.8, y + s * 0.4));
+                line(g, x, y, s, 0.9, 0.4, -0.8, 0.4);
                 g.fill(arrowHead(x - s, y + s * 0.4, s * 0.45, -1));
                 break;
             case MOORING:
-            {
                 // An anchor.
-                g.draw(new Line2D.Double(x, y - s * 0.6, x, y + s * 0.85));
-                g.draw(new Ellipse2D.Double(x - s * 0.22, y - s, s * 0.44, s * 0.44));
-                g.draw(new Line2D.Double(x - s * 0.45, y - s * 0.25, x + s * 0.45, y - s * 0.25));
+                line(g, x, y, s, 0, -0.6, 0, 0.85);
+                g.draw(oval(x, y, s, -0.22, -1, 0.44, 0.44));
+                line(g, x, y, s, -0.45, -0.25, 0.45, -0.25);
                 g.draw(new Arc2D.Double(x - s * 0.8, y - s * 0.3, s * 1.6, s * 1.15, 200, 140, Arc2D.OPEN));
                 break;
-            }
             case SALVAGE:
-            {
                 // A broken hull.
-                Path2D hull = new Path2D.Double();
-                hull.moveTo(x - s, y);
-                hull.lineTo(x + s * 0.3, y);
-                hull.lineTo(x + s * 0.05, y + s * 0.3);
-                hull.lineTo(x + s * 0.4, y + s * 0.8);
-                hull.lineTo(x - s * 0.6, y + s * 0.8);
-                hull.closePath();
-                g.fill(hull);
-                g.draw(new Line2D.Double(x - s * 0.35, y, x - s * 0.1, y - s * 0.95));
-                g.draw(new Line2D.Double(x + s * 0.55, y + s * 0.1, x + s * 0.9, y + s * 0.6));
+                g.fill(poly(x, y, s, -1, 0, 0.3, 0, 0.05, 0.3, 0.4, 0.8, -0.6, 0.8));
+                line(g, x, y, s, -0.35, 0, -0.1, -0.95);
+                line(g, x, y, s, 0.55, 0.1, 0.9, 0.6);
                 break;
-            }
             case RUNECRAFT_ALTAR:
-            {
                 // A rune stone.
-                Path2D rune = new Path2D.Double();
-                rune.moveTo(x, y - s);
-                rune.lineTo(x + s * 0.8, y - s * 0.2);
-                rune.lineTo(x + s * 0.5, y + s * 0.9);
-                rune.lineTo(x - s * 0.5, y + s * 0.9);
-                rune.lineTo(x - s * 0.8, y - s * 0.2);
-                rune.closePath();
-                g.fill(rune);
+                g.fill(poly(x, y, s, 0, -1, 0.8, -0.2, 0.5, 0.9, -0.5, 0.9, -0.8, -0.2));
                 g.setColor(OUTLINE);
-                g.fill(new Ellipse2D.Double(x - s * 0.25, y - s * 0.15, s * 0.5, s * 0.5));
+                g.fill(oval(x, y, s, -0.25, -0.15, 0.5, 0.5));
                 break;
-            }
             case AGILITY_COURSE:
             case AGILITY_SHORTCUT:
-            {
                 // A running figure's stride.
-                g.fill(new Ellipse2D.Double(x + s * 0.1, y - s, s * 0.45, s * 0.45));
-                Path2D body = new Path2D.Double();
-                body.moveTo(x + s * 0.2, y - s * 0.45);
-                body.lineTo(x - s * 0.1, y + s * 0.2);
-                body.lineTo(x + s * 0.5, y + s * 0.95);
-                body.moveTo(x - s * 0.1, y + s * 0.2);
-                body.lineTo(x - s * 0.7, y + s * 0.8);
-                body.moveTo(x - s * 0.7, y - s * 0.3);
-                body.lineTo(x + s * 0.1, y - s * 0.3);
-                body.lineTo(x + s * 0.7, y - s * 0.05);
-                g.draw(body);
+                g.fill(oval(x, y, s, 0.1, -1, 0.45, 0.45));
+                g.draw(new Pen(x, y, s).m(0.2, -0.45).l(-0.1, 0.2).l(0.5, 0.95).m(-0.1, 0.2).l(-0.7, 0.8)
+                    .m(-0.7, -0.3).l(0.1, -0.3).l(0.7, -0.05));
                 if (type == PoiType.AGILITY_SHORTCUT)
                 {
                     g.setColor(OUTLINE);
                     g.fill(arrowHead(x + s * 0.95, y + s * 0.1, s * 0.35, 1));
                 }
                 break;
-            }
             case FARMING_PATCH:
-            {
                 // A sprout.
-                g.draw(new Line2D.Double(x, y + s * 0.9, x, y - s * 0.1));
-                Path2D leaves = new Path2D.Double();
-                leaves.moveTo(x, y - s * 0.1);
-                leaves.quadTo(x - s * 0.9, y - s * 0.2, x - s * 0.8, y - s * 0.9);
-                leaves.quadTo(x - s * 0.1, y - s * 0.8, x, y - s * 0.1);
-                leaves.moveTo(x, y + s * 0.2);
-                leaves.quadTo(x + s * 0.9, y + s * 0.1, x + s * 0.8, y - s * 0.6);
-                leaves.quadTo(x + s * 0.1, y - s * 0.5, x, y + s * 0.2);
-                g.fill(leaves);
+                line(g, x, y, s, 0, 0.9, 0, -0.1);
+                g.fill(new Pen(x, y, s).m(0, -0.1).q(-0.9, -0.2, -0.8, -0.9).q(-0.1, -0.8, 0, -0.1).m(0, 0.2)
+                    .q(0.9, 0.1, 0.8, -0.6).q(0.1, -0.5, 0, 0.2));
                 break;
-            }
             case MINIGAME:
-            {
                 // Crossed swords.
-                g.draw(new Line2D.Double(x - s * 0.8, y + s * 0.8, x + s * 0.8, y - s * 0.8));
-                g.draw(new Line2D.Double(x + s * 0.8, y + s * 0.8, x - s * 0.8, y - s * 0.8));
-                g.draw(new Line2D.Double(x - s * 0.75, y + s * 0.35, x - s * 0.35, y + s * 0.75));
-                g.draw(new Line2D.Double(x + s * 0.75, y + s * 0.35, x + s * 0.35, y + s * 0.75));
+                line(g, x, y, s, -0.8, 0.8, 0.8, -0.8);
+                line(g, x, y, s, 0.8, 0.8, -0.8, -0.8);
+                line(g, x, y, s, -0.75, 0.35, -0.35, 0.75);
+                line(g, x, y, s, 0.75, 0.35, 0.35, 0.75);
                 break;
-            }
             case QUEST_START:
-                g.fill(new Rectangle2D.Double(x - s * 0.17, y - s * 0.9, s * 0.34, s * 1.15));
-                g.fill(new Ellipse2D.Double(x - s * 0.2, y + s * 0.45, s * 0.4, s * 0.4));
+                g.fill(rect(x, y, s, -0.17, -0.9, 0.34, 1.15));
+                g.fill(oval(x, y, s, -0.2, 0.45, 0.4, 0.4));
                 break;
             case SHOP:
-                g.fill(new Ellipse2D.Double(x - s * 0.7, y - s * 0.3, s * 1.4, s * 1.1));
-                g.fill(new Rectangle2D.Double(x - s * 0.3, y - s * 0.8, s * 0.6, s * 0.6));
+                g.fill(oval(x, y, s, -0.7, -0.3, 1.4, 1.1));
+                g.fill(rect(x, y, s, -0.3, -0.8, 0.6, 0.6));
                 break;
             default:
-                g.fill(new Ellipse2D.Double(x - s * 0.4, y - s * 0.4, s * 0.8, s * 0.8));
+                g.fill(oval(x, y, s, -0.4, -0.4, 0.8, 0.8));
         }
+    }
+
+    /** A closed polygon through {@code (x + s * dx, y + s * dy)} pairs. */
+    private static Path2D poly(double x, double y, double s, double... d)
+    {
+        Pen pen = new Pen(x, y, s).m(d[0], d[1]);
+        for (int i = 2; i < d.length; i += 2)
+        {
+            pen.l(d[i], d[i + 1]);
+        }
+        return pen.z();
+    }
+
+    /** A path in units of {@code s} around {@code (x, y)}. */
+    private static final class Pen extends Path2D.Double
+    {
+        private final double x;
+        private final double y;
+        private final double s;
+
+        Pen(double x, double y, double s)
+        {
+            this.x = x;
+            this.y = y;
+            this.s = s;
+        }
+
+        Pen m(double dx, double dy)
+        {
+            moveTo(x + s * dx, y + s * dy);
+            return this;
+        }
+
+        Pen l(double dx, double dy)
+        {
+            lineTo(x + s * dx, y + s * dy);
+            return this;
+        }
+
+        Pen q(double dx1, double dy1, double dx2, double dy2)
+        {
+            quadTo(x + s * dx1, y + s * dy1, x + s * dx2, y + s * dy2);
+            return this;
+        }
+
+        Pen z()
+        {
+            closePath();
+            return this;
+        }
+    }
+
+    private static void line(Graphics2D g, double x, double y, double s, double x1, double y1, double x2, double y2)
+    {
+        g.draw(new Line2D.Double(x + s * x1, y + s * y1, x + s * x2, y + s * y2));
+    }
+
+    private static Ellipse2D oval(double x, double y, double s, double dx, double dy, double w, double h)
+    {
+        return new Ellipse2D.Double(x + s * dx, y + s * dy, s * w, s * h);
+    }
+
+    private static Rectangle2D rect(double x, double y, double s, double dx, double dy, double w, double h)
+    {
+        return new Rectangle2D.Double(x + s * dx, y + s * dy, s * w, s * h);
     }
 
     private static Path2D star(double x, double y, double outer, double inner, int points)
@@ -518,11 +449,18 @@ final class PoiIcons
     /** A small image of an icon, for buttons and lists. */
     static BufferedImage image(PoiType type, int size)
     {
-        BufferedImage image = new BufferedImage(size + 2, size + 2, BufferedImage.TYPE_INT_ARGB);
+        return icon(size + 2, g -> {
+            g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+            paint(g, type, (size + 2) / 2.0 - 0.5, (size + 2) / 2.0 - 1, size - 1, false);
+        });
+    }
+
+    private static BufferedImage icon(int size, Consumer<Graphics2D> draw)
+    {
+        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
-        paint(g, type, (size + 2) / 2.0 - 0.5, (size + 2) / 2.0 - 1, size - 1, false);
+        draw.accept(g);
         g.dispose();
         return image;
     }
@@ -530,95 +468,82 @@ final class PoiIcons
     /** A map pin, for searching places. */
     static BufferedImage pinIcon()
     {
-        BufferedImage image = new BufferedImage(14, 14, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        GeneralPath pin = new GeneralPath();
-        pin.moveTo(7, 13.5);
-        pin.curveTo(3, 8.5, 2.2, 7, 2.2, 5.2);
-        pin.curveTo(2.2, 2.5, 4.4, 0.8, 7, 0.8);
-        pin.curveTo(9.6, 0.8, 11.8, 2.5, 11.8, 5.2);
-        pin.curveTo(11.8, 7, 11, 8.5, 7, 13.5);
-        pin.closePath();
-        g.setColor(new Color(220, 220, 220));
-        g.fill(pin);
-        g.setColor(new Color(40, 40, 40));
-        g.fill(new Ellipse2D.Double(5.2, 3.4, 3.6, 3.6));
-        g.dispose();
-        return image;
+        return icon(14, g -> {
+            GeneralPath pin = new GeneralPath();
+            pin.moveTo(7, 13.5);
+            pin.curveTo(3, 8.5, 2.2, 7, 2.2, 5.2);
+            pin.curveTo(2.2, 2.5, 4.4, 0.8, 7, 0.8);
+            pin.curveTo(9.6, 0.8, 11.8, 2.5, 11.8, 5.2);
+            pin.curveTo(11.8, 7, 11, 8.5, 7, 13.5);
+            pin.closePath();
+            g.setColor(new Color(220, 220, 220));
+            g.fill(pin);
+            g.setColor(new Color(40, 40, 40));
+            g.fill(new Ellipse2D.Double(5.2, 3.4, 3.6, 3.6));
+        });
     }
 
     /** Crosshairs, for following the player. */
     static BufferedImage followIcon()
     {
-        BufferedImage image = new BufferedImage(14, 14, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setColor(new Color(220, 220, 220));
-        g.setStroke(new BasicStroke(1.4f));
-        g.draw(new Ellipse2D.Double(2.5, 2.5, 9, 9));
-        g.draw(new Line2D.Double(7, 0.5, 7, 4));
-        g.draw(new Line2D.Double(7, 10, 7, 13.5));
-        g.draw(new Line2D.Double(0.5, 7, 4, 7));
-        g.draw(new Line2D.Double(10, 7, 13.5, 7));
-        g.setColor(new Color(255, 214, 64));
-        g.fill(new Ellipse2D.Double(5.5, 5.5, 3, 3));
-        g.dispose();
-        return image;
+        return icon(14, g -> {
+            g.setColor(new Color(220, 220, 220));
+            g.setStroke(new BasicStroke(1.4f));
+            g.draw(new Ellipse2D.Double(2.5, 2.5, 9, 9));
+            g.draw(new Line2D.Double(7, 0.5, 7, 4));
+            g.draw(new Line2D.Double(7, 10, 7, 13.5));
+            g.draw(new Line2D.Double(0.5, 7, 4, 7));
+            g.draw(new Line2D.Double(10, 7, 13.5, 7));
+            g.setColor(new Color(255, 214, 64));
+            g.fill(new Ellipse2D.Double(5.5, 5.5, 3, 3));
+        });
     }
 
     /** A window with an arrow leaving it. */
     static BufferedImage popOutIcon()
     {
-        BufferedImage image = new BufferedImage(14, 14, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setColor(new Color(220, 220, 220));
-        g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        Path2D frame = new Path2D.Double();
-        frame.moveTo(6, 2.5);
-        frame.lineTo(2.5, 2.5);
-        frame.lineTo(2.5, 11.5);
-        frame.lineTo(11.5, 11.5);
-        frame.lineTo(11.5, 8);
-        g.draw(frame);
-        g.draw(new Line2D.Double(7, 7, 12, 2));
-        g.draw(new Line2D.Double(8.5, 2, 12, 2));
-        g.draw(new Line2D.Double(12, 2, 12, 5.5));
-        g.dispose();
-        return image;
+        return icon(14, g -> {
+            g.setColor(new Color(220, 220, 220));
+            g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            Path2D frame = new Path2D.Double();
+            frame.moveTo(6, 2.5);
+            frame.lineTo(2.5, 2.5);
+            frame.lineTo(2.5, 11.5);
+            frame.lineTo(11.5, 11.5);
+            frame.lineTo(11.5, 8);
+            g.draw(frame);
+            g.draw(new Line2D.Double(7, 7, 12, 2));
+            g.draw(new Line2D.Double(8.5, 2, 12, 2));
+            g.draw(new Line2D.Double(12, 2, 12, 5.5));
+        });
     }
 
     /** The sidebar button: a folded map. */
     static BufferedImage navigationIcon()
     {
-        int size = 16;
-        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        Color[] panels = {new Color(0x6FA85A), new Color(0x4F8C44), new Color(0x6FA85A)};
-        for (int i = 0; i < 3; i++)
-        {
-            Path2D panel = new Path2D.Double();
-            double x0 = 1 + i * 14 / 3.0;
-            double x1 = 1 + (i + 1) * 14 / 3.0;
-            double shift = i % 2 == 0 ? 0 : 1.5;
-            panel.moveTo(x0, 2.5 + shift);
-            panel.lineTo(x1, 2.5 + (1.5 - shift));
-            panel.lineTo(x1, 13.5 + (1.5 - shift) - 1.5);
-            panel.lineTo(x0, 13.5 + shift - 1.5);
-            panel.closePath();
-            g.setColor(panels[i]);
-            g.fill(panel);
-        }
-        g.setColor(new Color(0x3F6FD8));
-        g.setStroke(new BasicStroke(1.3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.draw(new Line2D.Double(3, 10, 7, 7));
-        g.draw(new Line2D.Double(7, 7, 10, 9));
-        g.setColor(new Color(0xE04040));
-        g.fill(new Ellipse2D.Double(10, 4, 4, 4));
-        g.fill(new Rectangle2D.Double(11.4, 7, 1.2, 3));
-        g.dispose();
-        return image;
+        return icon(16, g -> {
+            Color[] panels = {new Color(0x6FA85A), new Color(0x4F8C44), new Color(0x6FA85A)};
+            for (int i = 0; i < 3; i++)
+            {
+                Path2D panel = new Path2D.Double();
+                double x0 = 1 + i * 14 / 3.0;
+                double x1 = 1 + (i + 1) * 14 / 3.0;
+                double shift = i % 2 == 0 ? 0 : 1.5;
+                panel.moveTo(x0, 2.5 + shift);
+                panel.lineTo(x1, 2.5 + (1.5 - shift));
+                panel.lineTo(x1, 13.5 + (1.5 - shift) - 1.5);
+                panel.lineTo(x0, 13.5 + shift - 1.5);
+                panel.closePath();
+                g.setColor(panels[i]);
+                g.fill(panel);
+            }
+            g.setColor(new Color(0x3F6FD8));
+            g.setStroke(new BasicStroke(1.3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.draw(new Line2D.Double(3, 10, 7, 7));
+            g.draw(new Line2D.Double(7, 7, 10, 9));
+            g.setColor(new Color(0xE04040));
+            g.fill(new Ellipse2D.Double(10, 4, 4, 4));
+            g.fill(new Rectangle2D.Double(11.4, 7, 1.2, 3));
+        });
     }
 }

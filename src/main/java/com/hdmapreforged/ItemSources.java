@@ -10,23 +10,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * Where an item can be had, from the OSRS Wiki: its spawns (the {@code {{ItemSpawnLine}}} templates of its page), the
- * shops that have it in stock (the wiki's {@code storeline} bucket, placed by each shop page's
- * map), and the monsters that drop it ({@code dropsline}). Only parsing here; {@link WikiClient#item} asks.
- */
+/** Where an item can be had (spawns, shops with stock, drops), parsed from wiki answers; {@link WikiClient#item} asks. */
 final class ItemSources
 {
-    /** A shop selling the item. */
     static final class Store
     {
         final String shop;
         final String stock;
-        /** "2 coins", or empty when the wiki gives no price. */
+        /** Empty when the wiki gives no price. */
         final String price;
-        /** Where the shop is, or null when its page has no map. */
+        /** Null when its page has no map. */
         WorldPoint point;
         int mapId = -1;
 
@@ -38,19 +35,15 @@ final class ItemSources
         }
     }
 
-    /** A monster (or other source) dropping the item, all its drop lines together. */
     static final class Drop
     {
-        /** Its wiki page, which the monster search can look up. */
         final String monster;
         /** "Thieving (15)", "Level 74, 92", "Reward"… */
         final String how;
-        /** Whether it is a monster or NPC (killed or stolen from), which the monster search can show; not a chest,
-         * a pack or a rock. */
+        /** A monster or NPC (killed or stolen from), not a chest, pack or rock. */
         final boolean npc;
-        /** The drop lines, rate and quantity: "64/128 (5)", "32/128 (15)". */
+        /** "64/128 (5)". */
         final List<String> lines = new ArrayList<>();
-        /** The best chance of any line, for sorting; 0 when not known. */
         double chance;
 
         Drop(String monster, String how, boolean npc)
@@ -61,9 +54,7 @@ final class ItemSources
         }
     }
 
-    /** Rows a bucket query may give at most. */
     static final int LIMIT = 1000;
-    /** Shop pages asked for at a time. */
     static final int SHOPS_PER_QUERY = 40;
 
     final String page;
@@ -84,8 +75,6 @@ final class ItemSources
         return spawns.isEmpty() && stores.isEmpty() && drops.isEmpty();
     }
 
-    // ---- bucket queries ----
-
     /** A string in a bucket query, quoted: {@code Ava's} gives {@code 'Ava\'s'}. */
     static String quote(String value)
     {
@@ -104,7 +93,6 @@ final class ItemSources
             + LIMIT + ").run()";
     }
 
-    /** The maps of some shop pages (at most {@link #SHOPS_PER_QUERY}). */
     static String mapQuery(List<String> pages)
     {
         StringBuilder where = new StringBuilder();
@@ -124,7 +112,6 @@ final class ItemSources
         return "bucket('map').select('page_name','features','options').where(" + where + ").limit(" + LIMIT + ").run()";
     }
 
-    /** The rows of a bucket answer; null when it is an error or not one. */
     static JsonArray rows(String body)
     {
         try
@@ -143,9 +130,6 @@ final class ItemSources
         }
     }
 
-    // ---- shops ----
-
-    /** Shops with it in stock (or endless stock), each once, in the wiki's order. */
     static List<Store> stores(JsonArray rows)
     {
         Map<String, Store> shops = new LinkedHashMap<>();
@@ -168,13 +152,12 @@ final class ItemSources
         return new ArrayList<>(shops.values());
     }
 
-    /** What a shop sells: an item with its stock and price. */
     static final class Ware
     {
         final String item;
         final String stock;
         final String price;
-        /** The item's inventory picture on the wiki ("Pot.png"), or empty. */
+        /** "Pot.png", or empty. */
         final String image;
 
         Ware(String item, String stock, String price, String image)
@@ -192,7 +175,6 @@ final class ItemSources
             + "'sold_item_image').where('sold_by'," + quote(shop) + ").limit(" + LIMIT + ").run()";
     }
 
-    /** A shop's wares in the wiki's order, each item once (the first line of it); those out of stock too. */
     static List<Ware> wares(JsonArray rows)
     {
         Map<String, Ware> wares = new LinkedHashMap<>();
@@ -213,15 +195,13 @@ final class ItemSources
         return new ArrayList<>(wares.values());
     }
 
-    private static final java.util.regex.Pattern IMAGE_FILE =
-        java.util.regex.Pattern.compile("[^/\\\\?#<>|:]{1,120}\\.(?i)(png|gif|jpg)");
-    private static final java.util.regex.Pattern FILE_PREFIX = java.util.regex.Pattern.compile("^(?i)file:");
-    private static final java.util.regex.Pattern FRACTION =
-        java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*/\\s*(\\d+(?:\\.\\d+)?)");
-    private static final java.util.regex.Pattern COMMA = java.util.regex.Pattern.compile("\\s*,\\s*");
-    /** Geometry nested deeper than this is not a map shape. */
+    private static final Pattern IMAGE_FILE =
+        Pattern.compile("[^/\\\\?#<>|:]{1,120}\\.(?i)(png|gif|jpg)");
+    private static final Pattern FILE_PREFIX = Pattern.compile("^(?i)file:");
+    private static final Pattern FRACTION =
+        Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*/\\s*(\\d+(?:\\.\\d+)?)");
+    private static final Pattern COMMA = Pattern.compile("\\s*,\\s*");
     private static final int MAX_DEPTH = 8;
-    /** Number pairs read from one shape at most. */
     private static final int MAX_PAIRS = 10_000;
 
     /** "File:Pot.png" is "Pot.png"; only a plain picture file name, else empty. */
@@ -231,10 +211,7 @@ final class ItemSources
         return IMAGE_FILE.matcher(name).matches() ? name : "";
     }
 
-    /**
-     * Whether a shop has it in stock: "1", "1,000" and "∞" are; "0" (a shop that only buys it), "", "N/A" are not.
-     * Rune scimitars, say, are only in one shop, one at a time.
-     */
+    /** "1", "1,000" and "∞" are in stock; "0" (a shop that only buys it), "", "N/A" are not. */
     static boolean inStock(String stock)
     {
         String s = stock.trim().replace(",", "");
@@ -278,7 +255,6 @@ final class ItemSources
         return String.format(Locale.ROOT, "%,d", value) + " " + unit;
     }
 
-    /** Places the shops by their pages' maps (the first map of a page: its infobox's). */
     static void place(List<Store> stores, JsonArray mapRows)
     {
         Map<String, JsonObject> first = new LinkedHashMap<>();
@@ -297,7 +273,7 @@ final class ItemSources
                 int[] at = mapPoint(row);
                 if (at != null)
                 {
-                    // Where the wiki's map draws it; the game has some places elsewhere (the Kalphite Lair).
+                    // The game has some places elsewhere than the wiki's map (the Kalphite Lair).
                     store.point = WorldMapMoves.toWorld(at[3], new WorldPoint(at[0], at[1], at[2]));
                     store.mapId = at[3];
                 }
@@ -305,10 +281,7 @@ final class ItemSources
         }
     }
 
-    /**
-     * The point a map row shows: its first feature (a pin, or the middle of an area), else the map's own middle;
-     * {x, y, plane, mapID} or null.
-     */
+    /** A map row's first feature (pin or area middle), else the map's middle: {x, y, plane, mapID} or null. */
     static int[] mapPoint(JsonObject row)
     {
         try
@@ -342,7 +315,7 @@ final class ItemSources
         }
         catch (RuntimeException e)
         {
-            // An unreadable map: the shop is listed without a place.
+            // Listed without a place.
         }
         return null;
     }
@@ -355,7 +328,6 @@ final class ItemSources
         {
             return null;
         }
-        // Every number pair in the geometry, however deeply nested (a point, a line, a polygon's rings).
         List<double[]> pairs = new ArrayList<>();
         pairs(geometry.get("coordinates"), pairs, 0);
         if (pairs.isEmpty())
@@ -403,9 +375,6 @@ final class ItemSources
         return new int[]{(int) Math.floor(x), (int) Math.floor(y), Math.max(0, Math.min(3, plane)), mapId};
     }
 
-    // ---- drops ----
-
-    /** The drop lines by monster, the most likely first. */
     static List<Drop> drops(JsonArray rows)
     {
         Map<String, Drop> byMonster = new LinkedHashMap<>();
@@ -450,17 +419,13 @@ final class ItemSources
         return drops;
     }
 
-    /** Drops of monsters and NPCs: killed (combat, or no type given) or pickpocketed. */
     static boolean isNpc(String type)
     {
         String t = type.trim().toLowerCase(Locale.ROOT);
         return t.isEmpty() || t.equals("combat") || t.equals("thieving");
     }
 
-    /**
-     * How it is got: "Level 74, 92" for monsters, "Thieving (15)" for pickpocketing and stalls, else the kind of drop
-     * ("Reward", "Mining").
-     */
+    /** "Level 74, 92", "Thieving (15)", else the kind of drop ("Reward"). */
     static String how(String type, String level)
     {
         String t = type.trim().toLowerCase(Locale.ROOT);
@@ -472,16 +437,12 @@ final class ItemSources
         }
         if (t.equals("thieving"))
         {
-            // Pickpocketing or a stall: the wiki does not say which.
             return known ? "Thieving (" + levels + ")" : "Thieving";
         }
         return Character.toUpperCase(t.charAt(0)) + t.substring(1);
     }
 
-    /**
-     * A drop rate as a chance from 0 to 1: "64/128", "1/5,000", "~1/300", "2 × 1/128", "Always"; the wiki's words
-     * roughly; 0 when unknown.
-     */
+    /** "64/128", "1/5,000", "~1/300", "Always" as a chance from 0 to 1; words roughly; 0 when unknown. */
     static double chance(String rarity)
     {
         String r = rarity.trim().toLowerCase(Locale.ROOT).replace(",", "").replace("~", "").replace("≈", "");
@@ -504,7 +465,7 @@ final class ItemSources
             default:
                 break;
         }
-        java.util.regex.Matcher m = FRACTION.matcher(r);
+        Matcher m = FRACTION.matcher(r);
         if (m.find())
         {
             double top = Double.parseDouble(m.group(1));

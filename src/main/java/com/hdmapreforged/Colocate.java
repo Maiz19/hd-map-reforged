@@ -1,18 +1,16 @@
 package com.hdmapreforged;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Pattern;
 
-/**
- * Things at the same place become one icon: a teleport that lands right at a portal, transport stop, minigame or
- * dungeon entrance is listed on that icon ("Teleports that land here") instead of drawn beside it, and minigames in
- * one building share an icon, as the game's map shows them.
- */
+/** Things at one place become one icon: teleports landing at a host icon, minigames in one building, twins. */
 final class Colocate
 {
-    /** A teleport landing this close to another icon lands at it. */
     static final int TELEPORT_RADIUS = 3;
-    /** Minigames this close are in the same place. */
     static final int MINIGAME_RADIUS = 12;
 
     private Colocate()
@@ -60,15 +58,12 @@ final class Colocate
     /** The same place under one name this close is drawn once. */
     static final int TWIN_RADIUS = 4;
 
-    /**
-     * One icon for what is one place: both ends of a short shortcut, a place listed twice, a minigame that is also a
-     * dungeon entrance and an agility course. The first keeps the icon; the others are listed on it and still used
-     * for routes.
-     */
+    /** The first keeps the icon; the others are listed on it and still used for routes. */
     private static List<Poi> twins(List<Poi> pois)
     {
         List<Poi> kept = new ArrayList<>(pois.size());
-        java.util.Map<String, List<Poi>> byName = new java.util.HashMap<>();
+        Map<String, List<Poi>> byName = new HashMap<>();
+
         for (Poi poi : pois)
         {
             String key = key(poi.name);
@@ -91,12 +86,12 @@ final class Colocate
     /** "Rocks (Al Kharid)" and "Rocks (Al Kharid)" alike; "Jutting wall (Cosmic Temple)" as "Jutting wall". */
     static String key(String name)
     {
-        return name == null ? "" : NOT_KEY.matcher(BRACKETS.matcher(name.toLowerCase(java.util.Locale.ROOT))
+        return name == null ? "" : NOT_KEY.matcher(BRACKETS.matcher(name.toLowerCase(Locale.ROOT))
             .replaceAll("")).replaceAll("");
     }
 
-    private static final java.util.regex.Pattern BRACKETS = java.util.regex.Pattern.compile("\\s*\\(.*\\)");
-    private static final java.util.regex.Pattern NOT_KEY = java.util.regex.Pattern.compile("[^a-z0-9]");
+    private static final Pattern BRACKETS = Pattern.compile("\\s*\\(.*\\)");
+    private static final Pattern NOT_KEY = Pattern.compile("[^a-z0-9]");
 
     private static boolean isHost(Poi poi)
     {

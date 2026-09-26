@@ -9,10 +9,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * The game's Sailing ports with where a boat lies there (bundled {@code ports.tsv}, from the game cache), keyed by
- * the values of the {@code SAILING_BOAT_n_PORT} varbits.
- */
+/** Where a boat lies at each Sailing port (ports.tsv, from the game cache), keyed by SAILING_BOAT_n_PORT values. */
 public final class Ports
 {
     public static final String RESOURCE = "/com/hdmapreforged/route/ports.tsv";

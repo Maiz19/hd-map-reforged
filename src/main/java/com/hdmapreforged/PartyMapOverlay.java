@@ -11,19 +11,23 @@ import java.awt.Shape;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
+import java.awt.image.BufferedImage;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.IntSupplier;
+import java.util.function.LongFunction;
+import java.util.function.LongPredicate;
 import java.util.function.Supplier;
+import javax.swing.Timer;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * Draws party members on the map: a coloured disc (or their avatar) with a white ring and their initial; their
- * name, world and a star for favourite friends when pointed at or clicked. The local player stays the yellow dot drawn by the map itself.
- */
+/** Party members on the map: a disc (or avatar) with their initial; name and world when pointed at or clicked. */
 final class PartyMapOverlay implements MapView.Overlay
 {
-    /** Distinct from the player's yellow and from the icon colours; picked per member id. */
+    /** Distinct from the player's yellow and the icon colours. */
     private static final Color[] COLORS = {
         new Color(64, 200, 255),
         new Color(255, 105, 180),
@@ -42,13 +46,13 @@ final class PartyMapOverlay implements MapView.Overlay
     private final Supplier<List<PartyMapMembers.Marker>> markers;
     private final Supplier<Set<String>> favourites;
     private final Supplier<Boolean> onlyFavourites;
-    private final java.util.function.IntSupplier myWorld;
-    /** The member whose details are open (clicked), and the one under the mouse: only these show a name. */
-    private java.util.function.LongPredicate selected = id -> false;
-    private java.util.function.LongPredicate hovered = id -> false;
+    private final IntSupplier myWorld;
+    /** Only the clicked member and the one under the mouse show a name. */
+    private LongPredicate selected = id -> false;
+    private LongPredicate hovered = id -> false;
 
     PartyMapOverlay(Supplier<List<PartyMapMembers.Marker>> markers, Supplier<Set<String>> favourites,
-        Supplier<Boolean> onlyFavourites, java.util.function.IntSupplier myWorld)
+        Supplier<Boolean> onlyFavourites, IntSupplier myWorld)
     {
         this.markers = markers;
         this.favourites = favourites;
@@ -56,13 +60,12 @@ final class PartyMapOverlay implements MapView.Overlay
         this.myWorld = myWorld;
     }
 
-    private java.util.function.LongFunction<List<PartyMapMembers.Loot>> loot = id -> java.util.Collections.emptyList();
-    private java.util.function.BiFunction<Integer, Integer, java.awt.image.BufferedImage> itemImage = (id, q) -> null;
+    private LongFunction<List<PartyMapMembers.Loot>> loot = id -> Collections.emptyList();
+    private BiFunction<Integer, Integer, BufferedImage> itemImage = (id, q) -> null;
     private Ticker ticker = new Ticker(() -> { });
 
-    /** A member's valuable drops, their pictures, and a repaint while they rise. */
-    void setLoot(java.util.function.LongFunction<List<PartyMapMembers.Loot>> loot,
-        java.util.function.BiFunction<Integer, Integer, java.awt.image.BufferedImage> itemImage, Runnable repaint)
+    void setLoot(LongFunction<List<PartyMapMembers.Loot>> loot,
+        BiFunction<Integer, Integer, BufferedImage> itemImage, Runnable repaint)
     {
         this.loot = loot;
         this.itemImage = itemImage;
@@ -70,38 +73,35 @@ final class PartyMapOverlay implements MapView.Overlay
         ticker = new Ticker(repaint);
     }
 
-    /** Stops the drops' animation (the plugin shutting down). Swing thread. */
+    /** Swing thread. */
     void dispose()
     {
         ticker.stop();
     }
 
     /**
-     * Repaints about 30 times a second while something painted moves (rising drops), instead of asking for the next
-     * frame from inside paint, which never lets the map rest. Stops by itself once no frame had anything moving for
-     * a moment: the drops done, off screen, or the map hidden or closed. Swing thread only.
+     * Repaints ~30 times a second while something moves, instead of asking for a frame from inside paint (which never
+     * lets the map rest); stops by itself once nothing moved for a moment. Swing thread only.
      */
     static final class Ticker
     {
         private static final int FRAME_MS = 33;
-        /** How long after the last frame with something moving the ticking goes on. */
         private static final long LINGER_MS = 200;
-        private final javax.swing.Timer timer;
+        private final Timer timer;
         private long lastMoving;
 
         Ticker(Runnable repaint)
         {
-            timer = new javax.swing.Timer(FRAME_MS, e -> {
+            timer = new Timer(FRAME_MS, e -> {
                 if (System.currentTimeMillis() - lastMoving > LINGER_MS)
                 {
-                    ((javax.swing.Timer) e.getSource()).stop();
+                    ((Timer) e.getSource()).stop();
                     return;
                 }
                 repaint.run();
             });
         }
 
-        /** After a frame: whether anything in it still moves. */
         void painted(boolean moving)
         {
             if (moving)
@@ -120,7 +120,7 @@ final class PartyMapOverlay implements MapView.Overlay
         }
     }
 
-    void setFocus(java.util.function.LongPredicate selected, java.util.function.LongPredicate hovered)
+    void setFocus(LongPredicate selected, LongPredicate hovered)
     {
         this.selected = selected;
         this.hovered = hovered;
@@ -132,7 +132,7 @@ final class PartyMapOverlay implements MapView.Overlay
         return COLORS[(int) ((mixed >>> 33) % COLORS.length)];
     }
 
-    /** Lower case with spaces, underscores and hyphens made the same, as the game treats names. */
+    /** Lower case, with spaces, underscores and hyphens the same, as the game treats names. */
     static String nameKey(String name)
     {
         return name == null ? "" : name.replace(' ', ' ').replace('_', ' ').replace('-', ' ').trim()
@@ -167,7 +167,6 @@ final class PartyMapOverlay implements MapView.Overlay
                 rising |= paintLoot(g, projection, marker);
             }
         }
-        // Drawn again while drops rise.
         ticker.painted(rising);
     }
 
@@ -192,7 +191,7 @@ final class PartyMapOverlay implements MapView.Overlay
         return value / 1000 + "K";
     }
 
-    /** A member's valuable drops rising above their marker and fading, newest lowest; true while any shows. */
+    /** Drops rising above the marker, newest lowest; true while any shows. */
     private boolean paintLoot(Graphics2D g, MapView.Projection projection, PartyMapMembers.Marker marker)
     {
         List<PartyMapMembers.Loot> showing = loot.apply(marker.id);
@@ -203,8 +202,7 @@ final class PartyMapOverlay implements MapView.Overlay
         WorldPoint at = projection.shown(marker.point);
         double x = projection.screenX(at.getX() + 0.5);
         double y = projection.screenY(at.getY() + 0.5);
-        // Off screen: nothing to draw, and nothing to keep the map drawing for (the drops rise up to about 150
-        // pixels above the marker and are at most about 200 wide).
+        // Off screen: nothing to keep the map drawing for.
         if (x < -120 || x > projection.width() + 120 || y < -40 || y > projection.height() + 40 + 22 * showing.size() + 60)
         {
             return false;
@@ -224,7 +222,7 @@ final class PartyMapOverlay implements MapView.Overlay
                 layer.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0, alpha)));
                 double top = y - 22 - (showing.size() - 1 - k) * 22 - rise * 50;
                 String text = shortValue(drop.value);
-                java.awt.image.BufferedImage icon = itemImage.apply(drop.item, drop.quantity);
+                BufferedImage icon = itemImage.apply(drop.item, drop.quantity);
                 int iconW = icon == null ? 0 : 26;
                 double width = iconW + metrics.stringWidth(text) + 10;
                 double left = x - width / 2;
@@ -269,10 +267,9 @@ final class PartyMapOverlay implements MapView.Overlay
             layer.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
             Color color = color(marker.id);
             double r = favourite ? 9 : 7.5;
-            Ellipse2D disc = new Ellipse2D.Double(x - r, y - r, r * 2, r * 2);
+            Ellipse2D disc = circle(x, y, r);
             layer.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 60));
-            double halo = r + 5;
-            layer.fill(new Ellipse2D.Double(x - halo, y - halo, halo * 2, halo * 2));
+            layer.fill(circle(x, y, r + 5));
             if (marker.avatar != null)
             {
                 Shape clip = layer.getClip();
@@ -299,19 +296,17 @@ final class PartyMapOverlay implements MapView.Overlay
             layer.draw(disc);
             layer.setColor(color);
             layer.setStroke(new BasicStroke(1f));
-            layer.draw(new Ellipse2D.Double(x - r - 2, y - r - 2, r * 2 + 4, r * 2 + 4));
+            layer.draw(circle(x, y, r + 2));
             boolean otherWorld = otherWorld(marker, myWorld);
             if (chosen)
             {
-                // Selected: a thick ring in their colour, so the click shows it took.
                 layer.setStroke(new BasicStroke(3f));
                 layer.setColor(Color.WHITE);
-                layer.draw(new Ellipse2D.Double(x - r - 5, y - r - 5, r * 2 + 10, r * 2 + 10));
+                layer.draw(circle(x, y, r + 5));
                 layer.setColor(color);
                 layer.setStroke(new BasicStroke(2f));
-                layer.draw(new Ellipse2D.Double(x - r - 8, y - r - 8, r * 2 + 16, r * 2 + 16));
+                layer.draw(circle(x, y, r + 8));
             }
-            // Only the initial until pointed at or clicked: name and world then, which keeps the map calm.
             if (chosen || hover)
             {
                 paintLabel(layer, marker, x, y + r + 4, color, favourite, otherFloor, otherWorld);
@@ -323,7 +318,13 @@ final class PartyMapOverlay implements MapView.Overlay
         }
     }
 
-    private static void paintLabel(Graphics2D g, PartyMapMembers.Marker marker, double x, double top, Color color,
+    private static Ellipse2D circle(double x, double y, double r)
+    {
+        return new Ellipse2D.Double(x - r, y - r, r * 2, r * 2);
+    }
+
+    private static void paintLabel(
+Graphics2D g, PartyMapMembers.Marker marker, double x, double top, Color color,
         boolean favourite, boolean otherFloor, boolean otherWorld)
     {
         String name = marker.name != null ? marker.name : "Party member";
@@ -366,7 +367,8 @@ final class PartyMapOverlay implements MapView.Overlay
         return marker.world > 0 && myWorld > 0 && marker.world != myWorld;
     }
 
-    /** "World 330 · floor 1 · 3 min ago", leaving out what is not worth saying (the world when it is yours). */
+    /** "World 330 · floor 1 · 3 min ago", leaving out what is not worth saying. */
+
     static String detail(PartyMapMembers.Marker marker, boolean otherFloor, boolean otherWorld)
     {
         StringBuilder text = new StringBuilder();

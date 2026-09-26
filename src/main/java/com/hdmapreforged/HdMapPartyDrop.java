@@ -2,20 +2,15 @@ package com.hdmapreforged;
 
 import net.runelite.client.party.messages.PartyMemberMessage;
 
-/**
- * A valuable drop a party member just got (setting "Share valuable drops"), sent once to the party so the others see
- * it rise above the member on their map. Values from other clients are checked before use.
- */
+/** A valuable drop a party member just got, sent once to the party. Values from other clients are checked. */
 public class HdMapPartyDrop extends PartyMemberMessage
 {
     /** Item ids above this are not believed. */
     static final int MAX_ITEM = 100_000;
 
-    /** Item id. */
+    /** Item id, quantity, and worth in coins as the sender priced it. */
     private final int i;
-    /** Quantity. */
     private final int q;
-    /** Worth, in coins, as the sender's client priced it. */
     private final long v;
 
     HdMapPartyDrop(int item, int quantity, long value)
@@ -25,7 +20,7 @@ public class HdMapPartyDrop extends PartyMemberMessage
         v = value;
     }
 
-    /** The item, or -1 when not believable. */
+    /** -1 when not believable. */
     int item()
     {
         return i >= 0 && i < MAX_ITEM ? i : -1;

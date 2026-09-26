@@ -5,7 +5,7 @@ import java.util.Arrays;
 /** Int keys to int values in open addressing arrays, for the search's hot loop (no boxing). Not thread-safe. */
 final class IntMap
 {
-    /** What {@link #get} returns for a key not in the map; also never a key. */
+    /** Returned for a missing key; never a key itself. */
     static final int MISSING = Integer.MIN_VALUE;
     private int[] keys;
     private int[] values;

@@ -15,10 +15,7 @@ final class ItemNames implements IntFunction<String>
     private final ClientThread clientThread;
     private final ItemManager itemManager;
     private final Map<Integer, String> names = new ConcurrentHashMap<>();
-    /**
-     * Ids without a name yet, with when they were looked up: shown as "Item N" and looked up again after a while (the
-     * game's item data may not have been ready).
-     */
+    /** Id to last lookup time; retried later, as the game's item data may not have been ready. */
     private final Map<Integer, Long> unnamed = new ConcurrentHashMap<>();
     private static final long RETRY_MS = 30_000;
 
@@ -35,7 +32,7 @@ final class ItemNames implements IntFunction<String>
         return name != null || !unnamed.containsKey(id) ? name : "Item " + id;
     }
 
-    /** The item's name, or null when the game has none for it (yet). Client thread. */
+    /** Client thread. */
     private String lookUp(int id)
     {
         try
@@ -50,7 +47,6 @@ final class ItemNames implements IntFunction<String>
         }
     }
 
-    /** Whether an id needs looking up: no name, and not tried a moment ago. */
     private boolean wanted(int id, long now)
     {
         if (names.containsKey(id))
@@ -61,10 +57,9 @@ final class ItemNames implements IntFunction<String>
         return tried == null || now - tried >= RETRY_MS;
     }
 
-    /** Looks up unknown names, then runs {@code done} on the Swing thread if any were added. */
     void resolve(Collection<Integer> ids, Runnable done)
     {
-        // Previews run without a client: names then stay "Item N".
+        // Previews run without a client.
         long now = System.currentTimeMillis();
         if (clientThread == null || ids.stream().noneMatch(id -> wanted(id, now)))
         {

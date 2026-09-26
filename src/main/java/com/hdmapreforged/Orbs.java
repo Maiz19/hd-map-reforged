@@ -10,21 +10,16 @@ import java.util.function.IntFunction;
 import net.runelite.api.gameval.SpriteID;
 import net.runelite.client.ui.FontManager;
 
-/**
- * The game's minimap orbs (hitpoints, prayer, run, special attack), drawn from its own sprites as the game draws them:
- * the frame, the orb filled to how much is left, its icon, and the number in the frame's box, green when full and red
- * when low.
- */
+/** The game's minimap orbs drawn from its own sprites: frame, fill to what is left, icon and coloured number. */
 final class Orbs
 {
-    /** The frame: 57 × 34, the box for the number on the left and the orb on the right. */
+    /** The frame: number box on the left, orb on the right. */
     static final int WIDTH = 57;
     static final int HEIGHT = 34;
     private static final int ORB_X = 27;
     private static final int ORB_Y = 4;
     private static final int ORB = 26;
 
-    /** Which orb: its filling and its icon. */
     enum Kind
     {
         HITPOINTS(SpriteID.OrbFiller.HITPOINTS, SpriteID.OrbIcon.HITPOINTS, new Color(170, 40, 40)),
@@ -34,7 +29,7 @@ final class Orbs
 
         final int filler;
         final int icon;
-        /** Drawn instead of the filling before the game's sprites are there. */
+        /** Used before the game's sprites load. */
         final Color plain;
 
         Kind(int filler, int icon, Color plain)
@@ -45,7 +40,6 @@ final class Orbs
         }
     }
 
-    /** Every sprite an orb needs, to load up front. */
     static final int[] SPRITES = {SpriteID.OrbFrame.FRAME, SpriteID.OrbFiller.EMPTY, SpriteID.OrbFiller.HITPOINTS,
         SpriteID.OrbFiller.PRAYER, SpriteID.OrbFiller.RUN, SpriteID.OrbFiller.SPECIAL, SpriteID.OrbIcon.HITPOINTS,
         SpriteID.OrbIcon.PRAYER, SpriteID.OrbIcon.RUN, SpriteID.OrbIcon.SPECIAL};
@@ -54,10 +48,7 @@ final class Orbs
     {
     }
 
-    /**
-     * One orb at {@code (x, y)}: {@code value} of {@code max} (a negative value: not known, drawn empty with a dash);
-     * {@code sprites} gives the game's sprites by id, null while they load.
-     */
+    /** A negative {@code value} is unknown (empty, a dash); {@code sprites} returns null while loading. */
     static void paint(Graphics2D g, int x, int y, Kind kind, int value, int max, IntFunction<BufferedImage> sprites)
     {
         double left = value < 0 || max <= 0 ? 0 : Math.max(0, Math.min(1, value / (double) max));
@@ -77,7 +68,6 @@ final class Orbs
         }
         int ox = x + ORB_X;
         int oy = y + ORB_Y;
-        // The empty orb, then the filling from the bottom up to what is left.
         if (empty != null)
         {
             g.drawImage(empty, ox, oy, ORB, ORB, null);
@@ -104,7 +94,6 @@ final class Orbs
         {
             g.drawImage(icon, ox + (ORB - icon.getWidth()) / 2, oy + (ORB - icon.getHeight()) / 2, null);
         }
-        // The number in the frame's box, as the game colours it.
         String text = value < 0 ? "–" : String.valueOf(value);
         Font font = FontManager.getRunescapeSmallFont();
         g.setFont(font);
@@ -117,7 +106,7 @@ final class Orbs
         g.drawString(text, tx, ty);
     }
 
-    /** The game's colour for how much is left: green when full, through yellow, to red when empty. */
+    /** Green when full, through yellow, to red when empty. */
     static Color color(double left)
     {
         double f = Math.max(0, Math.min(1, left));

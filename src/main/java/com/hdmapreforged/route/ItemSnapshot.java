@@ -7,15 +7,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * The items a player has, taken on the client thread: carried (inventory, worn, rune pouch), runes a worn staff or
- * tome gives without limit, and the bank as last seen (null when not seen this session). Immutable.
- */
+/** Items carried, runes a worn staff gives without limit, and the bank as last seen (null if unseen). Immutable. */
 public final class ItemSnapshot
 {
-    /** Item names used in the transport data, for the ones that matter here. */
     private static final Map<String, Integer> NAMES = new HashMap<>();
-    /** Combination runes count as each of their two runes. */
     private static final Map<Integer, int[]> COMBINATIONS = new HashMap<>();
     public static final int AIR = 556;
     public static final int WATER = 555;
@@ -50,7 +45,6 @@ public final class ItemSnapshot
     }
 
     public static final ItemSnapshot NONE = new ItemSnapshot(Collections.emptyMap(), Collections.emptySet(), null);
-    /** Counts every item as there: for routes that ignore items. */
     public static final ItemSnapshot EVERYTHING = new ItemSnapshot(Collections.emptyMap(), Collections.emptySet(), null);
 
     private final Map<Integer, Long> carried;
@@ -64,7 +58,6 @@ public final class ItemSnapshot
         this.bank = bank;
     }
 
-    /** Quantities by item id; {@code bank} null when unknown. */
     public static ItemSnapshot of(Map<Integer, Long> carried, Set<Integer> unlimited, Map<Integer, Long> bank)
     {
         Map<Integer, Long> all = new HashMap<>();
@@ -82,7 +75,7 @@ public final class ItemSnapshot
             banked == null ? null : Collections.unmodifiableMap(banked));
     }
 
-    /** Like {@link #of}, with the bank of {@code banked} as it is (copied once there, not again for each snapshot). */
+    /** Like {@link #of}, sharing {@code banked}'s bank rather than copying it again. */
     public static ItemSnapshot withBankOf(Map<Integer, Long> carried, Set<Integer> unlimited, ItemSnapshot banked)
     {
         ItemSnapshot own = of(carried, unlimited, null);
@@ -102,7 +95,6 @@ public final class ItemSnapshot
         }
     }
 
-    /** The runes a worn weapon gives without limit, judged by its name (staves, battlestaves, tomes). */
     public static Set<Integer> runesFromWeapon(String name)
     {
         Set<Integer> runes = new HashSet<>();
@@ -135,10 +127,8 @@ public final class ItemSnapshot
     }
 
     /**
-     * Whether a requirement column such as {@code "AIR_RUNE=3&&LAW_RUNE=1"} or {@code "1706=1||1708=1"} is met.
-     * Carried items always count; with {@code bankToo} also banked ones, and anything while the bank has not been
-     * seen. Names this class does not know (tools, keys) count as met, so only a certainly missing item rules
-     * something out.
+     * Whether a column like {@code "AIR_RUNE=3&&LAW_RUNE=1"} is met; with {@code bankToo} banked items count too, and
+     * anything while the bank is unseen. Unknown names count as met: only a certainly missing item rules out.
      */
     public boolean has(String column, boolean bankToo)
     {
@@ -174,12 +164,10 @@ public final class ItemSnapshot
                         quantity = 1;
                     }
                 }
-                // An id too long to be one (a broken line) is not known either.
                 Integer id = !token.chars().allMatch(Character::isDigit) ? NAMES.get(token)
                     : token.length() <= 9 ? Integer.valueOf(token) : null;
                 if (id == null)
                 {
-                    // Unknown to us: cannot be judged.
                     any = true;
                     continue;
                 }

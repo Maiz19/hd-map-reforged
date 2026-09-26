@@ -6,7 +6,8 @@ import java.awt.event.WindowEvent;
 import javax.swing.JFrame;
 import javax.swing.WindowConstants;
 
-/** The map in a large, resizable window of its own. */
+/** The map in a window of its own. */
+
 final class MapWindow extends JFrame
 {
     MapWindow(MapScreen screen, Runnable onClose)

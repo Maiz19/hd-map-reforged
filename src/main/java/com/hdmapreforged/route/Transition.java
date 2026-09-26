@@ -8,13 +8,11 @@ public final class Transition
     public final int plane;
     public final int sizeX;
     public final int sizeY;
-    /** Packed destination tile. */
     public final int to;
     public final String name;
     public final String action;
-    /** Packed tiles one uses it from. */
     public final int[] origins;
-    /** A solid object walked through (an "Entry", a gate, a gap), found by shape: it may ask for a quest or level. */
+    /** A solid object walked through (a gate, a gap), found by shape: it may ask for a quest or level. */
     public final boolean through;
 
     Transition(int x, int y, int plane, int sizeX, int sizeY, int to, String name, String action, int[] origins,
@@ -32,10 +30,7 @@ public final class Transition
         this.through = through;
     }
 
-    /**
-     * {@code "x y plane sizeX sizeY <tab> x y plane <tab> name <tab> action <tab> x y;x y"} (the tiles it is used
-     * from); null for comments and bad lines.
-     */
+    /** {@code "x y plane sizeX sizeY <tab> x y plane <tab> name <tab> action <tab> x y;x y"}; null for bad lines. */
     static Transition parse(String line)
     {
         if (line.isEmpty() || line.startsWith("#"))

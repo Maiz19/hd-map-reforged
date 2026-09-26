@@ -10,10 +10,7 @@ import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
 
-/**
- * The local player on the map: a bold yellow target that stands out on any part of the wiki map, and an arrow at
- * the edge of the view when the player is out of sight.
- */
+/** The local player on the map as a yellow target, or an arrow at the view's edge when out of sight. */
 final class PlayerMarker
 {
     static final Color YELLOW = new Color(255, 214, 64);
@@ -24,12 +21,12 @@ final class PlayerMarker
     {
     }
 
-    /** {@code otherFloor}: the player is on another floor than the one shown, drawn fainter and dashed. */
+    /** {@code otherFloor}: drawn fainter and dashed. */
     static void paint(Graphics2D g, double x, double y, double zoom, boolean otherFloor)
     {
         double ring = 12 + Math.max(0, Math.min(3, zoom)) * 1.5;
         float[] dash = otherFloor ? new float[]{4f, 3f} : null;
-        // A soft glow first, so the marker reads on bright and dark map areas alike.
+        // A glow, so it reads on bright and dark areas alike.
         g.setColor(new Color(255, 214, 64, otherFloor ? 30 : 60));
         g.fill(new Ellipse2D.Double(x - ring - 5, y - ring - 5, (ring + 5) * 2, (ring + 5) * 2));
         g.setColor(SHADOW);
@@ -38,26 +35,18 @@ final class PlayerMarker
         g.setColor(YELLOW);
         g.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10f, dash, 0f));
         g.draw(new Ellipse2D.Double(x - ring, y - ring, ring * 2, ring * 2));
-        // Ticks pointing in, like crosshairs.
-        g.setStroke(new BasicStroke(2.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         double in = ring - 5;
         double out = ring + 5;
-        for (int i = 0; i < 4; i++)
+        for (int pass = 0; pass < 2; pass++)
         {
-            double a = Math.PI / 2 * i;
-            double cos = Math.cos(a);
-            double sin = Math.sin(a);
-            g.setColor(SHADOW);
-            g.draw(new Line2D.Double(x + cos * in, y + sin * in, x + cos * out, y + sin * out));
-        }
-        g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.setColor(YELLOW);
-        for (int i = 0; i < 4; i++)
-        {
-            double a = Math.PI / 2 * i;
-            double cos = Math.cos(a);
-            double sin = Math.sin(a);
-            g.draw(new Line2D.Double(x + cos * in, y + sin * in, x + cos * out, y + sin * out));
+            g.setStroke(new BasicStroke(pass == 0 ? 2.4f : 1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(pass == 0 ? SHADOW : YELLOW);
+            for (int i = 0; i < 4; i++)
+            {
+                double a = Math.PI / 2 * i;
+                g.draw(new Line2D.Double(x + Math.cos(a) * in, y + Math.sin(a) * in, x + Math.cos(a) * out,
+                    y + Math.sin(a) * out));
+            }
         }
         double r = 5.5;
         g.setColor(otherFloor ? new Color(255, 214, 64, 150) : YELLOW);
@@ -68,7 +57,7 @@ final class PlayerMarker
         label(g, otherFloor ? "You (other floor)" : "You", x, y + ring + 8);
     }
 
-    /** An arrow at {@code (x, y)} pointing in direction {@code angle} (radians, screen coordinates). */
+    /** An arrow at {@code (x, y)} pointing at {@code angle} (radians, screen coordinates). */
     static void pointer(Graphics2D g, double x, double y, double angle)
     {
         Path2D arrow = new Path2D.Double();
@@ -88,7 +77,6 @@ final class PlayerMarker
         g.setColor(Color.BLACK);
         g.setStroke(new BasicStroke(1.2f));
         g.draw(shape);
-        // The label sits on the inside of the arrow, away from the edge.
         label(g, "You", x - Math.cos(angle) * 22, y - Math.sin(angle) * 22 + 4);
     }
 

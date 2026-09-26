@@ -3,10 +3,7 @@ package com.hdmapreforged;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-/**
- * "Your house" in the plugin's settings, and the words the house scan uses for the same ("box:ornate", "glory",
- * "fairy ring", "spirit tree", "spirit tree+fairy ring", "portal:Varrock"), both ways.
- */
+/** Converts "Your house" settings to and from the house scan's words ("box:ornate", "glory", "portal:Varrock"). */
 final class HouseSettings
 {
     private static final String PORTAL = "portal:";
@@ -15,7 +12,6 @@ final class HouseSettings
     {
     }
 
-    /** What the settings say the house has, in the scan's words. */
     static Set<String> features(HdMapReforgedConfig.JewelleryBox box, boolean glory, boolean fairyRing,
         boolean spiritTree, String portals)
     {
@@ -68,7 +64,7 @@ final class HouseSettings
         return features.contains("spirit tree") || features.contains("spirit tree+fairy ring");
     }
 
-    /** The portals' places, as the setting shows them: "Varrock, Falador". */
+    /** As the setting shows them: "Varrock, Falador". */
     static String portals(Set<String> features)
     {
         StringBuilder text = new StringBuilder();

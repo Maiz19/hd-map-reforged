@@ -11,6 +11,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -24,37 +25,26 @@ import javax.swing.JTextField;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.ui.ColorScheme;
 
-/**
- * "Custom routes" as a panel of the map, where the search results show: the player's own routes with several stops,
- * to pick, name, order and run. Stops are added from the map (right-click, "+ Stop" in a card, a search's kind).
- * Swing thread.
- */
+/** The "Custom routes" panel, where the search results show: pick, name, order and run the player's routes. Swing thread. */
 final class TourPanel
 {
-    /** What the panel does with the routes: kept, run and ordered by the route feature. */
     interface Actions
     {
         List<Tour> tours();
 
-        /** The route stops are added to. */
         String editing();
 
         void save(List<Tour> tours, String editing);
 
         void run(Tour tour);
 
-        /**
-         * Works out the fastest order in the background, saves it (if the route's stops are still the same), then runs
-         * {@code done}, also when it failed or was cancelled.
-         */
+        /** Saves the fastest order if the stops are unchanged, then runs {@code done} even on failure or cancel. */
         void fastestOrder(Tour tour, Runnable done);
 
-        /** Stops working out the fastest order; what it found is not kept. */
         default void cancelOrder()
         {
         }
 
-        /** The custom route being run, or null. */
         String running();
 
         void stop();
@@ -63,25 +53,21 @@ final class TourPanel
     private static final Color LINK = ColorScheme.GRAND_EXCHANGE_LIMIT;
 
     private final Actions actions;
-    private final java.util.function.Consumer<IntFunction<JComponent>> show;
-    private final java.util.function.Consumer<WorldPoint> focus;
+    private final Consumer<IntFunction<JComponent>> show;
+    private final Consumer<WorldPoint> focus;
     private boolean open;
-    /** While the fastest order is worked out; {@link #orderings} counts the times, so a cancelled one ends nothing. */
+    /** While the fastest order is worked out; {@link #orderings} counts runs, so a cancelled one ends nothing. */
     private boolean ordering;
     private int orderings;
 
-    /** With a title in a bar of its own (the map's floating panel): no title here; else a link back, or null. */
     private final String back;
 
-    TourPanel(Actions actions, java.util.function.Consumer<IntFunction<JComponent>> show,
-        java.util.function.Consumer<WorldPoint> focus)
+    TourPanel(Actions actions, Consumer<IntFunction<JComponent>> show, Consumer<WorldPoint> focus)
     {
         this(actions, show, focus, null);
     }
 
-    /** {@code back}: the text of a link that closes the panel ("‹ All routes"), or null for none. */
-    TourPanel(Actions actions, java.util.function.Consumer<IntFunction<JComponent>> show,
-        java.util.function.Consumer<WorldPoint> focus, String back)
+    TourPanel(Actions actions, Consumer<IntFunction<JComponent>> show, Consumer<WorldPoint> focus, String back)
     {
         this.actions = actions;
         this.show = show;
@@ -94,7 +80,6 @@ final class TourPanel
         return open;
     }
 
-    /** Opens the panel, or closes it when open. */
     void toggle()
     {
         if (open)
@@ -115,14 +100,12 @@ final class TourPanel
         show.accept(null);
     }
 
-    /** Something else took the panel's place (the search). */
     void replaced()
     {
         open = false;
         cancelOrder();
     }
 
-    /** Stops the fastest order being worked out from this panel, if it is. */
     private void cancelOrder()
     {
         if (ordering)
@@ -133,7 +116,6 @@ final class TourPanel
         }
     }
 
-    /** Shows the routes as they are now, when open. */
     void refresh()
     {
         if (open)
@@ -173,7 +155,6 @@ final class TourPanel
             panel.add(Box.createVerticalStrut(4));
         }
 
-        // Which route: a list to pick from, New, and its name to change in place.
         JPanel pick = row();
         JComboBox<String> which = new JComboBox<>();
         for (Tour t : tours)
@@ -185,7 +166,6 @@ final class TourPanel
             Object chosen = which.getSelectedItem();
             if (chosen != null && !chosen.equals(current.name))
             {
-                // Another route: the order being worked out was for this one.
                 cancelOrder();
                 actions.save(tours, chosen.toString());
                 refresh();
@@ -228,16 +208,14 @@ final class TourPanel
             actions.save(tours, tours.isEmpty() ? "My route" : tours.get(0).name);
             refresh();
         });
-        // Not while the fastest order is worked out for it; moving or removing stops neither.
+        // Not while the fastest order is worked out; moving or removing stops neither.
         delete.setEnabled(!ordering);
         naming.add(delete);
         panel.add(naming);
         panel.add(Box.createVerticalStrut(8));
 
-        // Its stops: each a link to where it is, with up, down and remove.
         if (current.stops.isEmpty())
         {
-            // The how-to only while it is needed.
             panel.add(text("No stops yet. Right-click the map, Add to custom route, or + Stop in a card.",
                 ColorScheme.LIGHT_GRAY_COLOR, false, width));
         }

@@ -6,9 +6,15 @@ import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GridLayout;
+import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -16,25 +22,24 @@ import java.util.function.IntFunction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.Scrollable;
 import javax.swing.Timer;
+import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 
-/**
- * The sidebar: no map of its own (too small to be of use), but buttons to open the map, the route being followed with
- * its steps, and the party, who is where. Clicking a step or a friend shows that place on the map. Swing thread.
- */
+/** The sidebar: buttons to open the map, the route's steps, custom routes and the party. Swing thread. */
 final class MapPanel extends PluginPanel
 {
-    /** The party, as the sidebar lists it. */
     interface Friends
     {
         boolean inGroup();
@@ -49,14 +54,12 @@ final class MapPanel extends PluginPanel
 
         FriendsWidget.Images images();
 
-        /** Hops to a world (the game's world switcher does it). */
         void hop(int world);
 
-        /** Whether there is a last party to rejoin. */
         boolean canRejoin();
 
         /** Rejoins the last party. */
-        void join(java.awt.Component from);
+        void join(Component from);
     }
 
     /** Text width inside the sidebar's padding. */
@@ -67,17 +70,15 @@ final class MapPanel extends PluginPanel
     private final Friends friends;
     private final Function<WorldPoint, String> placeName;
     private final JPanel routeHolder = column();
-    /** "Route" above the note that there is none; a route's steps have their own title. */
+    /** Shown only with no route; a route's steps have their own title. */
     private final JLabel routeHeading = heading("Route");
     private final JPanel friendsHolder = column();
     private final JPanel toursHolder = column();
-    /** "Custom routes" above the list; the open editor has its own title. */
     private final JLabel toursHeading = heading("Custom routes");
     private TourPanel.Actions tours;
-    /** The custom route open for editing (built for a width), or null for the list. */
+    /** The custom route open for editing, or null for the list. */
     private IntFunction<JComponent> editorSection;
     private TourPanel editor;
-    /** The member whose details are open, or -1. */
     private long openFriend = -1;
     private int friendPage;
     private final Timer friendsTimer;
@@ -96,12 +97,9 @@ final class MapPanel extends PluginPanel
         JPanel content = column();
         content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         JPanel buttons = new JPanel(new GridLayout(1, 2, 6, 0));
-        buttons.setOpaque(false);
-        buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
         buttons.add(button("Open map", openMap, "The map over the game (also with the map key)"));
         buttons.add(button("In a window", openWindow, "The map in a window of its own"));
-        buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, buttons.getPreferredSize().height));
-        content.add(buttons);
+        content.add(fitted(buttons));
         content.add(Box.createVerticalStrut(10));
         content.add(card(routeHeading, routeHolder));
         content.add(Box.createVerticalStrut(8));
@@ -109,7 +107,7 @@ final class MapPanel extends PluginPanel
         content.add(Box.createVerticalStrut(8));
         content.add(card(heading("Party"), friendsHolder));
 
-        // As wide as the sidebar, never wider: what does not fit wraps instead of running off to the right.
+        // Never wider than the sidebar: what does not fit wraps.
         JPanel top = new Fitted();
         top.setBackground(ColorScheme.DARK_GRAY_COLOR);
         top.add(content, BorderLayout.NORTH);
@@ -125,7 +123,7 @@ final class MapPanel extends PluginPanel
         refreshFriends();
     }
 
-    /** The route's steps ({@code section} builds them for a width), or the note that there is none. */
+    /** The route's steps ({@code section} builds them for a width), or null for none. */
     void showRoute(IntFunction<JComponent> section)
     {
         routeHolder.removeAll();
@@ -144,7 +142,6 @@ final class MapPanel extends PluginPanel
         routeHolder.repaint();
     }
 
-    /** The saved custom routes, each to run (or stop) with a click; {@code actions} keeps and runs them. */
     void setTours(TourPanel.Actions actions)
     {
         tours = actions;
@@ -155,7 +152,6 @@ final class MapPanel extends PluginPanel
         refreshTours();
     }
 
-    /** The custom routes changed (saved, run, done). */
     void refreshTours()
     {
         if (editor != null && editor.isOpen())
@@ -166,7 +162,6 @@ final class MapPanel extends PluginPanel
         showTours();
     }
 
-    /** Opens a member's details, as clicking them does. */
     void openFriend(long id, int page)
     {
         openFriend = id;
@@ -175,7 +170,6 @@ final class MapPanel extends PluginPanel
         refreshFriends();
     }
 
-    /** Opens a route for editing, in place of the list. */
     private void edit(Tour tour)
     {
         tours.save(tours.tours(), tour.name);
@@ -203,14 +197,13 @@ final class MapPanel extends PluginPanel
             toursHolder.repaint();
             return;
         }
-        List<Tour> saved = tours == null ? java.util.Collections.emptyList() : tours.tours();
+        List<Tour> saved = tours == null ? Collections.emptyList() : tours.tours();
         String running = tours == null ? null : tours.running();
         if (saved.isEmpty())
         {
             toursHolder.add(text("None yet. Right-click the map, Add to custom route.", ColorScheme.LIGHT_GRAY_COLOR));
-            JButton make = button("New route", () -> {
-                edit(new Tour(Tour.unique(saved, "My route"), java.util.Collections.emptyList()));
-            }, "Make a route; add its stops from the map");
+            JButton make = button("New route", () -> edit(new Tour(Tour.unique(saved, "My route"),
+                Collections.emptyList())), "Make a route; add its stops from the map");
             make.setAlignmentX(Component.LEFT_ALIGNMENT);
             toursHolder.add(make);
         }
@@ -230,7 +223,7 @@ final class MapPanel extends PluginPanel
         friendsTimer.stop();
     }
 
-    /** The party as it is now; rebuilt only when something shown changed. */
+    /** Rebuilt only when something shown changed. */
     private void refreshFriends()
     {
         if (!isShowing() && friendsShown != null)
@@ -238,7 +231,7 @@ final class MapPanel extends PluginPanel
             return;
         }
         boolean in = friends.inGroup();
-        List<FriendsWidget.Row> rows = in ? friends.rows() : java.util.Collections.emptyList();
+        List<FriendsWidget.Row> rows = in ? friends.rows() : Collections.emptyList();
         boolean rejoin = !in && friends.canRejoin();
         StringBuilder key = new StringBuilder(in ? "in" : rejoin ? "out, rejoin" : "out");
         String[] places = new String[rows.size()];
@@ -305,14 +298,12 @@ final class MapPanel extends PluginPanel
 
     private static final String[] PAGES = {"Items", "Worn", "Skills"};
 
-    /** A member's details: buttons to see them on the map or hop to them, their status and one page of what they share. */
+    /** A member's details: on map / hop buttons, their orbs and one page of what they share. */
     private JComponent details(FriendsWidget.Row row, int me)
     {
         JPanel box = column();
         box.setBorder(BorderFactory.createEmptyBorder(0, 6, 8, 0));
         JPanel actions = new JPanel(new GridLayout(1, 2, 4, 0));
-        actions.setOpaque(false);
-        actions.setAlignmentX(Component.LEFT_ALIGNMENT);
         JButton show = button("On map", () -> showOnMap.accept(row.point), "Open the map where they are");
         show.setEnabled(row.point != null);
         actions.add(show);
@@ -320,8 +311,7 @@ final class MapPanel extends PluginPanel
         {
             actions.add(button("Hop W" + row.world, () -> friends.hop(row.world), "Hop to their world, " + row.world));
         }
-        actions.setMaximumSize(new Dimension(Integer.MAX_VALUE, actions.getPreferredSize().height));
-        box.add(actions);
+        box.add(fitted(actions));
         box.add(Box.createVerticalStrut(6));
         PartyMapMembers.Gear shared = friends.gear(row.id);
         if (shared == null)
@@ -329,22 +319,17 @@ final class MapPanel extends PluginPanel
             box.add(text("Nothing shared yet. They share it with this plugin's setting.", ColorScheme.LIGHT_GRAY_COLOR));
             return box;
         }
-        int hp = net.runelite.api.Skill.HITPOINTS.ordinal();
-        int prayer = net.runelite.api.Skill.PRAYER.ordinal();
-        FriendsWidget.Images pictures = friends.images();
+        int hp = Skill.HITPOINTS.ordinal();
+        int prayer = Skill.PRAYER.ordinal();
+        FriendsWidget.Images images = friends.images();
         JPanel status = new JPanel(new GridLayout(2, 2, 4, 4));
-        status.setOpaque(false);
-        status.setAlignmentX(Component.LEFT_ALIGNMENT);
-        status.add(orb(Orbs.Kind.HITPOINTS, shared.boosted[hp], shared.levels[hp], pictures));
-        status.add(orb(Orbs.Kind.PRAYER, shared.boosted[prayer], shared.levels[prayer], pictures));
-        status.add(orb(Orbs.Kind.RUN, shared.run, 100, pictures));
-        status.add(orb(Orbs.Kind.SPECIAL, shared.special, 100, pictures));
-        status.setMaximumSize(new Dimension(Integer.MAX_VALUE, status.getPreferredSize().height));
-        box.add(status);
+        status.add(orb(Orbs.Kind.HITPOINTS, shared.boosted[hp], shared.levels[hp], images));
+        status.add(orb(Orbs.Kind.PRAYER, shared.boosted[prayer], shared.levels[prayer], images));
+        status.add(orb(Orbs.Kind.RUN, shared.run, 100, images));
+        status.add(orb(Orbs.Kind.SPECIAL, shared.special, 100, images));
+        box.add(fitted(status));
         box.add(Box.createVerticalStrut(6));
         JPanel pages = new JPanel(new GridLayout(1, 3, 4, 0));
-        pages.setOpaque(false);
-        pages.setAlignmentX(Component.LEFT_ALIGNMENT);
         for (int k = 0; k < PAGES.length; k++)
         {
             int page = k;
@@ -354,13 +339,11 @@ final class MapPanel extends PluginPanel
                 refreshFriends();
             }, PAGES[k]);
             tab.setEnabled(k != friendPage);
-            tab.setMargin(new java.awt.Insets(2, 1, 2, 1));
+            tab.setMargin(new Insets(2, 1, 2, 1));
             pages.add(tab);
         }
-        pages.setMaximumSize(new Dimension(Integer.MAX_VALUE, pages.getPreferredSize().height));
-        box.add(pages);
+        box.add(fitted(pages));
         box.add(Box.createVerticalStrut(6));
-        FriendsWidget.Images images = friends.images();
         JPanel grid;
         if (friendPage == 0)
         {
@@ -390,44 +373,40 @@ final class MapPanel extends PluginPanel
         else
         {
             grid = new JPanel(new GridLayout(8, 3, 2, 2));
-            for (int k = 0; k < Math.min(HdMapPartyGear.SKILLS, net.runelite.api.Skill.values().length); k++)
+            for (int k = 0; k < Math.min(HdMapPartyGear.SKILLS, Skill.values().length); k++)
             {
                 int now = shared.boosted[k];
                 int real = shared.levels[k];
-                java.awt.image.BufferedImage icon = images.skill(k);
+                BufferedImage icon = images.skill(k);
                 JLabel skill = new JLabel(now == real ? String.valueOf(real) : now + "/" + real,
-                    icon == null ? null : new javax.swing.ImageIcon(icon), JLabel.LEFT);
+                    icon == null ? null : new ImageIcon(icon), JLabel.LEFT);
                 skill.setForeground(now > real ? new Color(120, 220, 120) : now < real ? new Color(230, 120, 110)
                     : Color.WHITE);
-                skill.setToolTipText(net.runelite.api.Skill.values()[k].getName());
+                skill.setToolTipText(Skill.values()[k].getName());
                 grid.add(skill);
             }
         }
-        grid.setOpaque(false);
-        grid.setAlignmentX(Component.LEFT_ALIGNMENT);
-        grid.setMaximumSize(new Dimension(Integer.MAX_VALUE, grid.getPreferredSize().height));
-        box.add(grid);
+        box.add(fitted(grid));
         return box;
     }
 
     private static JComponent item(FriendsWidget.Images images, int id, int quantity)
     {
-        java.awt.image.BufferedImage picture = id < 0 ? null : images.item(id, Math.max(1, quantity));
-        JLabel label = new JLabel(picture == null ? null : new javax.swing.ImageIcon(picture));
+        BufferedImage picture = id < 0 ? null : images.item(id, Math.max(1, quantity));
+        JLabel label = new JLabel(picture == null ? null : new ImageIcon(picture));
         label.setHorizontalAlignment(JLabel.CENTER);
         label.setPreferredSize(new Dimension(36, 32));
         return label;
     }
 
-    /** One of the game's orbs, as on the minimap. */
     private static JComponent orb(Orbs.Kind kind, int value, int max, FriendsWidget.Images pictures)
     {
         JComponent orb = new JComponent()
         {
             @Override
-            protected void paintComponent(java.awt.Graphics g)
+            protected void paintComponent(Graphics g)
             {
-                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                Graphics2D g2 = (Graphics2D) g.create();
                 Orbs.paint(g2, (getWidth() - Orbs.WIDTH) / 2, 0, kind, value, max, pictures::sprite);
                 g2.dispose();
             }
@@ -436,7 +415,7 @@ final class MapPanel extends PluginPanel
         return orb;
     }
 
-    /** A line of a list: a name over a smaller line; with {@code action}, clickable. {@code dot}: a coloured dot. */
+    /** A name over a smaller line; with {@code action}, clickable. */
     private static JComponent entry(String title, String under, Color dot, String tip, Runnable action)
     {
         JPanel line = new JPanel(new BorderLayout(6, 0));
@@ -492,8 +471,8 @@ final class MapPanel extends PluginPanel
         return spaced;
     }
 
-    /** A panel that takes the width of the scroll pane it is in, and scrolls only up and down. */
-    private static final class Fitted extends JPanel implements javax.swing.Scrollable
+    /** Takes the scroll pane's width; scrolls only up and down. */
+    private static final class Fitted extends JPanel implements Scrollable
     {
         Fitted()
         {
@@ -507,13 +486,13 @@ final class MapPanel extends PluginPanel
         }
 
         @Override
-        public int getScrollableUnitIncrement(java.awt.Rectangle visible, int orientation, int direction)
+        public int getScrollableUnitIncrement(Rectangle visible, int orientation, int direction)
         {
             return 16;
         }
 
         @Override
-        public int getScrollableBlockIncrement(java.awt.Rectangle visible, int orientation, int direction)
+        public int getScrollableBlockIncrement(Rectangle visible, int orientation, int direction)
         {
             return visible.height;
         }
@@ -531,8 +510,8 @@ final class MapPanel extends PluginPanel
         }
     }
 
-    /** A block of the sidebar: a darker box around a heading and what is under it. */
-    private static JComponent card(JComponent heading, JComponent body)
+    private static JComponent card
+(JComponent heading, JComponent body)
     {
         JPanel card = column();
         card.setOpaque(true);
@@ -541,6 +520,15 @@ final class MapPanel extends PluginPanel
         card.add(heading);
         card.add(body);
         return card;
+    }
+
+    /** Transparent, left-aligned, no taller than it needs. */
+    private static JComponent fitted(JComponent c)
+    {
+        c.setOpaque(false);
+        c.setAlignmentX(Component.LEFT_ALIGNMENT);
+        c.setMaximumSize(new Dimension(Integer.MAX_VALUE, c.getPreferredSize().height));
+        return c;
     }
 
     private static JPanel column()

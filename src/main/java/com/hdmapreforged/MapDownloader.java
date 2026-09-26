@@ -10,23 +10,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Downloads the whole map to the disk cache in the background, when the player asks for it, so every part of it
- * shows at once, also offline. Two tiles at a time, coarse zoom levels first (so the whole map is usable early), the
- * surface before the dungeons; tiles already on disk are skipped, so it resumes where it stopped. The choice is
- * remembered. It is done once: a new wiki map version is not downloaded again in one go, its tiles replace the
- * earlier ones as they are looked at (see TileCache).
+ * Downloads the whole map to the disk cache on request: two tiles at a time, coarse levels and the surface first,
+ * skipping tiles on disk so it resumes. Done once: a newer wiki version's tiles replace these as they are looked at.
  */
 @Slf4j
 final class MapDownloader
 {
-    /** What to download. */
     enum Scope
     {
         SURFACE("the surface", 200),
         ALL("the surface and all dungeons", 500);
 
         final String description;
-        /** A rough size on disk, for the question asked before starting. */
+    /** Rough size on disk, for the question before starting. */
         final int megabytes;
 
         Scope(String description, int megabytes)
@@ -48,13 +44,12 @@ final class MapDownloader
         }
     }
 
-    /** Parallel downloads: gentle on the wiki's servers. */
+    /** Gentle on the wiki's servers. */
     static final int THREADS = 2;
-    /** Each download thread waits this long after every request, so the wiki sees at most a few a second. */
     static final long PAUSE_MS = 150;
-    /** After this many failures in a row on one thread (no connection) it stops; the download resumes next start. */
+    /** Failures in a row (no connection) before a thread stops; the download resumes next start. */
     private static final int MAX_FAILURES = 20;
-    /** A tile is tried this often, with longer pauses in between, then skipped (it loads when looked at). */
+    /** Tries per tile, with growing pauses, before it is skipped (it loads when looked at). */
     static final int MAX_ATTEMPTS = 3;
     private static final long RETRY_PAUSE_MS = 3000;
     private static final String COMPLETE = "complete-";
@@ -64,9 +59,7 @@ final class MapDownloader
 
     private final long pauseMs;
     private final AtomicInteger done = new AtomicInteger();
-    /** Tiles given up on in this run. */
     private final AtomicInteger skipped = new AtomicInteger();
-    /** A thread of this run stopped early (no connection). */
     private volatile boolean gaveUp;
     private final AtomicInteger generation = new AtomicInteger();
     private volatile int total;
@@ -77,13 +70,13 @@ final class MapDownloader
     private volatile String finished;
     private final List<Thread> workers = new ArrayList<>();
 
-    /** {@code changed} is called (on a download thread) whenever the progress to show changes. */
+    /** {@code changed} runs on a download thread whenever the progress changes. */
     MapDownloader(TileCache tiles, Runnable changed)
     {
         this(tiles, changed, PAUSE_MS);
     }
 
-    /** With another pause between requests (tests). */
+    /** Tests. */
     MapDownloader(TileCache tiles, Runnable changed, long pauseMs)
     {
         this.tiles = tiles;
@@ -91,10 +84,7 @@ final class MapDownloader
         this.pauseMs = pauseMs;
     }
 
-    /**
-     * Every tile of the chosen maps on the ground floor, coarse zoom levels first and the surface before other
-     * maps. Upper floors are left out: most of them are empty, and they load quickly when looked at.
-     */
+    /** Ground floor tiles only (upper floors are mostly empty and load quickly), coarse levels and the surface first. */
     static List<TileCache.Key> keys(BaseMaps maps, Scope scope)
     {
         List<BaseMap> chosen = new ArrayList<>();
@@ -130,7 +120,6 @@ final class MapDownloader
         return keys;
     }
 
-    /** Starts (or restarts) downloading {@code scope} of a map version. */
     synchronized void start(Scope scope, String version, BaseMaps maps)
     {
         stop();
@@ -141,10 +130,9 @@ final class MapDownloader
         this.scope = scope;
         this.version = version;
         finished = null;
-        if (completeMarker(version, scope).isFile() || tiles.fallbackComplete(completeName(scope)))
+        if (isComplete(scope))
         {
-            // Downloaded before, for this version or an earlier one (whose tiles are shown until this version's
-            // arrive as they are looked at): not downloaded again.
+            // Downloaded before, for this version or an earlier one: not again.
             done.set(0);
             total = 0;
             changed.run();
@@ -173,7 +161,6 @@ final class MapDownloader
     private void work(ConcurrentLinkedQueue<TileCache.Key> queue, int started, AtomicInteger working)
     {
         String tileVersion = version;
-        // Failures in a row on this thread.
         int[] failures = new int[1];
         try
         {
@@ -202,16 +189,12 @@ final class MapDownloader
             if (working.decrementAndGet() == 0 && started == generation.get())
             {
                 ended(started, done.get() >= total, gaveUp || queue.peek() != null, tileVersion);
-                // What the download added counts toward the disk limit too.
                 tiles.limitDiskUse();
             }
         }
     }
 
-    /**
-     * One tile, tried up to {@link #MAX_ATTEMPTS} times with growing pauses: true when on disk (or known empty),
-     * false when skipped, null to stop this thread (no connection, stopped or interrupted).
-     */
+    /** One tile: true when on disk (or known empty), false when skipped, null to stop this thread. */
     private Boolean fetch(String tileVersion, TileCache.Key key, int started, int[] failures)
     {
         for (int attempt = 1; started == generation.get(); attempt++)
@@ -245,7 +228,7 @@ final class MapDownloader
         return null;
     }
 
-    /** False when interrupted (stopped). */
+    /** False when interrupted. */
     private static boolean pause(long millis)
     {
         if (millis <= 0)
@@ -268,7 +251,6 @@ final class MapDownloader
     {
         if (started != generation.get())
         {
-            // A new download started meanwhile.
             return;
         }
         running = false;
@@ -302,7 +284,6 @@ final class MapDownloader
         changed.run();
     }
 
-    /** Stops downloading; what is on disk stays. */
     synchronized void stop()
     {
         generation.incrementAndGet();
@@ -314,7 +295,6 @@ final class MapDownloader
         running = false;
     }
 
-    /** Forgets the finished message, such as after it has been shown for a while. */
     void clearMessage()
     {
         finished = null;
@@ -350,14 +330,12 @@ final class MapDownloader
         return total;
     }
 
-    /** Whether {@code scope} of the current version is completely on disk. */
     boolean isComplete(Scope scope)
     {
         String current = version;
         return current != null && (completeMarker(current, scope).isFile() || tiles.fallbackComplete(completeName(scope)));
     }
 
-    /** What the map shows about the download, or null when nothing. */
     String status()
     {
         if (running)

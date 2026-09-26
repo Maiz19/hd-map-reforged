@@ -46,7 +46,6 @@ final class NodeTable
         return i;
     }
 
-    /** The best known cost of a node, or {@code Integer.MAX_VALUE}. */
     int cost(int key)
     {
         int i = slot(key);

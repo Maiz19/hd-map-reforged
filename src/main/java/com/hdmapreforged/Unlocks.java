@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.runelite.api.Client;
@@ -15,9 +16,8 @@ import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
 
 /**
- * A snapshot of what the logged-in player has unlocked, taken on the client thread and read from Swing and the route
- * threads: skill levels, finished quests and the varbits the data refers to. Anything it cannot judge (items, unknown
- * quests or skills) counts as met, so icons are only hidden when a requirement is certainly missing.
+ * The player's levels, finished quests and varbits, taken on the client thread, read from any. What it cannot judge
+ * counts as met, so icons are only hidden when a requirement is certainly missing.
  */
 final class Unlocks
 {
@@ -26,28 +26,20 @@ final class Unlocks
     private final Map<String, Integer> levels = new HashMap<>();
     private final Map<String, Boolean> quests = new HashMap<>();
     private final Map<Integer, Integer> varbits = new HashMap<>();
-    /**
-     * Results per requirement set (by identity: {@link Needs} has no equals), from any thread. The data's requirement
-     * sets are made once each, so this stays as large as the tables; {@link #CACHED} caps it all the same.
-     */
-    private final Map<Needs, Boolean> usable = new java.util.concurrent.ConcurrentHashMap<>();
-    /** Requirement sets whose result is kept at most. */
+    /** By identity ({@link Needs} has no equals). */
+    private final Map<Needs, Boolean> usable = new ConcurrentHashMap<>();
     static final int CACHED = 20_000;
 
     private Unlocks()
     {
     }
 
-    /**
-     * Reads the player's state for everything {@code needs} refers to. Client thread only. Quest states run a
-     * client script each, so unless {@code checkQuests} they are taken from {@code previous}.
-     */
+    /** Client thread only. Quests run a client script each, so unless {@code checkQuests} they come from {@code previous}. */
     static Unlocks capture(Client client, Collection<Needs> needs, Unlocks previous, boolean checkQuests)
     {
         Unlocks unlocks = new Unlocks();
         for (Skill skill : Skill.values())
         {
-            // "Overall" is not a real skill; the total level is read below.
             if (!"Overall".equals(skill.getName()))
             {
                 unlocks.levels.put(skill.getName().toLowerCase(Locale.ROOT), client.getRealSkillLevel(skill));
@@ -94,7 +86,6 @@ final class Unlocks
         return unlocks;
     }
 
-    /** A snapshot from known values, for tests. */
     static Unlocks of(Map<String, Integer> levels, Map<String, Boolean> quests, Map<Integer, Integer> varbits)
     {
         Unlocks unlocks = new Unlocks();
@@ -117,13 +108,12 @@ final class Unlocks
         }
     }
 
-    /** A number of the data, or -1 when it is too long to be one (a broken line). */
+    /** -1 when too long to be one (a broken line). */
     private static int number(String digits)
     {
         return digits.length() <= 9 ? Integer.parseInt(digits) : -1;
     }
 
-    /** Whether two snapshots hold the same state, so nothing shown needs to change. */
     boolean sameAs(Unlocks other)
     {
         return other != null && levels.equals(other.levels) && quests.equals(other.quests) && varbits.equals(other.varbits);
@@ -144,7 +134,7 @@ final class Unlocks
         return null;
     }
 
-    /** False only when a skill, quest or varbit requirement is certainly not met. Any thread. */
+    /** False only when a requirement is certainly not met. */
     boolean usable(Needs needs)
     {
         if (needs.isEmpty())
@@ -189,24 +179,9 @@ final class Unlocks
             {
                 continue;
             }
-            boolean ok;
-            switch (matcher.group(2))
-            {
-                case "=":
-                    ok = value == wanted;
-                    break;
-                case ">":
-                    ok = value > wanted;
-                    break;
-                case "<":
-                    ok = value < wanted;
-                    break;
-                case "&":
-                    ok = (value & wanted) != 0;
-                    break;
-                default:
-                    ok = true;
-            }
+            String op = matcher.group(2);
+            boolean ok = op.equals("=") ? value == wanted : op.equals(">") ? value > wanted
+                : op.equals("<") ? value < wanted : !op.equals("&") || (value & wanted) != 0;
             if (!ok)
             {
                 return false;

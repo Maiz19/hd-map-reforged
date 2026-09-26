@@ -8,41 +8,37 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Which wiki maps really show a 64×64 region, for regions where map bounds overlap. A region with an empty owner
- * list was checked and no candidate showed it. Where several maps draw parts of one region (Bryophyta's lair and the
- * Varrock Sewers), which of them draws each 8×8 zone: a map is only the answer where its tiles show something. Filled
- * from the bundled table, a cached table per map version, and {@link RegionResolver}.
+ * Which wiki maps really show a 64×64 region where map bounds overlap (empty: checked, none), and where several share a
+ * region, which draws each 8×8 zone. Filled from the bundled table, a cache per map version and {@link RegionResolver}.
  */
 final class RegionTable
 {
     private static final int[] NONE = new int[0];
 
-    /** Zones per region side: 8 zones of 8 tiles. */
     static final int ZONES = 8;
     static final int ZONE = 8;
-    /** A zone's owners as a bit mask over the region's owner list, one character each (up to 6 owners). */
+    /** A zone's owners as a bit mask over the region's owner list, one character (up to 6 owners). */
     private static final String MASKS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-";
 
     private final Map<Integer, int[]> owners = new ConcurrentHashMap<>();
-    /** For regions with several owners: 64 mask characters, zone (x, y) at index x * 8 + y. */
+    /** 64 mask characters, zone (x, y) at index x * 8 + y. */
     private final Map<Integer, String> zones = new ConcurrentHashMap<>();
-    /**
-     * Regions answered only by "no such tile" from the wiki: used for this session but not written, so a passing
-     * wiki problem is not remembered for good.
-     */
-    private final java.util.Set<Integer> unsure = ConcurrentHashMap.newKeySet();
+    /** Answered only by "no such tile": not written, so a passing wiki problem is not remembered. */
+    private final Set<Integer> unsure = ConcurrentHashMap.newKeySet();
 
     static int regionId(int x, int y)
     {
         return ((x >> 6) << 8) | (y >> 6);
     }
 
-    /** Owner map ids, an empty array when checked without owner, or null when not checked yet. */
+    /** Owner map ids, empty when none, or null when not checked yet. */
     int[] owners(int region)
     {
         return owners.get(region);
@@ -59,7 +55,7 @@ final class RegionTable
         unsure.remove(region);
     }
 
-    /** A region no candidate map had any tile for: kept for this session only (see {@link #write}). */
+    /** No candidate map had any tile: kept for this session only. */
     void putUnsure(int region)
     {
         owners.put(region, NONE);
@@ -67,7 +63,7 @@ final class RegionTable
         unsure.add(region);
     }
 
-    /** A region's owners with, when several, which of them draw each zone ({@code masks[x * 8 + y]}, bits by owner). */
+    /** With which owners draw each zone ({@code masks[x * 8 + y]}, bits by owner). */
     void put(int region, int[] ids, int[] masks)
     {
         owners.put(region, ids);
@@ -86,9 +82,8 @@ final class RegionTable
     }
 
     /**
-     * The owners (map ids) that draw the zone of a tile — or, when none draws that zone, the zones around it (an
-     * entrance on the black just beside a drawing) — when the region's zones are known; null when only the region's
-     * owners are known. An empty array: none of them draws anything near.
+     * The owners drawing a tile's zone, or when none does, the zones around it (an entrance just beside a drawing);
+     * null when zones are not known; empty when none draws anything near.
      */
     int[] zoneOwners(int x, int y)
     {
@@ -135,10 +130,7 @@ final class RegionTable
         return owners.size();
     }
 
-    /**
-     * Reads lines of a region id, a tab and comma-separated map ids (possibly none), optionally a tab and the zones.
-     * Lines that cannot be read are skipped (a table on disk may be damaged).
-     */
+    /** Lines of region id, tab, comma-separated map ids, optionally tab and zones; bad lines are skipped. */
     RegionTable read(Reader tsv) throws IOException
     {
         BufferedReader reader = new BufferedReader(tsv);
@@ -155,7 +147,7 @@ final class RegionTable
             }
             catch (RuntimeException e)
             {
-                // Skipped: that region is checked again when needed.
+                // Checked again when needed.
             }
         }
         return this;
@@ -184,9 +176,9 @@ final class RegionTable
         {
             zones.put(region, zoned);
         }
-        else if (!java.util.Arrays.equals(owners.get(region), ids))
+        else if (!Arrays.equals(owners.get(region), ids))
         {
-            // A later table (the cache for a version) with other owners: its zones, if any, are not known.
+            // A later table with other owners: its zones are not known.
             zones.remove(region);
         }
         owners.put(region, ids);
@@ -205,13 +197,13 @@ final class RegionTable
         return true;
     }
 
-    /** Writes the table, leaving out regions only known from missing tiles ({@link #putUnsure}). */
+    /** Leaves out regions from {@link #putUnsure}. */
     void write(File file, String header) throws IOException
     {
         write(file, header, false);
     }
 
-    /** Writes the table; {@code withUnsure} keeps regions only known from missing tiles too (building the bundled one). */
+
     void write(File file, String header, boolean withUnsure) throws IOException
     {
         File parent = file.getParentFile();

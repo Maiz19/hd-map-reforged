@@ -8,32 +8,23 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import net.runelite.api.coords.WorldPoint;
 
-/**
- * What the place search finds, word by word: every word typed must fit somewhere (a word of the name, or of the
- * place it is in), in any order, with a small typo forgiven. "shark catherby" finds the shark fishing spots at
- * Catherby, "bank varrock" Varrock's banks, "draynr" Draynor Village.
- */
+/** The place search: every typed word must fit the name or its place, in any order, a small typo forgiven. */
 final class SearchIndex
 {
-    /** What a hit is. */
     enum Type
     {
-        /** A town, island or region. */
         PLACE(0),
-        /** A map of its own (a dungeon). */
         MAP(1),
-        /** Every place of a kind: "Shark fishing spots". */
+        /** "Shark fishing spots". */
         KIND(1),
-        /** An icon of ours. */
         ICON(2),
-        /** A kind at one place: "Shark fishing spots – Catherby". */
+        /** "Shark fishing spots – Catherby". */
         KIND_PLACE(2),
-        /** One of the game's own icons in the tiles. */
         GAME_ICON(3);
 
-        /** Lower comes first when equally good. */
         final int rank;
 
         Type(int rank)
@@ -42,23 +33,18 @@ final class SearchIndex
         }
     }
 
-    /** One thing to find. */
     static final class Hit
     {
         final Type type;
         final String label;
-        /** The words it is found by: its own name's. */
         final String[] words;
-        /** Those words joined by spaces, for a whole-name match. */
         final String joined;
-        /** The words of where it is (a town), found by too; for a kind at a place, the place's. */
         final String[] placeWords;
-        /** What it stands for: a {@link PoiLoader.Place}, {@link BaseMap}, {@link Poi}, {@link KindIndex.Kind}. */
+        /** A {@link PoiLoader.Place}, {@link BaseMap}, {@link Poi} or {@link KindIndex.Kind}. */
         final Object target;
-        /** For a kind at one place: that place's point. */
         final WorldPoint point;
         final PoiType icon;
-        /** A little later when equally good: islands and regions after towns of the same name. */
+        /** Islands and regions come after towns of the same name. */
         double later;
 
         Hit(Type type, String label, String words, String place, Object target, WorldPoint point, PoiType icon)
@@ -81,10 +67,6 @@ final class SearchIndex
         this.hits = hits;
     }
 
-    /**
-     * Everything to find: places, maps, our icons (by every name stacked on them, and the town they are in), the
-     * game's icons, the kinds of places, and each kind at each town ("Shark fishing spots – Catherby").
-     */
     static SearchIndex build(List<PoiLoader.Place> labels, List<BaseMap> maps, List<Poi> pois, List<Poi> gameIcons,
         KindIndex kinds, Function<WorldPoint, String> placeName)
     {
@@ -138,10 +120,6 @@ final class SearchIndex
         return new SearchIndex(hits);
     }
 
-    /**
-     * The best hits for what was typed, at most {@code limit}, each label once; {@code allowed} leaves some out
-     * (icons one cannot use, the game's icons when hidden).
-     */
     List<Hit> find(String query, int limit, Predicate<Hit> allowed)
     {
         String[] typed = words(query);
@@ -175,7 +153,6 @@ final class SearchIndex
         return best;
     }
 
-    /** A hit with its score for one search. */
     private static final class Scored
     {
         final Hit hit;
@@ -189,10 +166,8 @@ final class SearchIndex
     }
 
     /**
-     * How well a hit fits the words typed: lower is better (below zero for its very name), NaN when a word fits
-     * nowhere. A kind at a place is only
-     * found when words fit both the kind and the place ("shark catherby"), so a town's name alone does not list
-     * everything in it.
+     * Lower is better, NaN when a word fits nowhere. A kind at a place needs words fitting both ("shark catherby"), so a
+     * town's name alone does not list everything in it.
      */
     static double score(Hit hit, String[] typed, String whole)
     {
@@ -234,10 +209,7 @@ final class SearchIndex
         return score + hit.type.rank * 0.6 + hit.words.length * 0.05 + hit.later;
     }
 
-    /**
-     * How a typed word fits the best of some words: 0 the same word, 1 the start of one, 2 inside one (three letters
-     * or more), 3 one letter off (five letters or more); -1 not at all.
-     */
+    /** 0 same word, 1 start of one, 2 inside one (3+ letters), 3 one letter off (5+ letters), -1 none. */
     static int best(String typed, String[] words)
     {
         int best = -1;
@@ -254,7 +226,6 @@ final class SearchIndex
         return best;
     }
 
-    /** Whether a word starts with the typed word but for one letter wrong, missing or extra. */
     static boolean nearlyStarts(String word, String typed)
     {
         for (int length = typed.length() - 1; length <= typed.length() + 1; length++)
@@ -267,7 +238,6 @@ final class SearchIndex
         return false;
     }
 
-    /** The edit distance of two short words. */
     static int edits(String a, String b)
     {
         int[] previous = new int[b.length() + 1];
@@ -291,7 +261,7 @@ final class SearchIndex
         return previous[b.length()];
     }
 
-    private static final java.util.regex.Pattern NOT_WORD = java.util.regex.Pattern.compile("[^a-z0-9]+");
+    private static final Pattern NOT_WORD = Pattern.compile("[^a-z0-9]+");
 
     /** Lower-case words without punctuation: "Phosani's Nightmare" is "phosanis nightmare". */
     static String[] words(String text)
