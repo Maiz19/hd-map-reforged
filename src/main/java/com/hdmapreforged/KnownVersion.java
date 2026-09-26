@@ -6,10 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /** The wiki's map version as last seen, and when it was checked, kept on disk between sessions. */
 @Slf4j
+@RequiredArgsConstructor
 final class KnownVersion
 {
     static final String FILE = "map-version.txt";
@@ -18,20 +20,10 @@ final class KnownVersion
     final String version;
     final long checkedAt;
 
-    KnownVersion(String version, long checkedAt)
-    {
-        this.version = version;
-        this.checkedAt = checkedAt;
-    }
-
     /** A check time in the future (a changed clock) counts as due. */
     boolean due(HdMapReforgedConfig.UpdateCheck check, long now)
     {
-        if (check.days < 0)
-        {
-            return false;
-        }
-        return check.days == 0 || now < checkedAt || now - checkedAt >= check.days * DAY_MS;
+        return check.days == 0 || check.days > 0 && (now < checkedAt || now - checkedAt >= check.days * DAY_MS);
     }
 
     /** Null when missing or unusable. */
@@ -45,11 +37,9 @@ final class KnownVersion
         try
         {
             List<String> lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
-            if (lines.size() < 2 || !WikiClient.isSafeVersion(lines.get(0).trim()))
-            {
-                return null;
-            }
-            return new KnownVersion(lines.get(0).trim(), Long.parseLong(lines.get(1).trim()));
+            String version = lines.isEmpty() ? "" : lines.get(0).trim();
+            return lines.size() < 2 || !WikiClient.isSafeVersion(version) ? null
+                : new KnownVersion(version, Long.parseLong(lines.get(1).trim()));
         }
         catch (IOException | NumberFormatException e)
         {

@@ -1,6 +1,8 @@
 package com.hdmapreforged;
 
 import java.awt.Color;
+import java.util.EnumSet;
+import java.util.Set;
 
 enum PoiType
 {
@@ -64,18 +66,9 @@ enum PoiType
 
     boolean isNetwork()
     {
-        switch (this)
-        {
-            case FAIRY_RING:
-            case SPIRIT_TREE:
-            case GNOME_GLIDER:
-            case BALLOON:
-            case QUETZAL:
-            case MUSHTREE:
-            case OBELISK:
-                return true;
-            default:
-                return false;
-        }
+        return NETWORKS.contains(this);
     }
+
+    /** Fairy rings to obelisks, in the order above. */
+    private static final Set<PoiType> NETWORKS = EnumSet.range(FAIRY_RING, OBELISK);
 }

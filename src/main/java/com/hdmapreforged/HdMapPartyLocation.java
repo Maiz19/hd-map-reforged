@@ -34,11 +34,7 @@ public class HdMapPartyLocation extends PartyMemberMessage
 
     WorldPoint point()
     {
-        if (!plausible(x, y, p))
-        {
-            return null;
-        }
-        return new WorldPoint(x, y, p);
+        return plausible(x, y, p) ? new WorldPoint(x, y, p) : null;
     }
 
     static boolean plausible(WorldPoint point)

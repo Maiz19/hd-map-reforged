@@ -5,24 +5,21 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /** A custom route: stops (a place, or a kind of place resolved to the nearest one), kept as text in settings. */
 final class Tour
 {
+    @RequiredArgsConstructor
     static final class Stop
     {
         final String name;
         final WorldPoint point;
         /** Null for a fixed place. */
         final String kind;
-
-        Stop(String name, WorldPoint point, String kind)
-        {
-            this.name = name;
-            this.point = point;
-            this.kind = kind;
-        }
 
         static Stop place(String name, WorldPoint point)
         {
@@ -88,15 +85,8 @@ final class Tour
 
     Tour withoutRepeats()
     {
-        List<Stop> kept = new ArrayList<>();
-        for (int i = 0; i < stops.size(); i++)
-        {
-            if (!repeats(i))
-            {
-                kept.add(stops.get(i));
-            }
-        }
-        return new Tour(name, kept);
+        return new Tour(name, IntStream.range(0, stops.size()).filter(i -> !repeats(i)).mapToObj(stops::get)
+            .collect(Collectors.toList()));
     }
 
     Tour renamed(String newName)

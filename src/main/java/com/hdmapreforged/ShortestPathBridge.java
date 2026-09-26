@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.events.PluginMessage;
 
@@ -38,23 +39,22 @@ final class ShortestPathBridge
     static final String TRANSPORTS = "transports";
 
     /** A transport or teleport of Shortest Path's route. */
+    @RequiredArgsConstructor
     static final class Jump
     {
         final WorldPoint from;
         final WorldPoint to;
         final String name;
-
-        Jump(WorldPoint from, WorldPoint to, String name)
-        {
-            this.from = from;
-            this.to = to;
-            this.name = name;
-        }
     }
 
     static boolean isTransports(PluginMessage message)
     {
-        return NAMESPACE.equals(message.getNamespace()) && TRANSPORTS.equals(message.getName());
+        return is(message, TRANSPORTS);
+    }
+
+    private static boolean is(PluginMessage message, String name)
+    {
+        return NAMESPACE.equals(message.getNamespace()) && name.equals(message.getName());
     }
 
     /** In order; empty when unreadable. */
@@ -91,12 +91,12 @@ final class ShortestPathBridge
 
     static boolean isPath(PluginMessage message)
     {
-        return NAMESPACE.equals(message.getNamespace()) && PATH.equals(message.getName());
+        return is(message, PATH);
     }
 
     static boolean isClear(PluginMessage message)
     {
-        return NAMESPACE.equals(message.getNamespace()) && CLEAR.equals(message.getName());
+        return is(message, CLEAR);
     }
 
     /** A WorldPoint, a packed point, or a collection of either; empty when none or unreadable. */
@@ -105,24 +105,13 @@ final class ShortestPathBridge
         Map<String, Object> data = message.getData();
         Object target = data == null ? null : data.get(TARGET);
         List<WorldPoint> points = new ArrayList<>();
-        if (target instanceof Collection<?>)
+        for (Object one : target instanceof Collection<?> ? (Collection<?>) target : Collections.singletonList(target))
         {
-            for (Object one : (Collection<?>) target)
+            if (points.size() >= MAX_POINTS)
             {
-                if (points.size() >= MAX_POINTS)
-                {
-                    break;
-                }
-                WorldPoint point = point(one);
-                if (point != null)
-                {
-                    points.add(point);
-                }
+                break;
             }
-        }
-        else
-        {
-            WorldPoint point = point(target);
+            WorldPoint point = point(one);
             if (point != null)
             {
                 points.add(point);

@@ -15,8 +15,7 @@ final class NodeTable
 
     NodeTable(int capacity)
     {
-        int n = Integer.highestOneBit(Math.max(16, capacity) - 1) << 1;
-        allocate(n);
+        allocate(Integer.highestOneBit(Math.max(16, capacity) - 1) << 1);
     }
 
     private void allocate(int n)
@@ -91,12 +90,7 @@ final class NodeTable
         {
             if (k[j] != NONE)
             {
-                int i = slot(k[j]);
-                keys[i] = k[j];
-                costs[i] = c[j];
-                parents[i] = p[j];
-                via[i] = v[j];
-                size++;
+                put(k[j], c[j], p[j], v[j]);
             }
         }
     }

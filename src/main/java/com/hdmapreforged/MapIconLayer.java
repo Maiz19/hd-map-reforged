@@ -4,15 +4,18 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.RenderingHints;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
+import java.util.function.IntSupplier;
 
 /**
  * Makes the game's icons baked into the wiki tiles hoverable and clickable without drawing them twice; only the
@@ -49,14 +52,14 @@ final class MapIconLayer implements MapView.Overlay, MapView.HitLayer
     private Map<Poi, MapIconLoader.Icon> created = new IdentityHashMap<>();
 
     /** Above {@link #ICON_PIXELS} the tiles' icons are drawn over at this size. */
-    private final java.util.function.IntSupplier size;
+    private final IntSupplier size;
 
     MapIconLayer(MapView view, BooleanSupplier enabled)
     {
         this(view, enabled, () -> (int) ICON_PIXELS);
     }
 
-    MapIconLayer(MapView view, BooleanSupplier enabled, java.util.function.IntSupplier size)
+    MapIconLayer(MapView view, BooleanSupplier enabled, IntSupplier size)
     {
         this.view = view;
         this.enabled = enabled;
@@ -115,27 +118,14 @@ final class MapIconLayer implements MapView.Overlay, MapView.HitLayer
     {
         Map<Poi, MapIconLoader.Icon> made = new IdentityHashMap<>();
         Map<Poi, MapIconLoader.Icon> cover = new IdentityHashMap<>();
-        for (MapIconLoader.Icon icon : icons)
-        {
-            if (!icon.own)
-            {
-                made.put(icon.poi, icon);
-            }
-            else
-            {
-                // Ours standing on the game's icon for it: the tile shows that one.
-                cover.put(icon.poi, icon);
-            }
-        }
-        covering = cover;
-        this.icons = new ArrayList<>(icons);
-        this.created = made;
         Map<Integer, List<MapIconLoader.Icon>> grid = new HashMap<>();
         Map<Integer, List<MapIconLoader.Icon>> drawnGrid = new HashMap<>();
         Map<Poi, List<MapIconLoader.Icon>> poiIcons = new IdentityHashMap<>();
         java.util.Set<Long> spots = new java.util.HashSet<>();
         for (MapIconLoader.Icon icon : icons)
         {
+            // Ours standing on the game's icon for it: the tile shows that one.
+            (icon.own ? cover : made).put(icon.poi, icon);
             int key = region(icon.drawn.getX(), icon.drawn.getY());
             grid.computeIfAbsent(key, k -> new ArrayList<>()).add(icon);
             poiIcons.computeIfAbsent(icon.poi, k -> new ArrayList<>(1)).add(icon);
@@ -145,6 +135,9 @@ final class MapIconLayer implements MapView.Overlay, MapView.HitLayer
                 drawnGrid.computeIfAbsent(key, k -> new ArrayList<>()).add(icon);
             }
         }
+        covering = cover;
+        this.icons = new ArrayList<>(icons);
+        created = made;
         byRegion = grid;
         drawnByRegion = drawnGrid;
         byPoi = poiIcons;
@@ -211,12 +204,10 @@ final class MapIconLayer implements MapView.Overlay, MapView.HitLayer
         double k = (double) px / Math.max(sprite.getWidth(), sprite.getHeight());
         int w = Math.max(1, (int) Math.round(sprite.getWidth() * k));
         int h = Math.max(1, (int) Math.round(sprite.getHeight() * k));
-        BufferedImage out = new BufferedImage(w, h,
-            BufferedImage.TYPE_INT_ARGB);
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = out.createGraphics();
-        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, k >= 1
-            ? java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR
-            : java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, k >= 1
+            ? RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR : RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g.drawImage(sprite, 0, 0, w, h, null);
         g.dispose();
         scaled.put(element, out);
@@ -348,11 +339,10 @@ final class MapIconLayer implements MapView.Overlay, MapView.HitLayer
             return;
         }
         double r = drawnRadius(projection.zoom()) + 2.5;
-        List<MapIconLoader.Icon> ringed = new ArrayList<>();
-        ringed.addAll(byPoi.getOrDefault(hovered, java.util.Collections.emptyList()));
+        List<MapIconLoader.Icon> ringed = new ArrayList<>(byPoi.getOrDefault(hovered, Collections.emptyList()));
         if (selected != hovered)
         {
-            ringed.addAll(byPoi.getOrDefault(selected, java.util.Collections.emptyList()));
+            ringed.addAll(byPoi.getOrDefault(selected, Collections.emptyList()));
         }
         for (MapIconLoader.Icon icon : ringed)
         {

@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.StringReader;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
@@ -107,7 +109,7 @@ final class WikiClient
                 JsonArray messages = gson.fromJson(body, JsonObject.class)
                     .getAsJsonObject("query").getAsJsonArray("allmessages");
                 JsonObject message = messages.get(0).getAsJsonObject();
-                String version = message.has("content") ? message.get("content").getAsString() : null;
+                String version = message.has("content") ? text(message, "content") : null;
                 return isSafeVersion(version) ? version : null;
             }, callback, null);
     }
@@ -115,12 +117,12 @@ final class WikiClient
     /** The map list with its JSON; nulls on failure or without the surface. */
     void baseMaps(String version, BiConsumer<BaseMaps, String> callback)
     {
+        Runnable none = () -> callback.accept(null, null);
         if (!isSafeVersion(version))
         {
-            callback.accept(null, null);
+            none.run();
             return;
         }
-        Runnable none = () -> callback.accept(null, null);
         query(HttpUrl.get("https://maps.runescape.wiki/osrs/versions/" + version + "/basemaps.json"), body -> {
             BaseMaps maps = BaseMaps.parse(gson, new StringReader(body));
             return maps.isUsable() ? () -> callback.accept(maps, body) : none;
@@ -145,7 +147,7 @@ final class WikiClient
                 String title = null;
                 if (result != null && result.has("pages"))
                 {
-                    title = result.getAsJsonArray("pages").get(0).getAsJsonObject().get("title").getAsString();
+                    title = text(result.getAsJsonArray("pages").get(0), "title");
                 }
                 synchronized (pages)
                 {
@@ -167,17 +169,14 @@ final class WikiClient
             {
                 return none;
             }
-            String title = page.has("title") ? page.get("title").getAsString() : name;
+            String title = page.has("title") ? text(page, "title") : name;
             String text = content(page);
             List<NpcSpawns.Group> groups = new ArrayList<>(NpcSpawns.parse(title, text).groups);
             List<String> mentioned = NpcSpawns.mentioned(title, text);
             List<String> links = new ArrayList<>();
             if (page.has("links"))
             {
-                for (JsonElement link : page.getAsJsonArray("links"))
-                {
-                    links.add(link.getAsJsonObject().get("title").getAsString());
-                }
+                page.getAsJsonArray("links").forEach(link -> links.add(text(link, "title")));
             }
             return () -> {
                 List<String> variants = groups.isEmpty() ? NpcSpawns.variants(title, links) : Collections.emptyList();
@@ -210,24 +209,17 @@ final class WikiClient
         query(api("action", "query", "prop", "revisions", "rvprop", "content", "rvslots", "main", "format", "json",
             "formatversion", "2", "titles", String.join("|", titles)), body -> {
                 Map<String, List<NpcSpawns.Group>> byTitle = new HashMap<>();
-                JsonObject query = answer(body);
-                if (query != null && query.has("pages"))
+                for (JsonElement element : pages(body))
                 {
-                    for (JsonElement element : query.getAsJsonArray("pages"))
+                    JsonObject page = element.getAsJsonObject();
+                    if (page.has("title") && !hiddenFromSearch(text(page, "title")))
                     {
-                        JsonObject page = element.getAsJsonObject();
-                        if (page.has("title") && !HIDDEN.contains(page.get("title").getAsString().toLowerCase(Locale.ROOT)))
-                        {
-                            String title = page.get("title").getAsString();
-                            byTitle.put(title, NpcSpawns.parse(title, content(page)).groups);
-                        }
+                        String title = text(page, "title");
+                        byTitle.put(title, NpcSpawns.parse(title, content(page)).groups);
                     }
                 }
                 List<NpcSpawns.Group> groups = new ArrayList<>();
-                for (String title : titles)
-                {
-                    groups.addAll(byTitle.getOrDefault(title, Collections.emptyList()));
-                }
+                titles.forEach(title -> groups.addAll(byTitle.getOrDefault(title, Collections.emptyList())));
                 return groups;
             }, callback, Collections.emptyList());
     }
@@ -235,6 +227,26 @@ final class WikiClient
     private JsonObject answer(String body)
     {
         return gson.fromJson(body, JsonObject.class).getAsJsonObject("query");
+    }
+
+    /** The answer's pages, or none. */
+    private JsonArray pages(String body)
+    {
+        JsonObject query = answer(body);
+        return query == null || !query.has("pages") ? new JsonArray() : query.getAsJsonArray("pages");
+    }
+
+    /** The page's thumbnail if it is one of the wiki's own images, else null. */
+    private static HttpUrl thumbnail(JsonObject page)
+    {
+        HttpUrl image = page.has("thumbnail") ? HttpUrl.parse(text(page.getAsJsonObject("thumbnail"), "source"))
+            : null;
+        return image != null && image.host().equals(HttpUrl.get(WIKI).host()) ? image : null;
+    }
+
+    private static String text(JsonElement object, String key)
+    {
+        return object.getAsJsonObject().get(key).getAsString();
     }
 
     private JsonObject firstPage(String body)
@@ -249,8 +261,8 @@ final class WikiClient
         {
             return "";
         }
-        return page.getAsJsonArray("revisions").get(0).getAsJsonObject().getAsJsonObject("slots")
-            .getAsJsonObject("main").get("content").getAsString();
+        return text(page.getAsJsonArray("revisions").get(0).getAsJsonObject().getAsJsonObject("slots").get("main"),
+            "content");
     }
 
     /** Null when the wiki cannot be reached. */
@@ -265,7 +277,7 @@ final class WikiClient
             {
                 return none;
             }
-            String title = page.has("title") ? page.get("title").getAsString() : name;
+            String title = page.has("title") ? text(page, "title") : name;
             List<NpcSpawns.Group> spawns = new ArrayList<>();
             if (page.has("revisions"))
             {
@@ -295,12 +307,7 @@ final class WikiClient
             return;
         }
         List<ItemSources.Store> part = stores.subList(from, Math.min(stores.size(), from + ItemSources.SHOPS_PER_QUERY));
-        List<String> pages = new ArrayList<>();
-        for (ItemSources.Store store : part)
-        {
-            pages.add(store.shop);
-        }
-        bucket(ItemSources.mapQuery(pages), rows -> {
+        bucket(ItemSources.mapQuery(part.stream().map(store -> store.shop).collect(Collectors.toList())), rows -> {
             if (rows != null)
             {
                 ItemSources.place(part, rows);
@@ -367,25 +374,20 @@ final class WikiClient
             {
                 for (JsonElement n : query.getAsJsonArray("normalized"))
                 {
-                    asked.put(n.getAsJsonObject().get("to").getAsString(), n.getAsJsonObject().get("from").getAsString());
+                    asked.put(text(n, "to"), text(n, "from"));
                 }
             }
             for (JsonElement element : query.getAsJsonArray("pages"))
             {
                 JsonObject page = element.getAsJsonObject();
-                if (!page.has("thumbnail") || !page.has("title"))
+                HttpUrl image = thumbnail(page);
+                if (image != null && page.has("title"))
                 {
-                    continue;
-                }
-                String title = page.get("title").getAsString();
-                String key = asked.getOrDefault(title, title);
-                HttpUrl image = HttpUrl.parse(page.getAsJsonObject("thumbnail").get("source").getAsString());
-                if (image != null && image.host().equals(HttpUrl.get(WIKI).host()))
-                {
+                    String key = asked.getOrDefault(text(page, "title"), text(page, "title"));
                     picture("page:" + size + ":" + key, image, loaded -> callback.accept(key, loaded));
                 }
             }
-        });
+        }, () -> { });
     }
 
     private void picture(String key, HttpUrl url, Consumer<BufferedImage> callback)
@@ -396,7 +398,7 @@ final class WikiClient
             callback.accept(known);
             return;
         }
-        Runnable load = () -> getBytes(url, bytes -> {
+        Runnable load = () -> get(url, MAX_PICTURE_BYTES, bytes -> {
             BufferedImage image = null;
             try
             {
@@ -410,24 +412,8 @@ final class WikiClient
             {
                 pictures.put(key, image);
             }
-            try
-            {
-                callback.accept(image);
-            }
-            finally
-            {
-                nextPicture();
-            }
-        }, () -> {
-            try
-            {
-                callback.accept(null);
-            }
-            finally
-            {
-                nextPicture();
-            }
-        });
+            loaded(callback, image);
+        }, () -> loaded(callback, null));
         synchronized (pictureQueue)
         {
             if (pictureQueue.size() > 300)
@@ -467,14 +453,8 @@ final class WikiClient
             "titles", title);
         get(url, body -> {
             JsonObject page = firstPage(body);
-            if (page == null || !page.has("thumbnail"))
-            {
-                callback.accept(null);
-                return;
-            }
-            HttpUrl image = HttpUrl.parse(page.getAsJsonObject("thumbnail").get("source").getAsString());
-            // Only the wiki's own images.
-            if (image == null || !image.host().equals(HttpUrl.get(WIKI).host()))
+            HttpUrl image = page == null ? null : thumbnail(page);
+            if (image == null)
             {
                 callback.accept(null);
                 return;
@@ -483,41 +463,21 @@ final class WikiClient
         }, () -> callback.accept(null));
     }
 
-    /** {@code onFailure} runs when no bytes come (failure, an error answer, too large). */
-    private void getBytes(HttpUrl url, Consumer<byte[]> onBytes, Runnable onFailure)
+    /** Hands over a picture, then loads the next; never throws, so the request is not also called a failure. */
+    private void loaded(Consumer<BufferedImage> callback, BufferedImage image)
     {
-        http.newCall(new Request.Builder().url(url).build()).enqueue(new Callback()
+        try
         {
-            @Override
-            public void onFailure(Call call, IOException e)
-            {
-                log.debug("Wiki image failed: {}", url, e);
-                onFailure.run();
-            }
-
-            @Override
-            public void onResponse(Call call, Response response)
-            {
-                boolean done = false;
-                try (ResponseBody body = response.body())
-                {
-                    if (response.isSuccessful() && body != null)
-                    {
-                        byte[] bytes = TileCache.readBody(body, MAX_PICTURE_BYTES);
-                        done = true;
-                        onBytes.accept(bytes);
-                    }
-                }
-                catch (IOException | RuntimeException e)
-                {
-                    log.debug("Unreadable wiki image {}", url, e);
-                }
-                if (!done)
-                {
-                    onFailure.run();
-                }
-            }
-        });
+            callback.accept(image);
+        }
+        catch (RuntimeException e)
+        {
+            log.debug("Wiki image callback failed", e);
+        }
+        finally
+        {
+            nextPicture();
+        }
     }
 
     void suggest(String prefix, int limit, Consumer<List<String>> callback)
@@ -538,22 +498,20 @@ final class WikiClient
     }
 
     /** Lower-case pages left out: spawns nowhere one can go (NpcAudit), or no place found (MonsterRouteAudit). */
-    private static final Set<String> HIDDEN = hidden();
+    private static final Set<String> HIDDEN = new HashSet<>();
+
+    static
+    {
+        readNames("data/npc_hidden.tsv");
+        readNames("data/npc_no_location.tsv");
+    }
 
     static boolean hiddenFromSearch(String title)
     {
         return HIDDEN.contains(title.toLowerCase(Locale.ROOT));
     }
 
-    private static Set<String> hidden()
-    {
-        Set<String> names = new HashSet<>();
-        readNames("data/npc_hidden.tsv", names);
-        readNames("data/npc_no_location.tsv", names);
-        return names;
-    }
-
-    private static void readNames(String resource, Set<String> names)
+    private static void readNames(String resource)
     {
         InputStream in = WikiClient.class.getResourceAsStream(resource);
         if (in == null)
@@ -562,16 +520,10 @@ final class WikiClient
         }
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)))
         {
-            String line;
-            while ((line = reader.readLine()) != null)
-            {
-                if (!line.startsWith("#") && !line.trim().isEmpty())
-                {
-                    names.add(line.trim().toLowerCase(Locale.ROOT));
-                }
-            }
+            reader.lines().filter(line -> !line.startsWith("#") && !line.trim().isEmpty())
+                .forEach(line -> HIDDEN.add(line.trim().toLowerCase(Locale.ROOT)));
         }
-        catch (IOException e)
+        catch (IOException | UncheckedIOException e)
         {
             // Nothing left out then.
         }
@@ -600,28 +552,16 @@ final class WikiClient
             query(api("action", "query", "prop", "templates", "tltemplates", template, "tllimit", "max",
                 "redirects", "1", "format", "json", "formatversion", "2", "titles", String.join("|", titles)), body -> {
                     Set<String> withTemplate = new HashSet<>();
-                    JsonObject query = answer(body);
-                    if (query != null && query.has("pages"))
+                    for (JsonElement element : pages(body))
                     {
-                        for (JsonElement element : query.getAsJsonArray("pages"))
+                        JsonObject page = element.getAsJsonObject();
+                        if (page.has("templates") && page.has("title"))
                         {
-                            JsonObject page = element.getAsJsonObject();
-                            if (page.has("templates") && page.has("title"))
-                            {
-                                withTemplate.add(page.get("title").getAsString());
-                            }
+                            withTemplate.add(text(page, "title"));
                         }
                     }
-                    List<String> kept = new ArrayList<>();
-                    for (String title : titles)
-                    {
-                        if (withTemplate.contains(title) && !hidden.contains(title.toLowerCase(Locale.ROOT))
-                            && kept.size() < limit)
-                        {
-                            kept.add(title);
-                        }
-                    }
-                    return kept;
+                    return titles.stream().filter(title -> withTemplate.contains(title)
+                        && !hidden.contains(title.toLowerCase(Locale.ROOT))).limit(limit).collect(Collectors.toList());
                 }, callback, Collections.emptyList());
         });
     }
@@ -642,12 +582,13 @@ final class WikiClient
         });
     }
 
-    private void get(HttpUrl url, Consumer<String> onBody)
+    private void get(HttpUrl url, Consumer<String> onBody, Runnable onFailure)
     {
-        get(url, onBody, () -> { });
+        get(url, MAX_BODY_BYTES, bytes -> onBody.accept(new String(bytes, StandardCharsets.UTF_8)), onFailure);
     }
 
-    private void get(HttpUrl url, Consumer<String> onBody, Runnable onFailure)
+    /** {@code onFailure} runs when no body comes (failure, an error answer, too large) or {@code onBody} throws. */
+    private void get(HttpUrl url, int limit, Consumer<byte[]> onBody, Runnable onFailure)
     {
         http.newCall(new Request.Builder().url(url).build()).enqueue(new Callback()
         {
@@ -669,7 +610,7 @@ final class WikiClient
                         onFailure.run();
                         return;
                     }
-                    onBody.accept(new String(TileCache.readBody(body, MAX_BODY_BYTES), StandardCharsets.UTF_8));
+                    onBody.accept(TileCache.readBody(body, limit));
                 }
                 catch (IOException | RuntimeException e)
                 {

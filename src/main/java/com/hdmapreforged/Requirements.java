@@ -6,26 +6,20 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.function.IntFunction;
+import lombok.RequiredArgsConstructor;
 
 /** Turns requirement columns ({@link Needs}) into readable lines. */
 final class Requirements
 {
     private static final int MAX_ALTERNATIVES = 3;
 
+    @RequiredArgsConstructor
     static final class Line
     {
         final String text;
         final String skill;
         final int level;
         final String quest;
-
-        Line(String text, String skill, int level, String quest)
-        {
-            this.text = text;
-            this.skill = skill;
-            this.level = level;
-            this.quest = quest;
-        }
     }
 
     private Requirements()

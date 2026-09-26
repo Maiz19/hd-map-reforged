@@ -34,4 +34,10 @@ public final class PlayerState
         this.ownHouse = ownHouse;
         this.houseFeatures = Collections.unmodifiableSet(new LinkedHashSet<>(houseFeatures));
     }
+
+    /** The same, with other items or Sailing. */
+    public PlayerState with(ItemSnapshot items, int sailingLevel, boolean sailing)
+    {
+        return new PlayerState(items, sailingLevel, sailing, boats, running, inHouse, houseExit, ownHouse, houseFeatures);
+    }
 }

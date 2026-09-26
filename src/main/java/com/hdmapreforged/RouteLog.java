@@ -13,10 +13,12 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /** The last routes planned, in a local {@code routes.log} for looking at wrong routes; only with the setting on. */
 @Slf4j
+@RequiredArgsConstructor
 final class RouteLog
 {
     static final int KEEP = 30;
@@ -34,13 +36,6 @@ final class RouteLog
     RouteLog(File file, Executor io)
     {
         this(file, io, () -> true);
-    }
-
-    RouteLog(File file, Executor io, BooleanSupplier enabled)
-    {
-        this.file = file;
-        this.io = io;
-        this.enabled = enabled;
     }
 
     /** Swing thread. */

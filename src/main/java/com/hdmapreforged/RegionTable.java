@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Which wiki maps really show a 64×64 region where map bounds overlap (empty: checked, none), and where several share a
@@ -66,8 +67,7 @@ final class RegionTable
     /** With which owners draw each zone ({@code masks[x * 8 + y]}, bits by owner). */
     void put(int region, int[] ids, int[] masks)
     {
-        owners.put(region, ids);
-        unsure.remove(region);
+        put(region, ids);
         if (masks == null || ids.length == 0)
         {
             zones.remove(region);
@@ -181,20 +181,12 @@ final class RegionTable
             // A later table with other owners: its zones are not known.
             zones.remove(region);
         }
-        owners.put(region, ids);
-        unsure.remove(region);
+        put(region, ids);
     }
 
     private static boolean validZones(String zoned)
     {
-        for (int i = 0; i < zoned.length(); i++)
-        {
-            if (MASKS.indexOf(zoned.charAt(i)) < 0)
-            {
-                return false;
-            }
-        }
-        return true;
+        return zoned.chars().allMatch(c -> MASKS.indexOf(c) >= 0);
     }
 
     /** Leaves out regions from {@link #putUnsure}. */
@@ -202,7 +194,6 @@ final class RegionTable
     {
         write(file, header, false);
     }
-
 
     void write(File file, String header, boolean withUnsure) throws IOException
     {
@@ -221,11 +212,7 @@ final class RegionTable
                 {
                     continue;
                 }
-                StringBuilder ids = new StringBuilder();
-                for (int id : entry.getValue())
-                {
-                    ids.append(ids.length() > 0 ? "," : "").append(id);
-                }
+                String ids = Arrays.stream(entry.getValue()).mapToObj(String::valueOf).collect(Collectors.joining(","));
                 String zoned = zones.get(entry.getKey());
                 out.write(entry.getKey() + "\t" + ids + (zoned != null ? "\t" + zoned : "") + "\n");
             }

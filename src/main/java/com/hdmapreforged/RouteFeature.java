@@ -7,6 +7,9 @@ import com.hdmapreforged.route.Pathfinder;
 import com.hdmapreforged.route.PlayerState;
 import com.hdmapreforged.route.Ports;
 import com.hdmapreforged.route.Route;
+import com.hdmapreforged.route.Route.Outcome;
+import com.hdmapreforged.route.Route.Step;
+import com.hdmapreforged.route.Route.Step.Kind;
 import com.hdmapreforged.route.RouteController;
 import com.hdmapreforged.route.RouteRequest;
 import com.hdmapreforged.route.SeaMap;
@@ -28,7 +31,6 @@ import java.awt.Stroke;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -38,6 +40,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -46,9 +49,11 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 import javax.inject.Inject;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -62,6 +67,7 @@ import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.EnumComposition;
@@ -72,7 +78,6 @@ import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.KeyCode;
 import net.runelite.api.MenuAction;
-import net.runelite.api.MenuEntry;
 import net.runelite.api.ObjectComposition;
 import net.runelite.api.Perspective;
 import net.runelite.api.Player;
@@ -116,6 +121,7 @@ import net.runelite.client.ui.overlay.worldmap.WorldMapOverlay;
  * the controller and map drawing on Swing.
  */
 @Slf4j
+@RequiredArgsConstructor(onConstructor_ = @Inject)
 public final class RouteFeature
 {
     static final String HOUSE_KEY = "routeHouse";
@@ -126,22 +132,25 @@ public final class RouteFeature
     private static final int[] POUCH_AMOUNTS = {VarbitID.RUNE_POUCH_QUANTITY_1, VarbitID.RUNE_POUCH_QUANTITY_2,
         VarbitID.RUNE_POUCH_QUANTITY_3, VarbitID.RUNE_POUCH_QUANTITY_4, VarbitID.RUNE_POUCH_QUANTITY_5,
         VarbitID.RUNE_POUCH_QUANTITY_6};
-    private static final Set<Integer> RUNE_POUCHES = new HashSet<>(Arrays.asList(12791, 24416, 27281, 27509));
+    private static final Set<Integer> RUNE_POUCHES = Set.of(12791, 24416, 27281, 27509);
     private static final int STATE_TICKS = 3;
     private static final int QUEST_TICKS = 100;
 
     static final Color WALK = new Color(255, 233, 28);
     static final Color JUMP = new Color(190, 120, 255);
     static final Color SEA = new Color(64, 200, 255);
-    private static final Set<String> LOOK_KEYS = new HashSet<>(Arrays.asList(
-        "routeColor", "routeJumpColor", "routeTileFill", "routeTileBorder", "routeTileWidth", "routeMinimap",
-        "routeInGame", "routeHdTiles", "routeClearOnArrival", "routeFollowPlugins", "routePlannerChosen"));
+    private static final Set<String> LOOK_KEYS = Set.of("routeColor", "routeJumpColor", "routeTileFill",
+        "routeTileBorder", "routeTileWidth", "routeMinimap", "routeInGame", "routeHdTiles", "routeClearOnArrival",
+        "routeFollowPlugins", "routePlannerChosen");
 
     private static final Color[] LEG_COLORS = {
         new Color(90, 220, 130), new Color(255, 130, 200), new Color(255, 160, 70), new Color(120, 230, 255),
         new Color(200, 255, 110), new Color(255, 255, 255), new Color(180, 150, 255)};
 
     static final Color CANNOT = new Color(255, 112, 112);
+    private static final Color SP_WALK = new Color(255, 214, 64);
+    private static final Color NOTE = new Color(255, 190, 120);
+    private static final Color SHADOW = new Color(0, 0, 0, 130);
 
     private Color walk()
     {
@@ -173,12 +182,12 @@ public final class RouteFeature
         return new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.max(0, Math.min(255, Math.round(alpha))));
     }
 
-    /** A route tile for HD Tile Markers; {@code alpha}: how visible (fading). */
-    private HdTileMarkersBridge.Tile hdTile(int point, float alpha)
+    private static Ellipse2D circle(double x, double y, double r)
     {
-        return hdTile(point, alpha, current());
+        return new Ellipse2D.Double(x - r, y - r, r * 2, r * 2);
     }
 
+    /** A route tile for HD Tile Markers; {@code alpha}: how visible (fading). */
     private HdTileMarkersBridge.Tile hdTile(int point, float alpha, Color walk)
     {
         int border = config.routeTileBorder();
@@ -194,9 +203,7 @@ public final class RouteFeature
     private final OverlayManager overlayManager;
     private final EventBus eventBus;
     private final HouseTracker house = new HouseTracker();
-    private final GameOverlay gameOverlay = new GameOverlay();
-    private final MinimapOverlay minimapOverlay = new MinimapOverlay();
-    private final WorldMapRoute worldMapRoute = new WorldMapRoute();
+    private final List<Overlay> overlays = List.of(new GameOverlay(), new MinimapOverlay(), new WorldMapRoute());
     private final MapView.Overlay mapOverlay = this::paintMap;
     private final MapView.MenuContributor menu = this::contribute;
 
@@ -206,7 +213,7 @@ public final class RouteFeature
     private volatile RouteController controller;
     private volatile RouteSource source;
     private volatile Pathfinder walker;
-    private volatile List<int[]> spWalks = Collections.emptyList();
+    private volatile List<int[]> spWalks = List.of();
     /** Changed together with {@link #spWalks}, under {@link #spLock}. */
     private final AtomicInteger spGeneration = new AtomicInteger();
     private final Object spLock = new Object();
@@ -216,7 +223,7 @@ public final class RouteFeature
     {
         synchronized (spLock)
         {
-            spWalks = Collections.emptyList();
+            spWalks = List.of();
             return spGeneration.incrementAndGet();
         }
     }
@@ -260,9 +267,9 @@ public final class RouteFeature
                     log.warn("Could not fill in Shortest Path's walks", e);
                     return;
                 }
-                for (Route.Step step : walk == null ? Collections.<Route.Step>emptyList() : walk.steps)
+                for (Step step : walk == null ? List.<Step>of() : walk.steps)
                 {
-                    if (step.kind == Route.Step.Kind.WALK)
+                    if (step.kind == Kind.WALK)
                     {
                         walks.add(step.points);
                     }
@@ -297,15 +304,8 @@ public final class RouteFeature
 
     static int[] shipwrights(List<MapIconLoader.Entry> entries)
     {
-        List<Integer> found = new ArrayList<>();
-        for (MapIconLoader.Entry entry : entries)
-        {
-            if ("Shipwright".equalsIgnoreCase(entry.kind.name) && entry.location.getPlane() == 0)
-            {
-                found.add(Tiles.pack(entry.location.getX(), entry.location.getY(), 0));
-            }
-        }
-        return found.stream().mapToInt(Integer::intValue).toArray();
+        return entries.stream().filter(e -> "Shipwright".equalsIgnoreCase(e.kind.name) && e.location.getPlane() == 0)
+            .mapToInt(e -> pack(e.location)).toArray();
     }
     private volatile PlayerState state = PlayerState.UNKNOWN;
     /** A tile, a sea block, -1 in the house, -2 unknown. Written on the client thread. */
@@ -318,20 +318,6 @@ public final class RouteFeature
     private Boolean pandemonium;
     private int ticks;
     private int lastQuest = -QUEST_TICKS;
-
-    @Inject
-    RouteFeature(Client client, HdMapReforgedConfig config, ConfigManager configManager, OverlayManager overlayManager,
-        EventBus eventBus, PluginManager pluginManager, ClientThread clientThread, WorldMapOverlay worldMapOverlay)
-    {
-        this.clientThread = clientThread;
-        this.worldMapOverlay = worldMapOverlay;
-        this.client = client;
-        this.config = config;
-        this.configManager = configManager;
-        this.overlayManager = overlayManager;
-        this.eventBus = eventBus;
-        this.pluginManager = pluginManager;
-    }
 
     private final PluginManager pluginManager;
     private volatile Consumer<IntFunction<JComponent>> sidebar = section -> { };
@@ -384,11 +370,7 @@ public final class RouteFeature
         {
             return;
         }
-        boolean walk = false;
-        for (MenuEntry entry : event.getMenuEntries())
-        {
-            walk |= entry.getType() == MenuAction.WALK;
-        }
+        boolean walk = Arrays.stream(event.getMenuEntries()).anyMatch(e -> e.getType() == MenuAction.WALK);
         WorldView view = client.getTopLevelWorldView();
         Tile tile = view == null ? null : view.getSelectedSceneTile();
         if (!walk || tile == null)
@@ -403,14 +385,7 @@ public final class RouteFeature
         RouteController c = controller;
         if (c != null && c.target() >= 0)
         {
-            menuEntry("Clear route", () -> {
-                RouteController now = controller;
-                stopTour();
-                if (now != null)
-                {
-                    now.clear();
-                }
-            });
+            menuEntry("Clear route", this::clearRoute);
         }
         menuEntry("Route here", () -> routeTo(point));
     }
@@ -479,12 +454,12 @@ public final class RouteFeature
         List<HdTileMarkersBridge.Tile> tiles = new ArrayList<>();
         Set<Integer> taken = new HashSet<>();
         int blocked = RouteText.blockedFrom(route);
-        List<Route.Step> steps = route == null ? Collections.<Route.Step>emptyList() : route.steps;
+        List<Step> steps = route == null ? Collections.<Step>emptyList() : route.steps;
         for (int index = 0; index < steps.size(); index++)
         {
-            Route.Step step = steps.get(index);
+            Step step = steps.get(index);
             Color color = blocked >= 0 && index >= blocked ? CANNOT : current();
-            if (step.kind == Route.Step.Kind.WALK)
+            if (step.kind == Kind.WALK)
             {
                 for (int point : step.points)
                 {
@@ -495,7 +470,7 @@ public final class RouteFeature
                     }
                 }
             }
-            else if (step.isJump() && step.name != null && !Tiles.isSea(step.first()) && step.kind != Route.Step.Kind.TELEPORT)
+            else if (step.isJump() && step.name != null && !Tiles.isSea(step.first()) && step.kind != Kind.TELEPORT)
             {
                 int at = step.first();
                 if (player < 0 || Tiles.distance(at, player) <= 40)
@@ -513,16 +488,16 @@ public final class RouteFeature
             int point = entry.getKey();
             if (alpha > 0.05f && taken.add(point))
             {
-                tiles.add(hdTile(point, alpha));
+                tiles.add(hdTile(point, alpha, current()));
             }
         }
         // The nearer part wins where they cross.
         for (int i = later.size() - 1; i >= 0; i--)
         {
             Color color = legColor(later.get(i).getKey());
-            for (Route.Step step : later.get(i).getValue().steps)
+            for (Step step : later.get(i).getValue().steps)
             {
-                for (int point : step.kind == Route.Step.Kind.WALK ? step.points : new int[0])
+                for (int point : step.kind == Kind.WALK ? step.points : new int[0])
                 {
                     if ((player < 0 || Tiles.distance(point, player) <= 40) && taken.add(point))
                     {
@@ -581,7 +556,7 @@ public final class RouteFeature
         }
     }
 
-    private volatile List<ShortestPathBridge.Jump> spJumps = Collections.emptyList();
+    private volatile List<ShortestPathBridge.Jump> spJumps = List.of();
 
     private void paintHandedOver(Graphics2D g, MapView.Projection p)
     {
@@ -590,94 +565,62 @@ public final class RouteFeature
         {
             return;
         }
-        WorldPoint me = lastLocation;
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        BasicStroke walk = new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{2f, 5f}, 0f);
-        BasicStroke jump = new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{9f, 6f}, 0f);
+        float[] walk = {2f, 5f};
+        float[] jump = {9f, 6f};
         List<int[]> walks = spWalks;
-        WorldPoint at = me;
+        WorldPoint at = lastLocation;
         for (ShortestPathBridge.Jump j : spJumps)
         {
             if (at != null && walks.isEmpty())
             {
-                line(g, p, at, j.from, walk, new Color(255, 214, 64));
+                line(g, p, at, j.from, walk, SP_WALK);
             }
             line(g, p, j.from, j.to, jump, new Color(180, 120, 255));
             at = j.to;
         }
         if (at != null && walks.isEmpty())
         {
-            line(g, p, at, target, walk, new Color(255, 214, 64));
+            line(g, p, at, target, walk, SP_WALK);
         }
-        BasicStroke path = new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
         for (int[] points : walks)
         {
-            Path2D line = new Path2D.Double();
-            boolean started = false;
-            for (int node : points)
-            {
-                WorldPoint wp = worldPoint(node);
-                if (!p.shows(wp))
-                {
-                    started = false;
-                    continue;
-                }
-                WorldPoint drawnAt = p.shown(wp);
-                double x = p.screenX(drawnAt.getX() + 0.5);
-                double y = p.screenY(drawnAt.getY() + 0.5);
-                if (started)
-                {
-                    line.lineTo(x, y);
-                }
-                else
-                {
-                    line.moveTo(x, y);
-                    started = true;
-                }
-            }
-            g.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.setColor(new Color(0, 0, 0, 130));
-            g.draw(line);
-            g.setStroke(path);
-            g.setColor(new Color(255, 214, 64));
-            g.draw(line);
+            shadowed(g, RouteText.path(p, points, true), 3f, null, SP_WALK);
         }
         if (p.shows(target))
         {
-            WorldPoint drawnAt = p.shown(target);
-            double x = p.screenX(drawnAt.getX() + 0.5);
-            double y = p.screenY(drawnAt.getY() + 0.5);
+            double x = RouteText.x(p, pack(target));
+            double y = RouteText.y(p, pack(target));
             g.setColor(new Color(0, 0, 0, 160));
-            g.fill(new Ellipse2D.Double(x - 7, y - 7, 14, 14));
-            g.setColor(new Color(255, 214, 64));
-            g.fill(new Ellipse2D.Double(x - 5, y - 5, 10, 10));
+            g.fill(circle(x, y, 7));
+            g.setColor(SP_WALK);
+            g.fill(circle(x, y, 5));
         }
     }
 
-    private static void line(Graphics2D g, MapView.Projection p, WorldPoint a, WorldPoint b, BasicStroke stroke, Color color)
+    private static void line(Graphics2D g, MapView.Projection p, WorldPoint a, WorldPoint b, float[] dash, Color color)
     {
-        if (!p.shows(a) || !p.shows(b))
+        if (p.shows(a) && p.shows(b))
         {
-            return;
+            shadowed(g, new Line2D.Double(RouteText.x(p, pack(a)), RouteText.y(p, pack(a)), RouteText.x(p, pack(b)),
+                RouteText.y(p, pack(b))), 2.5f, dash, color);
         }
-        WorldPoint from = p.shown(a);
-        WorldPoint to = p.shown(b);
-        Line2D line = new Line2D.Double(p.screenX(from.getX() + 0.5),
-            p.screenY(from.getY() + 0.5), p.screenX(to.getX() + 0.5), p.screenY(to.getY() + 0.5));
-        g.setStroke(new BasicStroke(stroke.getLineWidth() + 2f, stroke.getEndCap(), stroke.getLineJoin(),
-            stroke.getMiterLimit(), stroke.getDashArray(), 0f));
-        g.setColor(new Color(0, 0, 0, 130));
-        g.draw(line);
-        g.setStroke(stroke);
+    }
+
+    /** Drawn over a dark line two pixels wider. */
+    private static void shadowed(Graphics2D g, Shape shape, float width, float[] dash, Color color)
+    {
+        g.setStroke(new BasicStroke(width + 2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, dash, 0f));
+        g.setColor(SHADOW);
+        g.draw(shape);
+        g.setStroke(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, dash, 0f));
         g.setColor(color);
-        g.draw(line);
+        g.draw(shape);
     }
 
     private JComponent handedOverPanel(int width)
     {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setOpaque(false);
+        JPanel panel = column();
         panel.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
         WorldPoint target = handedOver;
         if (target == null)
@@ -694,24 +637,21 @@ public final class RouteFeature
         panel.add(label(on ? "Planned by Shortest Path (shown in the game). On this map: its teleports and transports, "
             + "with the walks between them as this map finds them."
             : "The Shortest Path plugin is not on. Install or switch it on, or set Route planner to HD Map Reforged.",
-            width, Font.PLAIN, on ? ColorScheme.LIGHT_GRAY_COLOR : new Color(255, 190, 120)));
+            width, Font.PLAIN, on ? ColorScheme.LIGHT_GRAY_COLOR : NOTE));
         int number = 1;
         for (ShortestPathBridge.Jump j : spJumps)
         {
             panel.add(label(number++ + ". " + j.name, width, Font.PLAIN, new Color(200, 170, 255)));
         }
-        JButton clear = new JButton("Clear path");
-        clear.setFocusable(false);
-        clear.addActionListener(a -> handOverClear());
-        panel.add(clear);
+        panel.add(button("Clear path", this::handOverClear));
         return panel;
     }
 
     private void handOver(WorldPoint target)
     {
         handedOver = target;
-        spJumps = Collections.emptyList();
-        fillInWalks(Collections.emptyList(), lastLocation, target);
+        spJumps = List.of();
+        fillInWalks(List.of(), lastLocation, target);
         // Shortest Path reads the player's position when a message arrives: client thread.
         clientThread.invokeLater(() -> eventBus.post(ShortestPathBridge.path(target)));
         showHandedOver(this::handedOverPanel, true);
@@ -721,39 +661,33 @@ public final class RouteFeature
     {
         for (MapScreen screen : screens)
         {
-            screen.showRoute(panel, up);
-            screen.view().repaint();
+            screen.showRoute(panel, up); // repaints
         }
         sidebar.accept(panel);
     }
 
     private void handOverClear()
     {
-        handedOver = null;
-        spJumps = Collections.emptyList();
-        dropWalks();
+        forgetHandOver();
         clientThread.invokeLater(() -> eventBus.post(ShortestPathBridge.clear()));
         showHandedOver(null, false);
     }
 
+
+    private void forgetHandOver()
+    {
+        handedOver = null;
+        spJumps = List.of();
+        dropWalks();
+    }
 
     void start(MapScreen... on)
     {
         int generation = loads.incrementAndGet();
         screens = on;
         // At the lowest priority a busy client starved searches for seconds.
-        searches = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "HD Map Reforged route");
-            thread.setDaemon(true);
-            thread.setPriority(Thread.NORM_PRIORITY - 1);
-            return thread;
-        });
-        background = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "HD Map Reforged route extras");
-            thread.setDaemon(true);
-            thread.setPriority(Thread.MIN_PRIORITY);
-            return thread;
-        });
+        searches = daemon("HD Map Reforged route", Thread.NORM_PRIORITY - 1);
+        background = daemon("HD Map Reforged route extras", Thread.MIN_PRIORITY);
         for (MapScreen screen : on)
         {
             screen.view().addOverlay(mapOverlay);
@@ -762,9 +696,7 @@ public final class RouteFeature
             screen.setStopAdder(this::addStop);
             screen.setTours(tourActions);
         }
-        overlayManager.add(gameOverlay);
-        overlayManager.add(minimapOverlay);
-        overlayManager.add(worldMapRoute);
+        overlays.forEach(overlayManager::add);
         eventBus.register(this);
         searches.execute(() -> {
             try
@@ -805,6 +737,16 @@ public final class RouteFeature
         });
     }
 
+    private static ExecutorService daemon(String name, int priority)
+    {
+        return Executors.newSingleThreadExecutor(r -> {
+            Thread thread = new Thread(r, name);
+            thread.setDaemon(true);
+            thread.setPriority(priority);
+            return thread;
+        });
+    }
+
     /** Counts starts and stops, so a load finishing after a stop is dropped. */
     private final AtomicInteger loads = new AtomicInteger();
 
@@ -812,9 +754,7 @@ public final class RouteFeature
     {
         loads.incrementAndGet();
         eventBus.unregister(this);
-        overlayManager.remove(gameOverlay);
-        overlayManager.remove(minimapOverlay);
-        overlayManager.remove(worldMapRoute);
+        overlays.forEach(overlayManager::remove);
         fadeTimer.stop();
         fading.clear();
         appearing.clear();
@@ -836,16 +776,15 @@ public final class RouteFeature
             running.clear();
         }
         controller = null;
-        if (searches != null)
+        for (ExecutorService pool : new ExecutorService[]{searches, background})
         {
-            searches.shutdownNow();
-            searches = null;
+            if (pool != null)
+            {
+                pool.shutdownNow();
+            }
         }
-        if (background != null)
-        {
-            background.shutdownNow();
-            background = null;
-        }
+        searches = null;
+        background = null;
         screens = new MapScreen[0];
         shown = null;
         house.reset();
@@ -854,9 +793,7 @@ public final class RouteFeature
         // Work still on the extras thread finds it is not wanted.
         tour = null;
         orders.incrementAndGet();
-        handedOver = null;
-        spJumps = Collections.emptyList();
-        dropWalks();
+        forgetHandOver();
         why = null;
         whyFor = null;
         whyTarget = -1;
@@ -962,10 +899,7 @@ public final class RouteFeature
             float was = out == null ? 0f : fadeAlpha(out, t);
             appearing.put(point, t - (long) (was * FADE_IN_MS));
         }
-        if (!fadeTimer.isRunning())
-        {
-            fadeTimer.start();
-        }
+        fadeTimer.start(); // no-op while running
     }
 
     static float fadeAlpha(long since, long now)
@@ -986,23 +920,35 @@ public final class RouteFeature
         repaint();
     }
 
+    private static void eachWalked(Route route, IntConsumer tile)
+    {
+        for (Step step : route.steps)
+        {
+            if (step.kind == Kind.WALK)
+            {
+                for (int point : step.points)
+                {
+                    tile.accept(point);
+                }
+            }
+        }
+    }
+
     private static Set<Integer> walked(Route route)
     {
         Set<Integer> tiles = new HashSet<>();
         if (route != null)
         {
-            for (Route.Step step : route.steps)
-            {
-                if (step.kind == Route.Step.Kind.WALK)
-                {
-                    for (int point : step.points)
-                    {
-                        tiles.add(point);
-                    }
-                }
-            }
+            eachWalked(route, tiles::add);
         }
         return tiles;
+    }
+
+    private static Set<Integer> minus(Set<Integer> a, Set<Integer> b)
+    {
+        Set<Integer> left = new HashSet<>(a);
+        left.removeAll(b);
+        return left;
     }
 
     private void fadeOut(Set<Integer> tiles)
@@ -1016,10 +962,7 @@ public final class RouteFeature
         {
             fading.putIfAbsent(point, t);
         }
-        if (!fadeTimer.isRunning())
-        {
-            fadeTimer.start();
-        }
+        fadeTimer.start();
     }
 
     private Route aheadOf;
@@ -1059,12 +1002,8 @@ public final class RouteFeature
         aheadOf = route;
         if (before != null && before != now)
         {
-            Set<Integer> gone = new HashSet<>(walkedBefore);
-            gone.removeAll(walkedNow);
-            fadeOut(gone);
-            Set<Integer> back = new HashSet<>(walkedNow);
-            back.removeAll(walkedBefore);
-            fadeInTiles(back);
+            fadeOut(minus(walkedBefore, walkedNow));
+            fadeInTiles(minus(walkedNow, walkedBefore));
         }
         ahead = now;
         aheadWalkedOf = now;
@@ -1093,15 +1032,11 @@ public final class RouteFeature
     {
         Map<Integer, Long> carried = new HashMap<>();
         Set<Integer> unlimited = new HashSet<>();
-        boolean pouch = false;
         ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+        boolean pouch = inventory != null && Arrays.stream(inventory.getItems()).anyMatch(i -> RUNE_POUCHES.contains(i.getId()));
         if (inventory != null)
         {
             count(inventory, carried);
-            for (Item item : inventory.getItems())
-            {
-                pouch |= RUNE_POUCHES.contains(item.getId());
-            }
         }
         ItemContainer worn = client.getItemContainer(InventoryID.WORN);
         if (worn != null)
@@ -1136,16 +1071,8 @@ public final class RouteFeature
             lastQuest = ticks;
             pandemonium = Quest.PANDEMONIUM.getState(client) == QuestState.FINISHED;
         }
-        Set<Integer> boats = new LinkedHashSet<>();
-        for (int varbit : BOAT_PORTS)
-        {
-            Integer at = ports.get(client.getVarbitValue(varbit));
-            if (at != null)
-            {
-                boats.add(at);
-            }
-        }
-        int[] boatTiles = boats.stream().mapToInt(Integer::intValue).toArray();
+        int[] boatTiles = Arrays.stream(BOAT_PORTS).mapToObj(varbit -> ports.get(client.getVarbitValue(varbit)))
+            .filter(Objects::nonNull).distinct().mapToInt(Integer::intValue).toArray();
         if (bankChanged || bankItems == null)
         {
             bankItems = ItemSnapshot.of(Collections.emptyMap(), Collections.emptySet(), bank);
@@ -1243,18 +1170,32 @@ public final class RouteFeature
         {
             return;
         }
-        String group = HdMapReforgedConfig.GROUP;
-        configManager.setConfiguration(group, "houseJewelleryBox", HouseSettings.box(features));
-        configManager.setConfiguration(group, "houseGlory", features.contains("glory"));
-        configManager.setConfiguration(group, "houseFairyRing", HouseSettings.fairyRing(features));
-        configManager.setConfiguration(group, "houseSpiritTree", HouseSettings.spiritTree(features));
-        configManager.setConfiguration(group, "housePortals", HouseSettings.portals(features));
+        set("houseJewelleryBox", HouseSettings.box(features));
+        set("houseGlory", features.contains("glory"));
+        set("houseFairyRing", HouseSettings.fairyRing(features));
+        set("houseSpiritTree", HouseSettings.spiritTree(features));
+        set("housePortals", HouseSettings.portals(features));
+    }
+
+    private String get(String key)
+    {
+        return configManager.getConfiguration(HdMapReforgedConfig.GROUP, key);
+    }
+
+    private void set(String key, Object value)
+    {
+        configManager.setConfiguration(HdMapReforgedConfig.GROUP, key, value);
     }
 
     @Subscribe
     public void onConfigChanged(ConfigChanged event)
     {
-        if (HdMapReforgedConfig.GROUP.equals(event.getGroup()) && event.getKey().startsWith("house"))
+        String key = event.getKey();
+        if (!HdMapReforgedConfig.GROUP.equals(event.getGroup()))
+        {
+            return;
+        }
+        if (key.startsWith("house"))
         {
             clientThread.invokeLater(() -> {
                 Set<String> features = houseSettings();
@@ -1268,18 +1209,15 @@ public final class RouteFeature
             });
             return;
         }
-        if (!HdMapReforgedConfig.GROUP.equals(event.getGroup()) || !event.getKey().startsWith("route")
-            || HOUSE_KEY.equals(event.getKey()) || "routeLog".equals(event.getKey()))
+        if (!key.startsWith("route") || HOUSE_KEY.equals(key) || "routeLog".equals(key))
         {
             return;
         }
-        if (LOOK_KEYS.contains(event.getKey()))
+        if (LOOK_KEYS.contains(key))
         {
-            SwingUtilities.invokeLater(this::changed);
             sentAhead = null;
-            return;
         }
-        SwingUtilities.invokeLater(this::settingsChanged);
+        SwingUtilities.invokeLater(LOOK_KEYS.contains(key) ? this::changed : this::settingsChanged);
     }
 
     private void settingsChanged()
@@ -1331,15 +1269,14 @@ public final class RouteFeature
     /** On the first route: Shortest Path becomes the planner if it is on and nothing was chosen. */
     private void choosePlannerOnce()
     {
-        if (configManager.getConfiguration(HdMapReforgedConfig.GROUP, "routePlannerChosen") != null)
+        if (get("routePlannerChosen") != null)
         {
             return;
         }
-        configManager.setConfiguration(HdMapReforgedConfig.GROUP, "routePlannerChosen", true);
-        if (configManager.getConfiguration(HdMapReforgedConfig.GROUP, "routePlanner") == null && shortestPathOn())
+        set("routePlannerChosen", true);
+        if (get("routePlanner") == null && shortestPathOn())
         {
-            configManager.setConfiguration(HdMapReforgedConfig.GROUP, "routePlanner",
-                HdMapReforgedConfig.RoutePlanner.SHORTEST_PATH);
+            set("routePlanner", HdMapReforgedConfig.RoutePlanner.SHORTEST_PATH);
         }
     }
 
@@ -1356,11 +1293,17 @@ public final class RouteFeature
         RouteController now = controller;
         if (now != null)
         {
-            bringUp = true;
-            fromPlugin = false;
-            routeAvoid.clear();
+            newRoute();
             now.setTarget(pack(point));
         }
+    }
+
+    /** The user's own route: shown at once, with nothing avoided yet. */
+    private void newRoute()
+    {
+        bringUp = true;
+        fromPlugin = false;
+        routeAvoid.clear();
     }
 
     private void contribute(JPopupMenu popup, WorldPoint point)
@@ -1368,39 +1311,24 @@ public final class RouteFeature
         choosePlannerOnce();
         RouteController c = controller;
         popup.addSeparator();
-        JMenuItem add = new JMenuItem("Add to custom route");
-        add.setToolTipText("Adds this spot as a stop of \"" + editingName() + "\"");
-        add.addActionListener(a -> addStop(Tour.Stop.place(placeName(point), point)));
-        popup.add(add);
-        JMenuItem tours = new JMenuItem("Custom routes...");
-        tours.setToolTipText("Your own routes with several stops: order them, let the planner find the fastest order, run");
-        tours.addActionListener(a -> editTours());
-        popup.add(tours);
+        item(popup, "Add to custom route", () -> addStop(Tour.Stop.place(placeName(point), point)))
+            .setToolTipText("Adds this spot as a stop of \"" + editingName() + "\"");
+        item(popup, "Custom routes...", this::editTours)
+            .setToolTipText("Your own routes with several stops: order them, let the planner find the fastest order, run");
+        String clear = tour != null ? "Stop custom route" : "Clear path";
         if (shortestPathPlanner())
         {
-            JMenuItem path = new JMenuItem("Path to here (Shortest Path)");
-            path.addActionListener(a -> routeTo(point));
-            popup.add(path);
+            item(popup, "Path to here (Shortest Path)", () -> routeTo(point));
             if (handedOver != null)
             {
-                JMenuItem clear = new JMenuItem(tour != null ? "Stop custom route" : "Clear path");
-                clear.addActionListener(a -> endTour());
-                popup.add(clear);
+                item(popup, clear, this::endTour);
             }
             return;
         }
-        JMenuItem path = new JMenuItem(c == null ? "Path to here (loading…)" : "Path to here");
-        path.setEnabled(c != null);
-        path.addActionListener(a -> routeTo(point));
-        popup.add(path);
+        item(popup, c == null ? "Path to here (loading…)" : "Path to here", () -> routeTo(point)).setEnabled(c != null);
         if (c != null && c.target() >= 0)
         {
-            JMenuItem clear = new JMenuItem(tour != null ? "Stop custom route" : "Clear path");
-            clear.addActionListener(a -> {
-                stopTour();
-                c.clear();
-            });
-            popup.add(clear);
+            item(popup, clear, this::clearRoute);
         }
     }
 
@@ -1426,11 +1354,6 @@ public final class RouteFeature
         {
             this.tour = tour;
         }
-
-        Tour.Stop stop()
-        {
-            return tour.stops.get(index);
-        }
     }
 
     /** Set on Swing; read on the client and extras threads too. */
@@ -1438,28 +1361,22 @@ public final class RouteFeature
 
     private List<Tour> tours()
     {
-        return Tour.decode(configManager.getConfiguration(HdMapReforgedConfig.GROUP, TOURS_KEY));
+        return Tour.decode(get(TOURS_KEY));
     }
 
     private void saveTours(List<Tour> tours, String editing)
     {
-        configManager.setConfiguration(HdMapReforgedConfig.GROUP, TOURS_KEY, Tour.encode(tours));
-        configManager.setConfiguration(HdMapReforgedConfig.GROUP, EDITING_KEY, editing);
+        set(TOURS_KEY, Tour.encode(tours));
+        set(EDITING_KEY, editing);
     }
 
     /** The route stops are added to: the last one edited, else the first, else a new "My route". */
     private String editingName()
     {
-        String editing = configManager.getConfiguration(HdMapReforgedConfig.GROUP, EDITING_KEY);
+        String editing = get(EDITING_KEY);
         List<Tour> tours = tours();
-        for (Tour t : tours)
-        {
-            if (t.name.equals(editing))
-            {
-                return editing;
-            }
-        }
-        return tours.isEmpty() ? "My route" : tours.get(0).name;
+        return tours.stream().anyMatch(t -> t.name.equals(editing)) ? editing
+            : tours.isEmpty() ? "My route" : tours.get(0).name;
     }
 
     void addStop(Tour.Stop stop)
@@ -1586,16 +1503,9 @@ public final class RouteFeature
         // A stop right after the same one is skipped.
         Running running = new Running(chosen.withoutRepeats());
         tour = running;
-        int n = running.tour.stops.size();
-        running.points = new int[n];
-        running.legs = new Route[n];
-        WorldPoint near = start >= 0 ? worldPoint(start) : null;
-        for (int i = 0; i < n; i++)
-        {
-            WorldPoint p = resolve(running.tour.stops.get(i), near);
-            running.points[i] = p == null ? -1 : pack(p);
-            near = p != null ? p : near;
-        }
+        List<WorldPoint> at = resolve(running.tour.stops, start >= 0 ? worldPoint(start) : null);
+        running.points = at.stream().mapToInt(p -> p == null ? -1 : pack(p)).toArray();
+        running.legs = new Route[at.size()];
         goToStop(start);
         planLegs(running);
         refreshTours();
@@ -1630,7 +1540,7 @@ public final class RouteFeature
                     log.warn("Could not plan a part of the custom route", e);
                     return;
                 }
-                if (leg != null && leg.outcome != Route.Outcome.CANCELLED)
+                if (leg != null && leg.outcome != Outcome.CANCELLED)
                 {
                     int at = i;
                     SwingUtilities.invokeLater(() -> {
@@ -1683,13 +1593,14 @@ public final class RouteFeature
         {
             if (legs[i] != null && !legs[i].steps.isEmpty())
             {
-                later.add(new AbstractMap.SimpleImmutableEntry<>(i, legs[i]));
+                later.add(Map.entry(i, legs[i]));
             }
         }
         return later;
     }
 
-    private void endTour()
+    /** Stops a custom route and clears the route. */
+    private void clearRoute()
     {
         RouteController c = controller;
         stopTour();
@@ -1697,6 +1608,11 @@ public final class RouteFeature
         {
             c.clear();
         }
+    }
+
+    private void endTour()
+    {
+        clearRoute();
         if (handedOver != null)
         {
             handOverClear();
@@ -1724,13 +1640,7 @@ public final class RouteFeature
         if (running.index >= running.tour.stops.size())
         {
             fadeOut(walkedAhead(ahead));
-            tour = null;
-            c.clear();
-            if (handedOver != null)
-            {
-                handOverClear();
-            }
-            refreshTours();
+            endTour();
             toast("\"" + running.tour.name + "\" done");
             return;
         }
@@ -1748,7 +1658,7 @@ public final class RouteFeature
         }
         int planned = running.index < running.points.length ? running.points[running.index] : -1;
         WorldPoint to = planned >= 0 ? worldPoint(planned)
-            : resolve(running.stop(), from >= 0 ? worldPoint(from) : null);
+            : resolve(running.tour.stops.get(running.index), from >= 0 ? worldPoint(from) : null);
         if (to == null)
         {
             // A kind with no place yet (icons not loaded): skipped.
@@ -1761,17 +1671,28 @@ public final class RouteFeature
             handOver(to);
             return;
         }
-        bringUp = true;
-        fromPlugin = false;
-        routeAvoid.clear();
+        newRoute();
         Route[] legs = running.legs;
         Route leg = running.index > 0 && running.index < legs.length ? legs[running.index] : null;
-        if (leg != null && leg.outcome == Route.Outcome.FOUND)
+        if (leg != null && leg.outcome == Outcome.FOUND)
         {
             c.show(running.target, leg);
             return;
         }
         c.setTarget(running.target);
+    }
+
+    /** Each stop's place; a kind becomes the one nearest the stop before (or {@code near}); null when none. */
+    private List<WorldPoint> resolve(List<Tour.Stop> stops, WorldPoint near)
+    {
+        List<WorldPoint> points = new ArrayList<>();
+        for (Tour.Stop stop : stops)
+        {
+            WorldPoint p = resolve(stop, near);
+            points.add(p);
+            near = p != null ? p : near;
+        }
+        return points;
     }
 
     private WorldPoint resolve(Tour.Stop stop, WorldPoint near)
@@ -1785,15 +1706,15 @@ public final class RouteFeature
 
     static JComponent nowBox(Route left, int width, Color walk, Color jump)
     {
-        JPanel box = new JPanel();
-        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+        JPanel box = column();
+        box.setOpaque(true);
         box.setBackground(ColorScheme.DARK_GRAY_COLOR);
         box.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0, 3, 0, 0, walk),
             BorderFactory.createEmptyBorder(6, 8, 6, 6)));
         box.setAlignmentX(Component.LEFT_ALIGNMENT);
         int inner = width - 17;
         box.add(label("Now", inner, Font.PLAIN, ColorScheme.LIGHT_GRAY_COLOR));
-        Route.Step now = left.steps.get(0);
+        Step now = left.steps.get(0);
         JLabel doing = label(RouteText.describe(now), inner, Font.BOLD, color(now, walk, jump));
         doing.setFont(doing.getFont().deriveFont(Font.BOLD, doing.getFont().getSize2D() + 3));
         box.add(doing);
@@ -1803,7 +1724,7 @@ public final class RouteFeature
         }
         for (int i = 1; i < Math.min(3, left.steps.size()); i++)
         {
-            Route.Step then = left.steps.get(i);
+            Step then = left.steps.get(i);
             box.add(Box.createVerticalStrut(4));
             box.add(label((i == 1 ? "Then: " : "After that: ") + RouteText.describe(then), inner, Font.PLAIN,
                 color(then, walk, jump)));
@@ -1811,9 +1732,7 @@ public final class RouteFeature
         box.add(Box.createVerticalStrut(4));
         box.add(label(RouteText.duration(left) + " left", inner, Font.PLAIN, ColorScheme.LIGHT_GRAY_COLOR));
         box.setMaximumSize(new Dimension(Integer.MAX_VALUE, box.getPreferredSize().height));
-        JPanel spaced = new JPanel();
-        spaced.setLayout(new BoxLayout(spaced, BoxLayout.Y_AXIS));
-        spaced.setOpaque(false);
+        JPanel spaced = column();
         spaced.setAlignmentX(Component.LEFT_ALIGNMENT);
         spaced.add(box);
         spaced.add(Box.createVerticalStrut(8));
@@ -1823,31 +1742,22 @@ public final class RouteFeature
     /** "Stop 2 of 5: Catherby patch", with Skip and Stop, above a running custom route's steps. */
     private JComponent tourHeader(Running running, int width)
     {
-        JPanel header = new JPanel();
-        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
-        header.setOpaque(false);
+        JPanel header = column();
         header.setAlignmentX(Component.LEFT_ALIGNMENT);
-        header.add(label("\u25B6 " + running.tour.name + ": stop " + (running.index + 1) + " of "
-            + running.tour.stops.size(), width, Font.BOLD, legColor(running.index)));
-        for (int i = 0; i < running.tour.stops.size(); i++)
+        List<Tour.Stop> stops = running.tour.stops;
+        header.add(label("\u25B6 " + running.tour.name + ": stop " + (running.index + 1) + " of " + stops.size(), width,
+            Font.BOLD, legColor(running.index)));
+        for (int i = 0; i < stops.size(); i++)
         {
-            boolean passed = i < running.index;
-            boolean now = i == running.index;
-            header.add(label((i + 1) + ". " + running.tour.stops.get(i).name, width, now ? Font.BOLD : Font.PLAIN,
-                passed ? ColorScheme.MEDIUM_GRAY_COLOR : legColor(i)));
+            header.add(label((i + 1) + ". " + stops.get(i).name, width, i == running.index ? Font.BOLD : Font.PLAIN,
+                i < running.index ? ColorScheme.MEDIUM_GRAY_COLOR : legColor(i)));
         }
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         buttons.setOpaque(false);
         buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JButton skip = new JButton(running.index + 1 < running.tour.stops.size() ? "Next stop" : "Finish");
-        skip.setFocusable(false);
-        skip.addActionListener(e -> nextStop(start));
-        JButton stop = new JButton("Stop route");
-        stop.setFocusable(false);
-        stop.addActionListener(e -> endTour());
-        buttons.add(skip);
+        buttons.add(button(running.index + 1 < stops.size() ? "Next stop" : "Finish", () -> nextStop(start)));
         buttons.add(Box.createHorizontalStrut(4));
-        buttons.add(stop);
+        buttons.add(button("Stop route", this::endTour));
         header.add(buttons);
         header.add(Box.createVerticalStrut(6));
         return header;
@@ -1873,13 +1783,7 @@ public final class RouteFeature
         WorldPoint me = from >= 0 ? worldPoint(from) : null;
         List<WorldPoint> points = new ArrayList<>();
         points.add(me);
-        WorldPoint previous = me;
-        for (Tour.Stop stop : stops)
-        {
-            WorldPoint p = resolve(stop, previous);
-            points.add(p);
-            previous = p != null ? p : previous;
-        }
+        points.addAll(resolve(stops, me));
         toast("Working out the fastest order of " + stops.size() + " stops…");
         BooleanSupplier cancelled = () -> background == null || orders.get() != order;
         try
@@ -1957,18 +1861,8 @@ public final class RouteFeature
 
     private static boolean sameStops(List<Tour.Stop> a, List<Tour.Stop> b)
     {
-        if (a.size() != b.size())
-        {
-            return false;
-        }
-        for (int i = 0; i < a.size(); i++)
-        {
-            if (!a.get(i).same(b.get(i)) || !a.get(i).name.equals(b.get(i).name))
-            {
-                return false;
-            }
-        }
-        return true;
+        return a.size() == b.size()
+            && IntStream.range(0, a.size()).allMatch(i -> a.get(i).same(b.get(i)) && a.get(i).name.equals(b.get(i).name));
     }
 
     /** Which fastest-order run is current; any other stops and keeps nothing. */
@@ -1990,7 +1884,7 @@ public final class RouteFeature
             return -1;
         }
         Route route = pf.find(request, cancelled);
-        return route.outcome == Route.Outcome.FOUND ? route.cost : -1;
+        return route.outcome == Outcome.FOUND ? route.cost : -1;
     }
 
     /** Even with every requirement met there is no way: the data lacks a passage. */
@@ -2019,7 +1913,7 @@ public final class RouteFeature
         ExecutorService pool = background;
         Pathfinder pathfinder = walker;
         // Whenever the way does not arrive (also at the search limit), so the whole route shows with what is missing.
-        if (route == null || route.outcome != Route.Outcome.NEAREST || pool == null
+        if (route == null || route.outcome != Outcome.NEAREST || pool == null
             || pathfinder == null || config.routeIgnoreLevels() && config.routeIgnoreItems())
         {
             why = null;
@@ -2076,22 +1970,21 @@ public final class RouteFeature
     /** The steps that need what the player lacks. Null when nothing to say; empty when nothing nameable. */
     static List<String> blockers(Route why)
     {
-        if (why == null || why.outcome == Route.Outcome.CANCELLED)
+        if (why == null || why.outcome == Outcome.CANCELLED)
         {
             return null;
         }
-        if (why.outcome != Route.Outcome.FOUND)
+        if (why.outcome != Outcome.FOUND)
         {
             // Only a search that tried everything may say there is no way.
             return why.exhausted ? Collections.singletonList(NO_WAY) : null;
         }
         List<String> lines = new ArrayList<>();
-        for (Route.Step step : why.steps)
+        for (Step step : why.steps)
         {
-            if (step.detail != null && step.detail.startsWith("You lack"))
+            if (RouteText.lacks(step))
             {
-                String lack = step.detail.replaceFirst("^You lack:?\\s*", "");
-                lines.add(RouteText.describe(step) + ": needs " + lack);
+                lines.add(RouteText.describe(step) + ": needs " + RouteText.lack(step));
             }
         }
         return lines;
@@ -2105,14 +1998,14 @@ public final class RouteFeature
             return why;
         }
         // Not the way to the nearest spot while the real way is looked for.
-        return route != null && route.outcome == Route.Outcome.NEAREST && explaining ? null : route;
+        return route != null && route.outcome == Outcome.NEAREST && explaining ? null : route;
     }
 
     private boolean unreachable(Route route)
     {
         Route way = why;
-        return route != null && route.outcome == Route.Outcome.NEAREST && route == whyFor && way != null
-            && (way.outcome == Route.Outcome.FOUND || way.outcome == Route.Outcome.NEAREST && closer(way, route));
+        return route != null && route.outcome == Outcome.NEAREST && route == whyFor && way != null
+            && (way.outcome == Outcome.FOUND || way.outcome == Outcome.NEAREST && closer(way, route));
     }
 
     private static boolean closer(Route a, Route b)
@@ -2161,9 +2054,7 @@ public final class RouteFeature
         aheadOf = route;
         if (before != null && before != ahead)
         {
-            Set<Integer> gone = new HashSet<>(walkedAhead(before));
-            gone.removeAll(walkedAhead(ahead));
-            fadeOut(gone);
+            fadeOut(minus(walkedAhead(before), walkedAhead(ahead)));
         }
         shown = config.routeInGame() ? ahead : null;
         boolean up = bringUp;
@@ -2174,18 +2065,12 @@ public final class RouteFeature
 
     private void showSteps(RouteController c, boolean up)
     {
+        boolean none = c == null || c.target() < 0;
         for (MapScreen screen : screens)
         {
-            if (c == null || c.target() < 0)
-            {
-                screen.showRoute(null, false);
-            }
-            else
-            {
-                screen.showRoute(width -> steps(c, width, screen.view()::focus), up);
-            }
+            screen.showRoute(none ? null : width -> steps(c, width, screen.view()::focus, false), !none && up);
         }
-        sidebar.accept(c == null || c.target() < 0 ? null : width -> steps(c, width, sidebarFocus, true));
+        sidebar.accept(none ? null : width -> steps(c, width, sidebarFocus, true));
     }
 
     /** Steps avoided for the current route only (lower case). */
@@ -2207,10 +2092,7 @@ public final class RouteFeature
     private Set<String> avoided()
     {
         Set<String> all = new HashSet<>(routeAvoid);
-        for (String name : neverUse())
-        {
-            all.add(name.toLowerCase(Locale.ROOT));
-        }
+        neverUse().forEach(name -> all.add(name.toLowerCase(Locale.ROOT)));
         return all;
     }
 
@@ -2224,15 +2106,9 @@ public final class RouteFeature
 
         List<String> neverUsed();
 
-        default List<String> blockers()
-        {
-            return null;
-        }
+        List<String> blockers();
 
-        default boolean unreachable()
-        {
-            return false;
-        }
+        boolean unreachable();
     }
 
     private final StepActions stepActions = new StepActions()
@@ -2251,7 +2127,7 @@ public final class RouteFeature
             if (!names.contains(name))
             {
                 names.add(name);
-                configManager.setConfiguration(HdMapReforgedConfig.GROUP, "routeNeverUse", String.join("\n", names));
+                set("routeNeverUse", String.join("\n", names));
             }
         }
 
@@ -2260,7 +2136,7 @@ public final class RouteFeature
         {
             List<String> names = neverUse();
             names.removeIf(n -> n.equalsIgnoreCase(name));
-            configManager.setConfiguration(HdMapReforgedConfig.GROUP, "routeNeverUse", String.join("\n", names));
+            set("routeNeverUse", String.join("\n", names));
         }
 
         @Override
@@ -2283,11 +2159,6 @@ public final class RouteFeature
         }
     };
 
-    private JComponent steps(RouteController c, int width, Consumer<WorldPoint> focus)
-    {
-        return steps(c, width, focus, false);
-    }
-
     /** With {@code roomy} (the sidebar): first a box with what to do now and next. */
     private JComponent steps(RouteController c, int width, Consumer<WorldPoint> focus, boolean roomy)
     {
@@ -2296,10 +2167,8 @@ public final class RouteFeature
             : c.status();
         Route left = ahead;
         int done = route != null && route == aheadOf && left != null ? route.steps.size() - left.steps.size() : 0;
-        JComponent panel = panel(route, c.target(), status, width, focus, () -> {
-            stopTour();
-            c.clear();
-        }, stepActions, current(), jump(), done);
+        JComponent panel = panel(route, c.target(), status, width, focus, this::clearRoute, stepActions, current(),
+            jump(), done);
         if (roomy && route != null && left != null && !left.steps.isEmpty())
         {
             panel.add(nowBox(left, width, current(), jump()), 1);
@@ -2310,7 +2179,7 @@ public final class RouteFeature
             panel.add(tourHeader(running, width), 0);
         }
         PlayerState planned = state;
-        if (route != null && route.has(Route.Step.Kind.SAIL) && planned != null)
+        if (route != null && route.has(Kind.SAIL) && planned != null)
         {
             // So a wrong dock choice can be told apart from a wrong level.
             String text = config.routeIgnoreLevels() ? "Planned ignoring levels"
@@ -2324,25 +2193,16 @@ public final class RouteFeature
     static JComponent panel(Route route, int target, String status, int width, Consumer<WorldPoint> focus,
         Runnable clear)
     {
-        return panel(route, target, status, width, focus, clear, null);
-    }
-
-    static JComponent panel(Route route, int target, String status, int width, Consumer<WorldPoint> focus,
-        Runnable clear, StepActions actions)
-    {
-        return panel(route, target, status, width, focus, clear, actions, WALK, JUMP, 0);
+        return panel(route, target, status, width, focus, clear, null, WALK, JUMP, 0);
     }
 
     static JComponent panel(Route route, int target, String status, int width, Consumer<WorldPoint> focus,
         Runnable clear, StepActions actions, Color walk, Color jump, int done)
     {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setOpaque(false);
+        JPanel panel = column();
         panel.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
-        JLabel title = label("Route" + (Tiles.z(target) > 0 ? " (floor " + Tiles.z(target) + ")" : ""), width,
-            Font.BOLD, Color.WHITE);
-        panel.add(title);
+        panel.add(label("Route" + (Tiles.z(target) > 0 ? " (floor " + Tiles.z(target) + ")" : ""), width,
+            Font.BOLD, Color.WHITE));
         if (route == null)
         {
             panel.add(label(status != null ? status : "Searching…", width, Font.PLAIN, ColorScheme.LIGHT_GRAY_COLOR));
@@ -2351,7 +2211,7 @@ public final class RouteFeature
         {
             for (String note : RouteText.notes(route))
             {
-                panel.add(label(note, width, Font.PLAIN, new Color(255, 190, 120)));
+                panel.add(label(note, width, Font.PLAIN, NOTE));
             }
             boolean unreachable = actions != null && actions.unreachable();
             int blocked = unreachable ? RouteText.blockedFrom(route) : -1;
@@ -2359,17 +2219,16 @@ public final class RouteFeature
             {
                 panel.add(label(RouteText.cannotYet(route), width, Font.BOLD, CANNOT));
             }
-            List<String> blockers = actions == null || route.outcome != Route.Outcome.NEAREST ? null
+            List<String> blockers = actions == null || route.outcome != Outcome.NEAREST ? null
                 : actions.blockers();
             if (blockers != null)
             {
                 panel.add(label(blockers.isEmpty() ? "Needs something the map can't name (a quest step, a key)."
-                    : blockers.contains(NO_WAY) ? NO_WAY : "Needs: " + String.join(", ", blockers), width, Font.PLAIN,
-                    new Color(255, 190, 120)));
+                    : blockers.contains(NO_WAY) ? NO_WAY : "Needs: " + String.join(", ", blockers), width, Font.PLAIN, NOTE));
             }
             if (!route.steps.isEmpty())
             {
-                panel.add(label(RouteText.duration(route) + (route.outcome == Route.Outcome.NEAREST
+                panel.add(label(RouteText.duration(route) + (route.outcome == Outcome.NEAREST
                     ? " to where the route ends" : ""), width, Font.PLAIN, ColorScheme.LIGHT_GRAY_COLOR));
             }
             String bring = RouteText.bring(route);
@@ -2380,37 +2239,31 @@ public final class RouteFeature
             }
             int number = 1;
             boolean unsure = false;
-            for (Route.Step step : route.steps)
+            for (Step step : route.steps)
             {
                 boolean lacking = unreachable && RouteText.lacks(step);
                 boolean cannot = blocked >= 0 && number - 1 >= blocked;
-                String detail = lacking ? "Needs " + step.detail.replaceFirst("^You lack:?\\s*", "") : step.detail;
+                String detail = lacking ? "Needs " + RouteText.lack(step) : step.detail;
                 if (!lacking && RouteText.unsure(detail))
                 {
                     unsure = true; // said once under the steps
                     detail = null;
                 }
-                JButton row = new JButton("<html><body style='width:" + Math.max(80, width - 40) + "px'>" + number++ + ". "
-                    + RouteText.escape(RouteText.describe(step))
-                    + (detail != null ? "<br><span style='color:" + (cannot ? "#ff7070" : "#a0a0a0") + "'>"
-                        + RouteText.escape(detail) + "</span>" : "")
-                    + "</body></html>");
-                row.setHorizontalAlignment(JButton.LEFT);
-                row.setBorderPainted(false);
-                row.setContentAreaFilled(false);
-                row.setFocusable(false);
-                row.setForeground(number - 2 < done ? ColorScheme.MEDIUM_GRAY_COLOR : cannot ? CANNOT
-                    : color(step, walk, jump));
-                row.setMargin(new Insets(1, 0, 1, 0));
                 // A passage, stairs or transport shows where it leads (the other map).
                 boolean leads = step.isJump() && !Tiles.isSea(step.last()) && step.first() != step.last();
                 int point = leads ? step.last() : step.first();
-                row.setToolTipText(leads ? "Show where this leads on the map" : "Show on the map");
-                row.addActionListener(a -> focus.accept(worldPoint(point)));
-                row.setAlignmentX(0);
-                boolean choice = step.name != null && (step.kind == Route.Step.Kind.TELEPORT
-                    || step.kind == Route.Step.Kind.TRANSPORT || step.kind == Route.Step.Kind.SHIP
-                    || step.kind == Route.Step.Kind.ENTRANCE && step.category != null);
+                JButton row = flat("<html><body style='width:" + Math.max(80, width - 40) + "px'>" + number++ + ". "
+                    + RouteText.escape(RouteText.describe(step))
+                    + (detail != null ? "<br><span style='color:" + (cannot ? "#ff7070" : "#a0a0a0") + "'>"
+                        + RouteText.escape(detail) + "</span>" : "")
+                    + "</body></html>", leads ? "Show where this leads on the map" : "Show on the map",
+                    () -> focus.accept(worldPoint(point)));
+                row.setForeground(number - 2 < done ? ColorScheme.MEDIUM_GRAY_COLOR : cannot ? CANNOT
+                    : color(step, walk, jump));
+                row.setMargin(new Insets(1, 0, 1, 0));
+                boolean choice = step.name != null && (step.kind == Kind.TELEPORT
+                    || step.kind == Kind.TRANSPORT || step.kind == Kind.SHIP
+                    || step.kind == Kind.ENTRANCE && step.category != null);
                 if (actions == null || !choice)
                 {
                     panel.add(row);
@@ -2461,33 +2314,52 @@ public final class RouteFeature
             {
                 String shown = never.regionMatches(true, 0, RouteSource.TYPE, 0, RouteSource.TYPE.length())
                     ? "Every " + never.substring(RouteSource.TYPE.length()) : never;
-                JButton allow = new JButton("✕  " + shown);
-                allow.setBorderPainted(false);
-                allow.setContentAreaFilled(false);
-                allow.setFocusable(false);
-                allow.setHorizontalAlignment(JButton.LEFT);
+                JButton allow = flat("✕  " + shown, "Use it again", () -> actions.allow(never));
                 allow.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-                allow.setToolTipText("Use it again");
-                allow.setAlignmentX(0);
-                allow.addActionListener(a -> actions.allow(never));
                 panel.add(allow);
             }
         }
         panel.add(Box.createVerticalStrut(4));
-        JButton clearButton = new JButton("Clear path");
-        clearButton.setFocusable(false);
+        JButton clearButton = button("Clear path", clear);
         clearButton.setAlignmentX(0);
         clearButton.setToolTipText("Remove the route from the map");
-        clearButton.addActionListener(a -> clear.run());
         panel.add(clearButton);
         return panel;
     }
 
-    private static void item(JPopupMenu menu, String text, Runnable action)
+    private static JMenuItem item(JPopupMenu menu, String text, Runnable action)
     {
         JMenuItem item = new JMenuItem(text);
         item.addActionListener(e -> action.run());
-        menu.add(item);
+        return menu.add(item);
+    }
+
+    private static JPanel column()
+    {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setOpaque(false);
+        return panel;
+    }
+
+    private static JButton button(String text, Runnable action)
+    {
+        JButton button = new JButton(text);
+        button.setFocusable(false);
+        button.addActionListener(e -> action.run());
+        return button;
+    }
+
+    /** A left-aligned button that looks like text. */
+    private static JButton flat(String text, String tip, Runnable action)
+    {
+        JButton button = button(text, action);
+        button.setHorizontalAlignment(JButton.LEFT);
+        button.setBorderPainted(false);
+        button.setContentAreaFilled(false);
+        button.setToolTipText(tip);
+        button.setAlignmentX(0);
+        return button;
     }
 
     private static JLabel label(String text, int width, int style, Color color)
@@ -2501,7 +2373,7 @@ public final class RouteFeature
         return label;
     }
 
-    private static Color color(Route.Step step, Color walk, Color jump)
+    private static Color color(Step step, Color walk, Color jump)
     {
         switch (step.kind)
         {
@@ -2549,7 +2421,7 @@ public final class RouteFeature
             }
             double r = Math.max(1.5, Math.pow(2, p.zoom()) * 0.35);
             g.setColor(alpha(walk(), alpha * 200));
-            g.fill(new Ellipse2D.Double(p.screenX(at.getX() + 0.5) - r, p.screenY(at.getY() + 0.5) - r, r * 2, r * 2));
+            g.fill(circle(p.screenX(at.getX() + 0.5), p.screenY(at.getY() + 0.5), r));
         }
     }
 
@@ -2574,14 +2446,15 @@ public final class RouteFeature
             Shape clip = g.getClip();
             g.setClip(map.getBounds());
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            for (Route.Step step : route.steps)
+            Color walk = walk();
+            Color jump = jump();
+            for (Step step : route.steps)
             {
-                boolean walking = step.kind == Route.Step.Kind.WALK;
-                if (walking || step.kind == Route.Step.Kind.SAIL)
+                g.setColor(color(step, walk, jump));
+                if (!step.isJump())
                 {
-                    g.setColor(walking ? walk() : SEA);
                     // Every other walked tile keeps it light on a zoomed-out map.
-                    for (int i = 0; i < step.points.length; i += walking ? 2 : 1)
+                    for (int i = 0; i < step.points.length; i += step.kind == Kind.WALK ? 2 : 1)
                     {
                         Point p = onMap(step.points[i]);
                         if (p != null)
@@ -2592,9 +2465,8 @@ public final class RouteFeature
                 }
                 else if (step.points.length >= 2)
                 {
-                    Point a = step.first() >= 0 && step.kind != Route.Step.Kind.TELEPORT ? onMap(step.first()) : null;
-                    Point b = onMap(step.points[step.points.length - 1]);
-                    g.setColor(step.kind == Route.Step.Kind.BOARD || step.kind == Route.Step.Kind.DISEMBARK ? SEA : jump());
+                    Point a = step.first() >= 0 && step.kind != Kind.TELEPORT ? onMap(step.first()) : null;
+                    Point b = onMap(step.last());
                     if (a != null && b != null)
                     {
                         g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{6f, 5f}, 0f));
@@ -2616,23 +2488,16 @@ public final class RouteFeature
 
         private Point onMap(int node)
         {
-            if (node < 0)
-            {
-                return null;
-            }
-            int x = Tiles.isSea(node) ? Tiles.cellX(node) * 4 + 2 : Tiles.x(node);
-            int y = Tiles.isSea(node) ? Tiles.cellY(node) * 4 + 2 : Tiles.y(node);
-            int z = Tiles.isSea(node) ? 0 : Tiles.z(node);
-            return worldMapOverlay.mapWorldPointToGraphicsPoint(new WorldPoint(x, y, z));
+            return node < 0 ? null : worldMapOverlay.mapWorldPointToGraphicsPoint(worldPoint(node));
         }
     }
 
     /** The step to take now: a teleport, or a transport or passage the player stands at; or null. */
-    static Route.Step nextAction(Route route, int player)
+    static Step nextAction(Route route, int player)
     {
-        for (Route.Step step : route.steps)
+        for (Step step : route.steps)
         {
-            if (step.kind == Route.Step.Kind.WALK)
+            if (step.kind == Kind.WALK)
             {
                 if (step.points.length > 3)
                 {
@@ -2640,11 +2505,11 @@ public final class RouteFeature
                 }
                 continue;
             }
-            if (step.kind == Route.Step.Kind.TELEPORT || step.kind == Route.Step.Kind.HOUSE)
+            if (step.kind == Kind.TELEPORT || step.kind == Kind.HOUSE)
             {
                 return step;
             }
-            if (step.kind == Route.Step.Kind.SAIL || step.kind == Route.Step.Kind.DISEMBARK)
+            if (step.kind == Kind.SAIL || step.kind == Kind.DISEMBARK)
             {
                 return null;
             }
@@ -2659,9 +2524,9 @@ public final class RouteFeature
     /** What to do now, such as "Chop-down Vines (bring an axe)", or null. */
     static String nextText(Route route, int player)
     {
-        for (Route.Step step : route.steps)
+        for (Step step : route.steps)
         {
-            if (step.kind != Route.Step.Kind.WALK)
+            if (step.kind != Kind.WALK)
             {
                 break;
             }
@@ -2680,18 +2545,15 @@ public final class RouteFeature
                 break;
             }
         }
-        Route.Step step = nextAction(route, player);
-        if (step == null)
-        {
-            return null;
-        }
-        return RouteText.describe(step);
+        Step step = nextAction(route, player);
+        return step == null ? null : RouteText.describe(step);
     }
 
     private void paintNextAction(Graphics2D g, Route route, Player player)
     {
         WorldPoint me = lastLocation;
-        String text = nextText(route, me == null ? -1 : pack(me));
+        int at = me == null ? -1 : pack(me);
+        String text = nextText(route, at);
         LocalPoint local = player.getLocalLocation();
         if (text == null || local == null)
         {
@@ -2699,21 +2561,60 @@ public final class RouteFeature
         }
         // The font first: the text is centred with it.
         g.setFont(FontManager.getRunescapeSmallFont());
-        Point at = Perspective.getCanvasTextLocation(client, g, local, text, player.getLogicalHeight() + 60);
-        if (at == null)
+        Point spot = Perspective.getCanvasTextLocation(client, g, local, text, player.getLogicalHeight() + 60);
+        if (spot == null)
         {
             return;
         }
-        int x = at.getX();
-        int y = at.getY();
+        int x = spot.getX();
+        int y = spot.getY();
         g.setColor(Color.BLACK);
         g.drawString(text, x + 1, y + 1);
-        Route.Step next = nextAction(route, me == null ? -1 : pack(me));
+        Step next = nextAction(route, at);
         g.setColor(next != null && RouteText.lacks(next) ? CANNOT : jump());
         g.drawString(text, x, y);
     }
 
     private static final int MINIMAP_ALPHA = 150;
+
+    private interface TileSink
+    {
+        void tile(int point, Color color, float strength);
+    }
+
+    /** The ground tiles of the overlays: later parts of a custom route, the route (fading in), then passed tiles. */
+    private void eachTile(Route route, TileSink sink)
+    {
+        for (Map.Entry<Integer, Route> leg : laterLegs())
+        {
+            Color color = legColor(leg.getKey());
+            eachWalked(leg.getValue(), point -> sink.tile(point, color, 1));
+        }
+        Color normal = current();
+        long now = System.currentTimeMillis();
+        int blocked = RouteText.blockedFrom(route);
+        List<Step> steps = route == null ? List.of() : route.steps;
+        for (int index = 0; index < steps.size(); index++)
+        {
+            Step step = steps.get(index);
+            Color walk = blocked >= 0 && index >= blocked ? CANNOT : normal;
+            for (int point : step.kind == Kind.WALK ? step.points : new int[0])
+            {
+                if (!fading.containsKey(point))
+                {
+                    sink.tile(point, walk, fadeIn(point, now));
+                }
+            }
+        }
+        for (Map.Entry<Integer, Long> entry : fading.entrySet())
+        {
+            float alpha = fadeAlpha(entry.getValue(), now);
+            if (alpha > 0)
+            {
+                sink.tile(entry.getKey(), normal, alpha);
+            }
+        }
+    }
 
     /** Dots on the minimap: above the widgets, or the minimap would cover them. */
     private final class MinimapOverlay extends Overlay
@@ -2739,63 +2640,17 @@ public final class RouteFeature
                 return null;
             }
             int plane = view.getPlane();
-            for (Map.Entry<Integer, Route> leg : laterLegs())
-            {
-                Color color = alpha(legColor(leg.getKey()), MINIMAP_ALPHA);
-                for (Route.Step step : leg.getValue().steps)
+            eachTile(route, (point, color, strength) -> {
+                LocalPoint local = Tiles.isSea(point) || Tiles.z(point) != plane ? null
+                    : LocalPoint.fromWorld(view, Tiles.x(point), Tiles.y(point));
+                Point mini = local == null ? null : Perspective.localToMinimap(client, local);
+                if (mini != null)
                 {
-                    for (int point : step.kind == Route.Step.Kind.WALK ? step.points : new int[0])
-                    {
-                        dot(g, view, plane, point, color);
-                    }
+                    g.setColor(alpha(color, MINIMAP_ALPHA * strength));
+                    g.fill(circle(mini.getX(), mini.getY(), 1.25));
                 }
-
-            }
-            Color normal = alpha(current(), MINIMAP_ALPHA);
-            long now = System.currentTimeMillis();
-            int blocked = RouteText.blockedFrom(route);
-            List<Route.Step> steps = route == null ? Collections.<Route.Step>emptyList() : route.steps;
-            for (int index = 0; index < steps.size(); index++)
-            {
-                Route.Step step = steps.get(index);
-                Color walk = blocked >= 0 && index >= blocked ? alpha(CANNOT, MINIMAP_ALPHA) : normal;
-                if (step.kind != Route.Step.Kind.WALK)
-                {
-                    continue;
-                }
-                for (int point : step.points)
-                {
-                    if (!fading.containsKey(point))
-                    {
-                        float in = fadeIn(point, now);
-                        dot(g, view, plane, point, in < 1 ? alpha(walk, walk.getAlpha() * in) : walk);
-                    }
-                }
-            }
-            for (Map.Entry<Integer, Long> entry : fading.entrySet())
-            {
-                float alpha = fadeAlpha(entry.getValue(), now);
-                if (alpha > 0)
-                {
-                    dot(g, view, plane, entry.getKey(), alpha(normal, alpha * MINIMAP_ALPHA));
-                }
-            }
+            });
             return null;
-        }
-
-        private void dot(Graphics2D g, WorldView view, int plane, int point, Color color)
-        {
-            if (Tiles.isSea(point) || Tiles.z(point) != plane)
-            {
-                return;
-            }
-            LocalPoint local = LocalPoint.fromWorld(view, Tiles.x(point), Tiles.y(point));
-            Point mini = local == null ? null : Perspective.localToMinimap(client, local);
-            if (mini != null)
-            {
-                g.setColor(color);
-                g.fill(new Ellipse2D.Double(mini.getX() - 1.25, mini.getY() - 1.25, 2.5, 2.5));
-            }
         }
     }
 
@@ -2830,79 +2685,27 @@ public final class RouteFeature
             }
             int plane = view.getPlane();
             Stroke old = g.getStroke();
-            Color normal = current();
             int fill = config.routeTileFill();
             int borderAlpha = config.routeTileBorder();
             double tileWidth = config.routeTileWidth();
             boolean border = borderAlpha > 0 && tileWidth > 0;
             g.setStroke(new BasicStroke((float) Math.max(0.5, Math.min(8, tileWidth))));
-            for (Map.Entry<Integer, Route> leg : laterLegs())
-            {
-                Color color = legColor(leg.getKey());
-                Color fillColor = alpha(color, fill);
-                Color borderColor = border ? alpha(color, borderAlpha) : null;
-                for (Route.Step step : leg.getValue().steps)
+            eachTile(route, (point, color, strength) -> {
+                LocalPoint local = Tiles.z(point) != plane ? null : LocalPoint.fromWorld(view, Tiles.x(point), Tiles.y(point));
+                Polygon tile = local == null ? null : Perspective.getCanvasTilePoly(client, local);
+                if (tile != null)
                 {
-                    for (int point : step.kind == Route.Step.Kind.WALK ? step.points : new int[0])
+                    g.setColor(alpha(color, fill * strength));
+                    g.fill(tile);
+                    if (border)
                     {
-                        if (Tiles.z(point) == plane)
-                        {
-                            tile(g, view, point, fillColor, borderColor);
-                        }
+                        g.setColor(alpha(color, borderAlpha * strength));
+                        g.draw(tile);
                     }
                 }
-            }
-            int blocked = RouteText.blockedFrom(route);
-            List<Route.Step> steps = route == null ? Collections.<Route.Step>emptyList() : route.steps;
-            long now = System.currentTimeMillis();
-            for (int index = 0; index < steps.size(); index++)
-            {
-                Route.Step step = steps.get(index);
-                Color walk = blocked >= 0 && index >= blocked ? CANNOT : normal;
-                if (step.kind != Route.Step.Kind.WALK)
-                {
-                    continue;
-                }
-                Color fillColor = alpha(walk, fill);
-                Color borderColor = alpha(walk, borderAlpha);
-                for (int point : step.points)
-                {
-                    if (Tiles.z(point) != plane || fading.containsKey(point))
-                    {
-                        continue;
-                    }
-                    float in = fadeIn(point, now);
-                    tile(g, view, point, in < 1 ? alpha(walk, fill * in) : fillColor,
-                        !border ? null : in < 1 ? alpha(walk, borderAlpha * in) : borderColor);
-                }
-            }
-            for (Map.Entry<Integer, Long> entry : fading.entrySet())
-            {
-                int point = entry.getKey();
-                float alpha = fadeAlpha(entry.getValue(), now);
-                if (alpha > 0 && Tiles.z(point) == plane)
-                {
-                    tile(g, view, point, alpha(normal, alpha * fill), border ? alpha(normal, alpha * borderAlpha) : null);
-                }
-            }
+            });
             g.setStroke(old);
             return null;
-        }
-
-        private void tile(Graphics2D g, WorldView view, int point, Color fill, Color border)
-        {
-            LocalPoint local = LocalPoint.fromWorld(view, Tiles.x(point), Tiles.y(point));
-            Polygon tile = local == null ? null : Perspective.getCanvasTilePoly(client, local);
-            if (tile != null)
-            {
-                g.setColor(fill);
-                g.fill(tile);
-                if (border != null)
-                {
-                    g.setColor(border);
-                    g.draw(tile);
-                }
-            }
         }
     }
 
@@ -2912,11 +2715,11 @@ public final class RouteFeature
         static String cannotYet(Route route)
         {
             Set<String> missing = new LinkedHashSet<>();
-            for (Route.Step step : route.steps)
+            for (Step step : route.steps)
             {
                 if (lacks(step))
                 {
-                    for (String part : step.detail.replaceFirst("^You lack:?\\s*", "").split(",\\s*"))
+                    for (String part : lack(step).split(",\\s*"))
                     {
                         if (!part.trim().isEmpty())
                         {
@@ -2928,9 +2731,15 @@ public final class RouteFeature
             return missing.isEmpty() ? "Can't yet." : "Can't yet: " + String.join(", ", missing);
         }
 
-        static boolean lacks(Route.Step step)
+        static boolean lacks(Step step)
         {
             return step.detail != null && step.detail.startsWith("You lack");
+        }
+
+        /** What a step {@link #lacks}, as "45 Sailing, Lunar Diplomacy". */
+        static String lack(Step step)
+        {
+            return step.detail.replaceFirst("^You lack:?\\s*", "");
         }
 
         /** The first step the player cannot take yet (drawn red from there on), or -1. */
@@ -2958,11 +2767,11 @@ public final class RouteFeature
         static List<String> notes(Route route)
         {
             List<String> notes = new ArrayList<>();
-            if (route.outcome == Route.Outcome.NONE)
+            if (route.outcome == Outcome.NONE)
             {
                 notes.add("No route from here.");
             }
-            else if (route.outcome == Route.Outcome.NEAREST)
+            else if (route.outcome == Outcome.NEAREST)
             {
                 notes.add(route.exhausted ? "Can't get there." : "Too far to plan: ends as close as it got.");
             }
@@ -2979,7 +2788,7 @@ public final class RouteFeature
         static String bring(Route route)
         {
             Set<String> tools = new LinkedHashSet<>();
-            for (Route.Step step : route.steps)
+            for (Step step : route.steps)
             {
                 for (Route.Obstacle obstacle : step.obstacles)
                 {
@@ -3007,7 +2816,7 @@ public final class RouteFeature
                 + " (" + ticks + " ticks)";
         }
 
-        static String describe(Route.Step step)
+        static String describe(Step step)
         {
             switch (step.kind)
             {
@@ -3044,7 +2853,7 @@ public final class RouteFeature
             int blocked = blockedFrom(route);
             for (int index = 0; index < route.steps.size(); index++)
             {
-                Route.Step step = route.steps.get(index);
+                Step step = route.steps.get(index);
                 if (blocked >= 0 && index >= blocked)
                 {
                     walk = CANNOT;
@@ -3059,56 +2868,36 @@ public final class RouteFeature
                     if (showA && showB && a != b)
                     {
                         g.setStroke(dashed);
-                        g.setColor(step.kind == Route.Step.Kind.BOARD || step.kind == Route.Step.Kind.DISEMBARK ? SEA : jump);
+                        g.setColor(color(step, walk, jump));
                         g.draw(new Line2D.Double(x(p, a), y(p, a), x(p, b), y(p, b)));
                     }
                     g.setColor(jump);
                     if (showA)
                     {
-                        g.fill(new Ellipse2D.Double(x(p, a) - 4, y(p, a) - 4, 8, 8));
+                        g.fill(circle(x(p, a), y(p, a), 4));
                     }
                     if (showB)
                     {
-                        g.fill(new Ellipse2D.Double(x(p, b) - 4, y(p, b) - 4, 8, 8));
+                        g.fill(circle(x(p, b), y(p, b), 4));
                     }
                     continue;
                 }
-                Path2D.Double line = new Path2D.Double();
-                boolean drawing = false;
-                for (int point : step.points)
-                {
-                    if (!visible(p, point))
-                    {
-                        drawing = false;
-                        continue;
-                    }
-                    if (drawing)
-                    {
-                        line.lineTo(x(p, point), y(p, point));
-                    }
-                    else
-                    {
-                        line.moveTo(x(p, point), y(p, point));
-                        drawing = true;
-                    }
-                }
+                Path2D line = path(p, step.points, false);
                 g.setStroke(outline);
                 g.setColor(OUTLINE);
                 g.draw(line);
                 g.setStroke(solid);
-                g.setColor(step.kind == Route.Step.Kind.SAIL ? SEA : walk);
+                g.setColor(color(step, walk, jump));
                 g.draw(line);
             }
-            if (route.end >= 0
- && visible(p, route.end))
+            if (route.end >= 0 && visible(p, route.end))
             {
-                double ex = x(p, route.end);
-                double ey = y(p, route.end);
+                Ellipse2D end = circle(x(p, route.end), y(p, route.end), 6);
                 g.setStroke(new BasicStroke(2f));
                 g.setColor(END);
-                g.fill(new Ellipse2D.Double(ex - 6, ey - 6, 12, 12));
+                g.fill(end);
                 g.setColor(Color.WHITE);
-                g.draw(new Ellipse2D.Double(ex - 6, ey - 6, 12, 12));
+                g.draw(end);
             }
             if (route.snapped() && visible(p, route.target))
             {
@@ -3127,28 +2916,50 @@ public final class RouteFeature
             }
         }
 
+        /** The points' line where shown, broken where not; {@code anyFloor}: also on other floors than the one drawn. */
+        static Path2D path(MapView.Projection p, int[] points, boolean anyFloor)
+        {
+            Path2D line = new Path2D.Double();
+            boolean drawing = false;
+            for (int point : points)
+            {
+                if (!(anyFloor ? p.shows(worldPoint(point)) : visible(p, point)))
+                {
+                    drawing = false;
+                    continue;
+                }
+                if (drawing)
+                {
+                    line.lineTo(x(p, point), y(p, point));
+                }
+                else
+                {
+                    line.moveTo(x(p, point), y(p, point));
+                    drawing = true;
+                }
+            }
+            return line;
+        }
+
         private static boolean visible(MapView.Projection p, int node)
         {
+            WorldPoint game = worldPoint(node);
             if (Tiles.isSea(node))
             {
-                return p.shows(new WorldPoint(Tiles.x(node), Tiles.y(node), 0));
+                return p.shows(game);
             }
-            WorldPoint game = worldPoint(node);
             // Where the map draws it: a part drawn elsewhere (the Kalphite Lair) there, on the floor drawn.
-
             return p.shown(game).getPlane() == p.plane() && p.shows(game);
         }
 
         private static double x(MapView.Projection p, int node)
         {
-            return Tiles.isSea(node) ? p.screenX(Tiles.x(node))
-                : p.screenX(p.shown(worldPoint(node)).getX() + 0.5);
+            return p.screenX(Tiles.isSea(node) ? Tiles.x(node) : p.shown(worldPoint(node)).getX() + 0.5);
         }
 
         private static double y(MapView.Projection p, int node)
         {
-            return Tiles.isSea(node) ? p.screenY(Tiles.y(node))
-                : p.screenY(p.shown(worldPoint(node)).getY() + 0.5);
+            return p.screenY(Tiles.isSea(node) ? Tiles.y(node) : p.shown(worldPoint(node)).getY() + 0.5);
         }
     }
 }

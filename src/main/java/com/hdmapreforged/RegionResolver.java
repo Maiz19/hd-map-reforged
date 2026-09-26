@@ -9,11 +9,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
 
 /** Which wiki map shows a place several maps' bounds contain, by each one's tiles. Blocking; background thread. */
 @Slf4j
+@RequiredArgsConstructor
 final class RegionResolver
 {
     private static final int ZOOM = 0;
@@ -23,28 +25,16 @@ final class RegionResolver
 
     private final TileCache tiles;
 
-    RegionResolver(TileCache tiles)
-    {
-        this.tiles = tiles;
-    }
-
-    static List<BaseMap> candidates(BaseMaps maps, int x, int y)
-    {
-        List<BaseMap> found = new ArrayList<>();
-        for (BaseMap map : maps.all())
-        {
-            if (map.id != BaseMap.FULL && map.contains(x, y))
-            {
-                found.add(map);
-            }
-        }
-        return found;
-    }
-
     /** Several maps claim it, or one other than the surface (dungeon bounds are loose). */
     static boolean needsCheck(BaseMaps maps, int x, int y)
     {
-        return doubtful(candidates(maps, x, y));
+        return doubtful(maps(maps, map -> map.contains(x, y)));
+    }
+
+    private static List<BaseMap> maps(BaseMaps maps, java.util.function.Predicate<BaseMap> claims)
+    {
+        return maps.all().stream().filter(map -> map.id != BaseMap.FULL && claims.test(map))
+            .collect(java.util.stream.Collectors.toList());
     }
 
     private static boolean doubtful(List<BaseMap> found)
@@ -111,7 +101,7 @@ final class RegionResolver
                     return added;
                 }
                 if (table.isResolved(RegionTable.regionId(rx, ry)) || candidatesIn(maps, rx, ry).isEmpty()
-                    || !needsCheck(maps, rx, ry) && !needsCheckAnywhere(maps, rx, ry))
+                    || !needsCheck(maps, rx, ry) && !doubtful(candidatesIn(maps, rx, ry)))
                 {
                     continue;
                 }
@@ -128,22 +118,9 @@ final class RegionResolver
         return added;
     }
 
-    private static boolean needsCheckAnywhere(BaseMaps maps, int rx, int ry)
+    private static List<BaseMap> candidatesIn(BaseMaps maps, int rx, int ry)
     {
-        return doubtful(candidatesIn(maps, rx, ry));
-    }
-    static List<BaseMap> candidatesIn(BaseMaps maps, int rx, int ry)
-    {
-        List<BaseMap> found = new ArrayList<>();
-        for (BaseMap map : maps.all())
-        {
-            if (map.id != BaseMap.FULL && map.minX < rx + REGION && rx < map.maxX && map.minY < ry + REGION
-                && ry < map.maxY)
-            {
-                found.add(map);
-            }
-        }
-        return found;
+        return maps(maps, map -> map.minX < rx + REGION && rx < map.maxX && map.minY < ry + REGION && ry < map.maxY);
     }
 
     /**
@@ -185,11 +162,10 @@ final class RegionResolver
             table.putUnsure(RegionTable.regionId(rx, ry));
             return true;
         }
-        int[] ids = new int[owners.size()];
+        int[] ids = owners.stream().mapToInt(Integer::intValue).toArray();
         int[] masks = new int[RegionTable.ZONES * RegionTable.ZONES];
         for (int i = 0; i < ids.length; i++)
         {
-            ids[i] = owners.get(i);
             for (int z = 0; z < masks.length && i < 6; z++)
             {
                 if (litZones.get(i)[z] >= ZONE_LIT)
@@ -214,16 +190,8 @@ final class RegionResolver
         int tx = TileCache.tileIndex(rx, ZOOM);
         int ty = TileCache.tileIndex(ry, ZOOM);
         TileCache.Key key = new TileCache.Key(map.id, ZOOM, plane, tx, ty);
-        BufferedImage image;
-        if (images.containsKey(key))
-        {
-            image = images.get(key);
-        }
-        else
-        {
-            image = tiles.loadNow(version, key);
-            images.put(key, image);
-        }
+        BufferedImage image = images.containsKey(key) ? images.get(key) : tiles.loadNow(version, key);
+        images.put(key, image);
         if (image == null)
         {
             return 0;

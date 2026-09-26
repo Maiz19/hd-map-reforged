@@ -17,23 +17,20 @@ import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.LongFunction;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /** The friends button at the map's bottom left, opening into the party list and a member's details. Swing thread only. */
 final class FriendsWidget implements MapView.Widget
 {
+    @RequiredArgsConstructor
     static final class Member
     {
         final long id;
         final String name;
-
-        Member(long id, String name)
-        {
-            this.id = id;
-            this.name = name;
-        }
     }
 
+    @RequiredArgsConstructor
     static final class Row
     {
         final String name;
@@ -42,15 +39,6 @@ final class FriendsWidget implements MapView.Widget
         final Color color;
         /** The party member's id, or -1 for a friend from the game's list. */
         final long id;
-
-        Row(String name, int world, WorldPoint point, Color color, long id)
-        {
-            this.name = name;
-            this.world = world;
-            this.point = point;
-            this.color = color;
-            this.id = id;
-        }
     }
 
     interface Images
@@ -70,6 +58,7 @@ final class FriendsWidget implements MapView.Widget
     private static final Color EDGE = new Color(255, 255, 255, 45);
     private static final Color OTHER_WORLD = new Color(255, 190, 120);
     private static final Color FRIEND = new Color(150, 150, 160);
+    private static final Color WORLD = new Color(190, 190, 195);
     private static final Font TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 13);
     private static final Font ROW = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
     private static final int WIDTH = 256;
@@ -220,7 +209,6 @@ final class FriendsWidget implements MapView.Widget
             return;
         }
         int w = Math.min(WIDTH, width - 24);
-        double left = LEFT;
         RoundRectangle2D tab = tab(g, bottom, clicks, "Friends · " + rows.size() + (open ? "  ▾" : "  ▴"));
         double tabTop = tab.getY();
         clicks.add(tab, () -> {
@@ -238,7 +226,7 @@ final class FriendsWidget implements MapView.Widget
         }
         if (chosen != null && images != null)
         {
-            paintDetails(g, chosen, left, w, tabTop - 4, clicks);
+            paintDetails(g, chosen, LEFT, w, tabTop - 4, clicks);
             return;
         }
         selected = -1;
@@ -247,13 +235,11 @@ final class FriendsWidget implements MapView.Widget
             String text = "No one else in your party yet";
             g.setFont(ROW);
             double boxWidth = Math.max(w, g.getFontMetrics().stringWidth(text) + 20);
-            RoundRectangle2D alone = new RoundRectangle2D.Double(left, tabTop - 4 - ROW_HEIGHT - 6, boxWidth,
+            RoundRectangle2D alone = new RoundRectangle2D.Double(LEFT, tabTop - 4 - ROW_HEIGHT - 6, boxWidth,
                 ROW_HEIGHT + 6, 10, 10);
             box(g, alone);
-            g.setFont(ROW);
             g.setColor(FRIEND);
-            g.drawString(text, (float) (left + 10),
-                (float) (alone.getCenterY() + g.getFontMetrics().getAscent() / 2.0 - 2));
+            g.drawString(text, LEFT + 10, middle(alone.getCenterY(), g.getFontMetrics()));
             return;
         }
         // Opens upwards, as many rows as fit; the last line then says how many more.
@@ -262,7 +248,7 @@ final class FriendsWidget implements MapView.Widget
         int more = rows.size() - shown.size();
         int lines = shown.size() + (more > 0 ? 1 : 0);
         double listTop = tabTop - 4 - lines * ROW_HEIGHT - 6;
-        RoundRectangle2D list = new RoundRectangle2D.Double(left, listTop, w, lines * ROW_HEIGHT + 6, 10, 10);
+        RoundRectangle2D list = new RoundRectangle2D.Double(LEFT, listTop, w, lines * ROW_HEIGHT + 6, 10, 10);
         box(g, list);
         g.setFont(ROW);
         FontMetrics metrics = g.getFontMetrics();
@@ -271,7 +257,7 @@ final class FriendsWidget implements MapView.Widget
         {
             Row row = shown.get(i);
             double top = listTop + 3 + i * ROW_HEIGHT;
-            RoundRectangle2D area = new RoundRectangle2D.Double(left + 3, top, w - 6, ROW_HEIGHT, 8, 8);
+            RoundRectangle2D area = new RoundRectangle2D.Double(LEFT + 3, top, w - 6, ROW_HEIGHT, 8, 8);
             if (row.point != null || row.id >= 0)
             {
                 if (clicks.hovered(area))
@@ -279,35 +265,33 @@ final class FriendsWidget implements MapView.Widget
                     g.setColor(HOVER);
                     g.fill(area);
                 }
-                WorldPoint point = row.point;
                 clicks.add(area, () -> {
-                    if (point != null)
+                    if (row.point != null)
                     {
-                        focus.accept(point);
+                        focus.accept(row.point);
                     }
                     if (row.id >= 0)
                     {
                         selected = row.id;
                         repaint.run();
                     }
-                }, row.id >= 0 ? "Look at " + row.name + " and what they carry" : "Look at " + row.name);
+                }, "Look at " + row.name + (row.id >= 0 ? " and what they carry" : ""));
             }
             double cy = top + ROW_HEIGHT / 2.0;
-            g.setColor(row.color != null ? row.color : FRIEND);
-            g.fill(new Ellipse2D.Double(left + 10, cy - 4, 8, 8));
+            dot(g, row.color, LEFT + 10, cy - 4);
             String world = row.world > 0 ? "W" + row.world : "";
             int worldWidth = metrics.stringWidth(world);
-            g.setColor(row.world > 0 && mine > 0 && row.world != mine ? OTHER_WORLD : new Color(190, 190, 195));
-            g.drawString(world, (float) (left + w - 10 - worldWidth), (float) (cy + metrics.getAscent() / 2.0 - 2));
+            g.setColor(row.world > 0 && mine > 0 && row.world != mine ? OTHER_WORLD : WORLD);
+            g.drawString(world, LEFT + w - 10 - worldWidth, middle(cy, metrics));
             g.setColor(row.point != null ? Color.WHITE : FRIEND);
             String name = fit(row.name, metrics, w - 38 - worldWidth);
-            g.drawString(name, (float) (left + 24), (float) (cy + metrics.getAscent() / 2.0 - 2));
+            g.drawString(name, LEFT + 24, middle(cy, metrics));
         }
         if (more > 0)
         {
             double cy = listTop + 3 + shown.size() * ROW_HEIGHT + ROW_HEIGHT / 2.0;
             g.setColor(FRIEND);
-            g.drawString("+" + more + " more", (float) (left + 24), (float) (cy + metrics.getAscent() / 2.0 - 2));
+            g.drawString("+" + more + " more", LEFT + 24, middle(cy, metrics));
         }
     }
 
@@ -323,11 +307,10 @@ final class FriendsWidget implements MapView.Widget
     static final int[][] WORN = {{1, 0}, {0, 1}, {1, 1}, {0, 2}, {1, 2}, {2, 2}, null, {1, 3}, null, {0, 4},
         {1, 4}, null, {2, 4}, {2, 1}};
 
-    private void paintDetails(Graphics2D g, Row row, double left, int w, double bottomY, MapView.Clicks clicks)
+    private void paintDetails(Graphics2D g, Row row, double x0, int w, double bottomY, MapView.Clicks clicks)
     {
         PartyMapMembers.Gear shared = gear.apply(row.id);
         int panelW = Math.max(w, 4 * Orbs.WIDTH + 3 * 4 + 16);
-        double x0 = left;
         int full = 30 + 26 + STATUS_H + BODY_H + 10;
         // Folded (or the map too low for all of it): the name and the orbs only.
         boolean cramped = bottomY - full < 44;
@@ -338,8 +321,7 @@ final class FriendsWidget implements MapView.Widget
         box(g, panel);
         g.setFont(TITLE);
         FontMetrics title = g.getFontMetrics();
-        g.setColor(row.color != null ? row.color : FRIEND);
-        g.fill(new Ellipse2D.Double(x0 + 12, top + 11, 8, 8));
+        dot(g, row.color, x0 + 12, top + 11);
         g.setColor(Color.WHITE);
         g.drawString(fit(row.name, title, panelW - 130), (float) (x0 + 26), (float) (top + 19));
         if (row.world > 0)
@@ -352,18 +334,17 @@ final class FriendsWidget implements MapView.Widget
             double right = x0 + panelW - (cramped ? 34 : 56);
             if (elsewhere)
             {
-                String text = "Hop";
-                double bw = rowMetrics.stringWidth(text) + 14;
+                double bw = rowMetrics.stringWidth("Hop") + 14;
                 RoundRectangle2D button = new RoundRectangle2D.Double(right - bw, top + 6, bw, 19, 8, 8);
                 g.setColor(clicks.hovered(button) ? new Color(90, 140, 80) : new Color(60, 100, 55));
                 g.fill(button);
                 g.setColor(Color.WHITE);
-                g.drawString(text, (float) (button.getX() + 7), (float) (top + 20));
+                g.drawString("Hop", (float) (button.getX() + 7), (float) (top + 20));
                 int target = row.world;
                 clicks.add(button, () -> hop.accept(target), "Hop to world " + row.world);
                 right -= bw + 6;
             }
-            g.setColor(elsewhere ? OTHER_WORLD : new Color(190, 190, 195));
+            g.setColor(elsewhere ? OTHER_WORLD : WORLD);
             g.drawString(world, (float) (right - rowMetrics.stringWidth(world)), (float) (top + 20));
         }
         titleButton(g, clicks, title, x0 + panelW - 26, top, "×", () -> {
@@ -379,10 +360,7 @@ final class FriendsWidget implements MapView.Widget
         }
         if (compact)
         {
-            if (shared != null)
-            {
-                paintStatus(g, shared, x0 + 8, top + 28, panelW - 16);
-            }
+            paintStatus(g, shared, x0 + 8, top + 28, panelW - 16);
             paintDrops(g, row.id, x0, top + height - 6, panelW);
             return;
         }
@@ -403,12 +381,8 @@ final class FriendsWidget implements MapView.Widget
                 repaint.run();
             }, PAGES[k]);
         }
-        double y0 = top + 56;
-        if (shared != null)
-        {
-            paintStatus(g, shared, x0 + 8, y0, panelW - 16);
-        }
-        y0 += STATUS_H;
+        paintStatus(g, shared, x0 + 8, top + 56, panelW - 16);
+        double y0 = top + 56 + STATUS_H;
         if (shared == null)
         {
             g.setColor(FRIEND);
@@ -473,31 +447,31 @@ final class FriendsWidget implements MapView.Widget
         int tabWidth = MapView.floorGroupWidth(metrics);
         double tabTop = bottom - 2 * MapView.CONTROL - 6;
         RoundRectangle2D tab = new RoundRectangle2D.Double(LEFT, tabTop, tabWidth, MapView.CONTROL, 10, 10);
-        g.setColor(new Color(0, 0, 0, 70));
-        g.fill(new RoundRectangle2D.Double(LEFT + 1, tabTop + 2, tabWidth, MapView.CONTROL, 10, 10));
-        g.setColor(clicks.hovered(tab) ? MapView.CONTROL_HOVER : MapView.CONTROL_FILL);
-        g.fill(tab);
-        g.setColor(MapView.CONTROL_EDGE);
-        g.setStroke(new BasicStroke(1f));
-        g.draw(tab);
+        box(g, tab, clicks.hovered(tab) ? MapView.CONTROL_HOVER : MapView.CONTROL_FILL, MapView.CONTROL_EDGE);
         g.setColor(Color.WHITE);
         g.drawString(label, (float) (LEFT + (tabWidth - metrics.stringWidth(label)) / 2.0),
-            (float) (tabTop + (MapView.CONTROL + metrics.getAscent()) / 2.0 - 2));
+            middle(tabTop + MapView.CONTROL / 2.0, metrics));
         return tab;
     }
 
     private void paintStatus(Graphics2D g, PartyMapMembers.Gear shared, double x, double y, double width)
     {
+        if (shared == null)
+        {
+            return;
+        }
         int hp = net.runelite.api.Skill.HITPOINTS.ordinal();
         int prayer = net.runelite.api.Skill.PRAYER.ordinal();
         double gap = (width - 4 * Orbs.WIDTH) / 3.0;
         java.util.function.IntFunction<BufferedImage> sprites = images == null ? id -> null : images::sprite;
-        int top = (int) y + 2;
-        Orbs.paint(g, (int) x, top, Orbs.Kind.HITPOINTS, shared.boosted[hp], shared.levels[hp], sprites);
-        Orbs.paint(g, (int) (x + Orbs.WIDTH + gap), top, Orbs.Kind.PRAYER, shared.boosted[prayer], shared.levels[prayer],
-            sprites);
-        Orbs.paint(g, (int) (x + 2 * (Orbs.WIDTH + gap)), top, Orbs.Kind.RUN, shared.run, 100, sprites);
-        Orbs.paint(g, (int) (x + 3 * (Orbs.WIDTH + gap)), top, Orbs.Kind.SPECIAL, shared.special, 100, sprites);
+        // Hitpoints, prayer, run energy, special attack: value and most.
+        int[][] orbs = {{shared.boosted[hp], shared.levels[hp]}, {shared.boosted[prayer], shared.levels[prayer]},
+            {shared.run, 100}, {shared.special, 100}};
+        for (int k = 0; k < orbs.length; k++)
+        {
+            Orbs.paint(g, (int) (x + k * (Orbs.WIDTH + gap)), (int) y + 2, Orbs.Kind.values()[k], orbs[k][0], orbs[k][1],
+                sprites);
+        }
     }
 
     private void paintDrops(Graphics2D g, long id, double x0, double start, int panelW)
@@ -549,6 +523,12 @@ final class FriendsWidget implements MapView.Widget
         }
     }
 
+    private static void dot(Graphics2D g, Color color, double x, double y)
+    {
+        g.setColor(color != null ? color : FRIEND);
+        g.fill(new Ellipse2D.Double(x, y, 8, 8));
+    }
+
     private static void titleButton(Graphics2D g, MapView.Clicks clicks, FontMetrics title, double x, double top,
         String mark, Runnable action, String tip)
     {
@@ -566,13 +546,24 @@ final class FriendsWidget implements MapView.Widget
 
     private static void box(Graphics2D g, RoundRectangle2D shape)
     {
+        box(g, shape, FILL, EDGE);
+    }
+
+    private static void box(Graphics2D g, RoundRectangle2D shape, Color fill, Color edge)
+    {
         g.setColor(new Color(0, 0, 0, 70));
         g.fill(new RoundRectangle2D.Double(shape.getX() + 1, shape.getY() + 2, shape.getWidth(), shape.getHeight(), 10, 10));
-        g.setColor(FILL);
+        g.setColor(fill);
         g.fill(shape);
-        g.setColor(EDGE);
+        g.setColor(edge);
         g.setStroke(new BasicStroke(1f));
         g.draw(shape);
+    }
+
+    /** Where text is drawn to stand centred on {@code cy}. */
+    private static float middle(double cy, FontMetrics metrics)
+    {
+        return (float) (cy + metrics.getAscent() / 2.0 - 2);
     }
 
     private static String fit(String text, FontMetrics metrics, int width)

@@ -28,13 +28,13 @@ final class PlayerMarker
         float[] dash = otherFloor ? new float[]{4f, 3f} : null;
         // A glow, so it reads on bright and dark areas alike.
         g.setColor(new Color(255, 214, 64, otherFloor ? 30 : 60));
-        g.fill(new Ellipse2D.Double(x - ring - 5, y - ring - 5, (ring + 5) * 2, (ring + 5) * 2));
-        g.setColor(SHADOW);
-        g.setStroke(new BasicStroke(5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10f, dash, 0f));
-        g.draw(new Ellipse2D.Double(x - ring, y - ring, ring * 2, ring * 2));
-        g.setColor(YELLOW);
-        g.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10f, dash, 0f));
-        g.draw(new Ellipse2D.Double(x - ring, y - ring, ring * 2, ring * 2));
+        g.fill(circle(x, y, ring + 5));
+        for (int pass = 0; pass < 2; pass++)
+        {
+            g.setColor(pass == 0 ? SHADOW : YELLOW);
+            g.setStroke(new BasicStroke(pass == 0 ? 5f : 2.6f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10f, dash, 0f));
+            g.draw(circle(x, y, ring));
+        }
         double in = ring - 5;
         double out = ring + 5;
         for (int pass = 0; pass < 2; pass++)
@@ -48,13 +48,17 @@ final class PlayerMarker
                     y + Math.sin(a) * out));
             }
         }
-        double r = 5.5;
         g.setColor(otherFloor ? new Color(255, 214, 64, 150) : YELLOW);
-        g.fill(new Ellipse2D.Double(x - r, y - r, r * 2, r * 2));
+        g.fill(circle(x, y, 5.5));
         g.setColor(Color.BLACK);
         g.setStroke(new BasicStroke(2f));
-        g.draw(new Ellipse2D.Double(x - r, y - r, r * 2, r * 2));
+        g.draw(circle(x, y, 5.5));
         label(g, otherFloor ? "You (other floor)" : "You", x, y + ring + 8);
+    }
+
+    private static Ellipse2D circle(double x, double y, double r)
+    {
+        return new Ellipse2D.Double(x - r, y - r, r * 2, r * 2);
     }
 
     /** An arrow at {@code (x, y)} pointing at {@code angle} (radians, screen coordinates). */

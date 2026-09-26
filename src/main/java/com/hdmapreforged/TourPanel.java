@@ -2,18 +2,12 @@ package com.hdmapreforged;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.Component;
-import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
-import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
@@ -22,10 +16,12 @@ import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.ui.ColorScheme;
 
 /** The "Custom routes" panel, where the search results show: pick, name, order and run the player's routes. Swing thread. */
+@RequiredArgsConstructor
 final class TourPanel
 {
     interface Actions
@@ -65,14 +61,6 @@ final class TourPanel
     TourPanel(Actions actions, Consumer<IntFunction<JComponent>> show, Consumer<WorldPoint> focus)
     {
         this(actions, show, focus, null);
-    }
-
-    TourPanel(Actions actions, Consumer<IntFunction<JComponent>> show, Consumer<WorldPoint> focus, String back)
-    {
-        this.actions = actions;
-        this.show = show;
-        this.focus = focus;
-        this.back = back;
     }
 
     boolean isOpen()
@@ -126,10 +114,7 @@ final class TourPanel
 
     private JComponent section(int width)
     {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setOpaque(false);
-        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel panel = SearchResults.column();
         List<Tour> tours = new ArrayList<>(actions.tours());
         String editing = actions.editing();
         Tour tour = null;
@@ -149,9 +134,7 @@ final class TourPanel
 
         if (back != null)
         {
-            JLabel backLink = link(back, this::close, width);
-            backLink.setToolTipText("Back to the list");
-            panel.add(backLink);
+            panel.add(SearchResults.tip(link(back, this::close, width), "Back to the list"));
             panel.add(Box.createVerticalStrut(4));
         }
 
@@ -174,7 +157,7 @@ final class TourPanel
         which.setMaximumSize(new Dimension(Math.max(100, width - 60), which.getPreferredSize().height));
         pick.add(which);
         pick.add(Box.createHorizontalStrut(4));
-        pick.add(button("New", () -> {
+        pick.add(SearchResults.button("New", () -> {
             if (tours.size() < Tour.MAX_TOURS)
             {
                 String name = Tour.unique(tours, "Route " + (tours.size() + 1));
@@ -203,7 +186,7 @@ final class TourPanel
         name.setMaximumSize(new Dimension(Math.max(100, width - 60), name.getPreferredSize().height));
         naming.add(name);
         naming.add(Box.createHorizontalStrut(4));
-        JButton delete = button("Delete", () -> {
+        JButton delete = SearchResults.button("Delete", () -> {
             tours.remove(current);
             actions.save(tours, tours.isEmpty() ? "My route" : tours.get(0).name);
             refresh();
@@ -217,39 +200,26 @@ final class TourPanel
         if (current.stops.isEmpty())
         {
             panel.add(text("No stops yet. Right-click the map, Add to custom route, or + Stop in a card.",
-                ColorScheme.LIGHT_GRAY_COLOR, false, width));
+                ColorScheme.LIGHT_GRAY_COLOR, width));
         }
         for (int i = 0; i < current.stops.size(); i++)
         {
             int at = i;
             Tour.Stop stop = current.stops.get(i);
-            JPanel line = new JPanel(new BorderLayout(4, 0));
-            line.setOpaque(false);
-            line.setAlignmentX(Component.LEFT_ALIGNMENT);
-            boolean repeats = current.repeats(i);
-            JLabel label = repeats ? text((i + 1) + ". " + stop.name, ColorScheme.MEDIUM_GRAY_COLOR, false, width - 90)
-                : stop.isKind() ? text((i + 1) + ". " + stop.name, Color.WHITE, false, width - 90)
-                : link((i + 1) + ". " + stop.name, () -> focus.accept(stop.point), width - 90);
-            if (repeats)
-            {
-                label.setToolTipText("The same as the stop before it: skipped, unless you move it elsewhere");
-            }
-            line.add(label, BorderLayout.CENTER);
-            JPanel moves = new JPanel(new FlowLayout(FlowLayout.RIGHT, 2, 0));
-            moves.setOpaque(false);
-            JButton earlier = small("↑", () -> move(tours, current, at, -1), "Earlier");
-            earlier.setEnabled(i > 0 && !ordering);
-            moves.add(earlier);
-            JButton later = small("↓", () -> move(tours, current, at, 1), "Later");
-            later.setEnabled(i < current.stops.size() - 1 && !ordering);
-            moves.add(later);
-            JButton remove = small("✕", () -> {
+            JPanel line = SearchResults.panel(new BorderLayout(4, 0));
+            String label = (i + 1) + ". " + stop.name;
+            line.add(current.repeats(i) ? SearchResults.tip(text(label, ColorScheme.MEDIUM_GRAY_COLOR, width - 90),
+                "The same as the stop before it: skipped, unless you move it elsewhere")
+                : stop.isKind() ? text(label, Color.WHITE, width - 90)
+                : link(label, () -> focus.accept(stop.point), width - 90), BorderLayout.CENTER);
+            JPanel moves = SearchResults.panel(new FlowLayout(FlowLayout.RIGHT, 2, 0));
+            moves.add(small("↑", () -> move(tours, current, at, -1), "Earlier", i > 0));
+            moves.add(small("↓", () -> move(tours, current, at, 1), "Later", i < current.stops.size() - 1));
+            moves.add(small("✕", () -> {
                 current.stops.remove(at);
                 actions.save(tours, current.name);
                 refresh();
-            }, "Remove this stop");
-            remove.setEnabled(!ordering);
-            moves.add(remove);
+            }, "Remove this stop", true));
             line.add(moves, BorderLayout.EAST);
             line.setMaximumSize(new Dimension(Integer.MAX_VALUE, line.getPreferredSize().height));
             panel.add(line);
@@ -261,14 +231,14 @@ final class TourPanel
         String running = actions.running();
         if (running != null)
         {
-            go.add(button("Stop " + running, () -> {
+            go.add(SearchResults.button("Stop " + running, () -> {
                 actions.stop();
                 refresh();
             }));
         }
         else if (!current.stops.isEmpty())
         {
-            go.add(button("Run", () -> {
+            go.add(SearchResults.button("Run", () -> {
                 actions.run(current);
                 refresh();
             }));
@@ -276,7 +246,7 @@ final class TourPanel
         if (current.stops.size() > 1)
         {
             go.add(Box.createHorizontalStrut(4));
-            JButton fastest = button(ordering ? "Working it out…" : "Fastest order", () -> {
+            JButton fastest = SearchResults.button(ordering ? "Working it out…" : "Fastest order", () -> {
                 ordering = true;
                 int run = ++orderings;
                 refresh();
@@ -289,8 +259,7 @@ final class TourPanel
                 });
             });
             fastest.setEnabled(!ordering);
-            fastest.setToolTipText("Let the route planner put the stops in the quickest order from where you are");
-            go.add(fastest);
+            go.add(SearchResults.tip(fastest, "Let the route planner put the stops in the quickest order from where you are"));
         }
         panel.add(go);
         return panel;
@@ -310,56 +279,27 @@ final class TourPanel
 
     private static JPanel row()
     {
-        JPanel row = new JPanel();
+        JPanel row = SearchResults.panel(null);
         row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
-        row.setOpaque(false);
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
         return row;
     }
 
-    private static JButton button(String text, Runnable action)
+    /** Enabled when {@code usable} and not while the fastest order is worked out. */
+    private JButton small(String text, Runnable action, String tip, boolean usable)
     {
-        JButton button = new JButton(text);
-        button.setFocusable(false);
-        button.addActionListener(e -> action.run());
-        return button;
-    }
-
-    private static JButton small(String text, Runnable action, String tip)
-    {
-        JButton button = button(text, action);
+        JButton button = SearchResults.tip(SearchResults.button(text, action), tip);
         button.setMargin(new java.awt.Insets(0, 4, 0, 4));
-        button.setToolTipText(tip);
+        button.setEnabled(usable && !ordering);
         return button;
     }
 
-    private static JLabel text(String text, Color color, boolean bold, int width)
+    private static JLabel text(String text, Color color, int width)
     {
-        JLabel label = new JLabel("<html><div style='width:" + Math.max(60, width) + "px'>" + InfoCard.escape(text)
-            + "</div></html>");
-        label.setForeground(color);
-        if (bold)
-        {
-            label.setFont(label.getFont().deriveFont(Font.BOLD, label.getFont().getSize2D() + 1));
-        }
-        label.setAlignmentX(Component.LEFT_ALIGNMENT);
-        label.setBorder(BorderFactory.createEmptyBorder(1, 0, 1, 0));
-        return label;
+        return SearchResults.text(text, color, false, Math.max(60, width));
     }
 
     private static JLabel link(String text, Runnable action, int width)
     {
-        JLabel label = text(text, LINK, false, width);
-        label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        label.setToolTipText("Show on the map");
-        label.addMouseListener(new MouseAdapter()
-        {
-            @Override
-            public void mouseClicked(MouseEvent e)
-            {
-                action.run();
-            }
-        });
-        return label;
+        return SearchResults.clickable(SearchResults.tip(text(text, LINK, width), "Show on the map"), action, false);
     }
 }

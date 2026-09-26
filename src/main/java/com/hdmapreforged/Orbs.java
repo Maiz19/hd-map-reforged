@@ -1,12 +1,12 @@
 package com.hdmapreforged;
 
 import java.awt.Color;
-import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Shape;
 import java.awt.image.BufferedImage;
 import java.util.function.IntFunction;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.gameval.SpriteID;
 import net.runelite.client.ui.FontManager;
 
@@ -20,6 +20,7 @@ final class Orbs
     private static final int ORB_Y = 4;
     private static final int ORB = 26;
 
+    @RequiredArgsConstructor
     enum Kind
     {
         HITPOINTS(SpriteID.OrbFiller.HITPOINTS, SpriteID.OrbIcon.HITPOINTS, new Color(170, 40, 40)),
@@ -31,13 +32,6 @@ final class Orbs
         final int icon;
         /** Used before the game's sprites load. */
         final Color plain;
-
-        Kind(int filler, int icon, Color plain)
-        {
-            this.filler = filler;
-            this.icon = icon;
-            this.plain = plain;
-        }
     }
 
     static final int[] SPRITES = {SpriteID.OrbFrame.FRAME, SpriteID.OrbFiller.EMPTY, SpriteID.OrbFiller.HITPOINTS,
@@ -53,8 +47,6 @@ final class Orbs
     {
         double left = value < 0 || max <= 0 ? 0 : Math.max(0, Math.min(1, value / (double) max));
         BufferedImage frame = sprites.apply(SpriteID.OrbFrame.FRAME);
-        BufferedImage filler = sprites.apply(kind.filler);
-        BufferedImage empty = sprites.apply(SpriteID.OrbFiller.EMPTY);
         BufferedImage icon = sprites.apply(kind.icon);
         if (frame != null)
         {
@@ -68,35 +60,18 @@ final class Orbs
         }
         int ox = x + ORB_X;
         int oy = y + ORB_Y;
-        if (empty != null)
-        {
-            g.drawImage(empty, ox, oy, ORB, ORB, null);
-        }
-        else
-        {
-            g.setColor(new Color(20, 20, 20));
-            g.fillOval(ox, oy, ORB, ORB);
-        }
+        orb(g, sprites.apply(SpriteID.OrbFiller.EMPTY), ox, oy, new Color(20, 20, 20));
         int filled = (int) Math.round(ORB * left);
         Shape clip = g.getClip();
         g.clipRect(ox, oy + ORB - filled, ORB, filled);
-        if (filler != null)
-        {
-            g.drawImage(filler, ox, oy, ORB, ORB, null);
-        }
-        else
-        {
-            g.setColor(kind.plain);
-            g.fillOval(ox, oy, ORB, ORB);
-        }
+        orb(g, sprites.apply(kind.filler), ox, oy, kind.plain);
         g.setClip(clip);
         if (icon != null)
         {
             g.drawImage(icon, ox + (ORB - icon.getWidth()) / 2, oy + (ORB - icon.getHeight()) / 2, null);
         }
         String text = value < 0 ? "–" : String.valueOf(value);
-        Font font = FontManager.getRunescapeSmallFont();
-        g.setFont(font);
+        g.setFont(FontManager.getRunescapeSmallFont());
         FontMetrics metrics = g.getFontMetrics();
         int tx = x + 15 - metrics.stringWidth(text) / 2;
         int ty = y + 26;
@@ -104,6 +79,20 @@ final class Orbs
         g.drawString(text, tx + 1, ty + 1);
         g.setColor(value < 0 ? Color.LIGHT_GRAY : color(left));
         g.drawString(text, tx, ty);
+    }
+
+    /** The sprite, or a plain circle while it loads. */
+    private static void orb(Graphics2D g, BufferedImage sprite, int x, int y, Color plain)
+    {
+        if (sprite != null)
+        {
+            g.drawImage(sprite, x, y, ORB, ORB, null);
+        }
+        else
+        {
+            g.setColor(plain);
+            g.fillOval(x, y, ORB, ORB);
+        }
     }
 
     /** Green when full, through yellow, to red when empty. */

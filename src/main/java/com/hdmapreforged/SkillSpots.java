@@ -6,14 +6,17 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /** What the game's Hunter, Fishing, Mining and Rare trees icons stand for, from RuneLite's world map lists. */
+@RequiredArgsConstructor
 final class SkillSpots
 {
     static final String FILE = "runelite_skill_spots.tsv";
     private static final int RADIUS = 12;
 
+    @RequiredArgsConstructor
     static final class Spot
     {
         final WorldPoint location;
@@ -23,25 +26,11 @@ final class SkillSpots
         /** The lowest level any of it needs, or 0. */
         final int level;
         final String details;
-
-        Spot(WorldPoint location, String kind, String name, int level, String details)
-        {
-            this.location = location;
-            this.kind = kind;
-            this.name = name;
-            this.level = level;
-            this.details = details;
-        }
     }
 
     static final SkillSpots NONE = new SkillSpots(Collections.emptyList());
 
     private final List<Spot> spots;
-
-    SkillSpots(List<Spot> spots)
-    {
-        this.spots = spots;
-    }
 
     List<Spot> all()
     {
@@ -60,14 +49,14 @@ final class SkillSpots
                 {
                     continue;
                 }
-                int level;
+                int level = 0;
                 try
                 {
-                    level = row.get("Level").isEmpty() ? 0 : Integer.parseInt(row.get("Level"));
+                    level = Integer.parseInt(row.get("Level"));
                 }
                 catch (NumberFormatException e)
                 {
-                    level = 0;
+                    // None, or unreadable.
                 }
                 spots.add(new Spot(at, row.get("Kind"), row.get("Name"), level, row.get("Details")));
             }

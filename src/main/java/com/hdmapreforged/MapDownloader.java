@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -14,34 +15,17 @@ import lombok.extern.slf4j.Slf4j;
  * skipping tiles on disk so it resumes. Done once: a newer wiki version's tiles replace these as they are looked at.
  */
 @Slf4j
+@RequiredArgsConstructor
 final class MapDownloader
 {
+    @RequiredArgsConstructor
     enum Scope
     {
-        SURFACE("the surface", 200),
-        ALL("the surface and all dungeons", 500);
+        SURFACE(200),
+        ALL(500);
 
-        final String description;
-    /** Rough size on disk, for the question before starting. */
+        /** Rough size on disk, for the question before starting. */
         final int megabytes;
-
-        Scope(String description, int megabytes)
-        {
-            this.description = description;
-            this.megabytes = megabytes;
-        }
-
-        static Scope parse(String name)
-        {
-            for (Scope scope : values())
-            {
-                if (scope.name().equals(name))
-                {
-                    return scope;
-                }
-            }
-            return null;
-        }
     }
 
     /** Gentle on the wiki's servers. */
@@ -70,19 +54,12 @@ final class MapDownloader
     private volatile String finished;
     private final List<Thread> workers = new ArrayList<>();
 
-    /** {@code changed} runs on a download thread whenever the progress changes. */
+    /** {@code changed} runs on a download thread whenever the progress changes; tests set the pause. */
     MapDownloader(TileCache tiles, Runnable changed)
     {
         this(tiles, changed, PAUSE_MS);
     }
 
-    /** Tests. */
-    MapDownloader(TileCache tiles, Runnable changed, long pauseMs)
-    {
-        this.tiles = tiles;
-        this.changed = changed;
-        this.pauseMs = pauseMs;
-    }
 
     /** Ground floor tiles only (upper floors are mostly empty and load quickly), coarse levels and the surface first. */
     static List<TileCache.Key> keys(BaseMaps maps, Scope scope)
@@ -173,14 +150,7 @@ final class MapDownloader
                     gaveUp = true;
                     return;
                 }
-                if (fetched)
-                {
-                    done.incrementAndGet();
-                }
-                else
-                {
-                    skipped.incrementAndGet();
-                }
+                (fetched ? done : skipped).incrementAndGet();
                 changed.run();
             }
         }
@@ -270,17 +240,10 @@ final class MapDownloader
             {
                 log.debug("Could not mark the map download as complete", e);
             }
-            finished = "Whole map downloaded";
         }
-        else if (!stopped)
-        {
-            finished = String.format(Locale.ROOT, "Map downloaded; %,d tiles failed and load when looked at.",
-                skipped.get());
-        }
-        else
-        {
-            finished = "Map download stopped: no connection to the wiki. It continues next time.";
-        }
+        finished = complete ? "Whole map downloaded" : stopped
+            ? "Map download stopped: no connection to the wiki. It continues next time."
+            : String.format(Locale.ROOT, "Map downloaded; %,d tiles failed and load when looked at.", skipped.get());
         changed.run();
     }
 

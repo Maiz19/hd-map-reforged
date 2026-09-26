@@ -2,9 +2,12 @@ package com.hdmapreforged;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -128,41 +131,29 @@ final class SearchIndex
             return Collections.emptyList();
         }
         String whole = String.join(" ", typed);
-        List<Scored> found = new ArrayList<>();
+        Map<Hit, Double> scores = new HashMap<>();
+        List<Hit> found = new ArrayList<>();
         for (Hit hit : hits)
         {
             double score = score(hit, typed, whole);
-            if (Double.isNaN(score) || !allowed.test(hit))
+            if (!Double.isNaN(score) && allowed.test(hit))
             {
-                continue;
+                scores.put(hit, score);
+                found.add(hit);
             }
-            found.add(new Scored(hit, score));
         }
         // Stable: equally good hits keep the index's order.
-        found.sort((a, b) -> Double.compare(a.score, b.score));
+        found.sort(Comparator.comparingDouble(scores::get));
         List<Hit> best = new ArrayList<>();
         Set<String> labels = new HashSet<>();
-        for (Scored scored : found)
+        for (Hit hit : found)
         {
-            Hit hit = scored.hit;
             if (labels.add(hit.type == Type.MAP ? hit.label : hit.label.toLowerCase(Locale.ROOT)) && best.size() < limit)
             {
                 best.add(hit);
             }
         }
         return best;
-    }
-
-    private static final class Scored
-    {
-        final Hit hit;
-        final double score;
-
-        Scored(Hit hit, double score)
-        {
-            this.hit = hit;
-            this.score = score;
-        }
     }
 
     /**

@@ -8,6 +8,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Where a boat can sail: ground floor water in CELL×CELL blocks, open sea when mostly water (boats keep off rivers
@@ -23,6 +25,7 @@ public final class SeaMap
     /** Sea no boat can cross yet. */
     static final byte CLOSED = -1;
 
+    @RequiredArgsConstructor(access = AccessLevel.PACKAGE)
     public static final class Area
     {
         public final String name;
@@ -32,16 +35,6 @@ public final class SeaMap
         public final String hazard;
         /** 0 for none, -1 when it cannot be crossed. */
         public final int level;
-
-        Area(String name, String ocean, int x, int y, String hazard, int level)
-        {
-            this.name = name;
-            this.ocean = ocean;
-            this.x = x;
-            this.y = y;
-            this.hazard = hazard;
-            this.level = level;
-        }
     }
 
     /** Per region, per 16×16 block: the level needed, NONE or CLOSED; null when no sea. */
@@ -55,14 +48,13 @@ public final class SeaMap
 
     public static SeaMap build(CollisionMap collision) throws IOException
     {
-        InputStream in = SeaMap.class.getResourceAsStream(AREAS);
-        if (in == null)
+        try (InputStream in = SeaMap.class.getResourceAsStream(AREAS))
         {
-            throw new IOException("Missing " + AREAS);
-        }
-        try (InputStream stream = in)
-        {
-            return build(collision, readAreas(stream));
+            if (in == null)
+            {
+                throw new IOException("Missing " + AREAS);
+            }
+            return build(collision, readAreas(in));
         }
     }
 
@@ -100,12 +92,12 @@ public final class SeaMap
         SeaMap sea = new SeaMap(Collections.unmodifiableList(areas));
         for (int region = 0; region < 1 << 15; region++)
         {
-            int baseX = (region >> 8) << 6;
-            int baseY = (region & 255) << 6;
             if (!collision.hasWater(region))
             {
                 continue;
             }
+            int baseX = (region >> 8) << 6;
+            int baseY = (region & 255) << 6;
             byte[] cells = null;
             for (int cx = 0; cx < 64 / Tiles.CELL; cx++)
             {
@@ -195,13 +187,9 @@ public final class SeaMap
     {
         int best = -1;
         long bestDistance = Long.MAX_VALUE;
-        int cx0 = (x - radius) / Tiles.CELL;
-        int cx1 = (x + radius) / Tiles.CELL;
-        int cy0 = (y - radius) / Tiles.CELL;
-        int cy1 = (y + radius) / Tiles.CELL;
-        for (int cx = cx0; cx <= cx1; cx++)
+        for (int cx = (x - radius) / Tiles.CELL; cx <= (x + radius) / Tiles.CELL; cx++)
         {
-            for (int cy = cy0; cy <= cy1; cy++)
+            for (int cy = (y - radius) / Tiles.CELL; cy <= (y + radius) / Tiles.CELL; cy++)
             {
                 if (!sailable(cx, cy, sailingLevel))
                 {

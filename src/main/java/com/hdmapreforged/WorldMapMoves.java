@@ -6,7 +6,11 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /**
@@ -16,6 +20,7 @@ import net.runelite.api.coords.WorldPoint;
 @lombok.extern.slf4j.Slf4j
 final class WorldMapMoves
 {
+    @RequiredArgsConstructor
     private static final class Move
     {
         final int map;
@@ -27,19 +32,6 @@ final class WorldMapMoves
         final int dy;
         final int plane;
         final int planes;
-
-        Move(int map, int x, int y, int width, int height, int dx, int dy, int plane, int planes)
-        {
-            this.map = map;
-            this.x = x;
-            this.y = y;
-            this.width = width;
-            this.height = height;
-            this.dx = dx;
-            this.dy = dy;
-            this.plane = plane;
-            this.planes = planes;
-        }
     }
 
     private static final List<Move> MOVES = load();
@@ -48,17 +40,23 @@ final class WorldMapMoves
     {
     }
 
-    static WorldPoint toWorld(int mapId, WorldPoint drawn)
+    /** The last move that fits: whole map squares are listed before zones, so a zone's (finer) wins, as in the game. */
+    private static Move last(Predicate<Move> fits)
     {
         Move found = null;
-        // Whole map squares are listed before zones, so a zone's move (finer) wins, as in the game.
         for (Move move : MOVES)
         {
-            if (move.map == mapId && inside(move, drawn.getX(), drawn.getY()))
+            if (fits.test(move))
             {
                 found = move;
             }
         }
+        return found;
+    }
+
+    static WorldPoint toWorld(int mapId, WorldPoint drawn)
+    {
+        Move found = last(move -> move.map == mapId && inside(move, drawn.getX(), drawn.getY()));
         if (found == null)
         {
             return drawn;
@@ -70,51 +68,25 @@ final class WorldMapMoves
     /** Whether map {@code mapId} draws a moved part of the game at this spot (the Dagannoth Kings' lair). */
     static boolean covers(int mapId, int x, int y)
     {
-        for (Move move : MOVES)
-        {
-            if (move.map == mapId && inside(move, x, y))
-            {
-                return true;
-            }
-        }
-        return false;
+        return last(move -> move.map == mapId && inside(move, x, y)) != null;
     }
 
+    @RequiredArgsConstructor
     static final class Drawn
     {
         final int map;
         final WorldPoint point;
-
-        Drawn(int map, WorldPoint point)
-        {
-            this.map = map;
-            this.point = point;
-        }
     }
 
     static WorldPoint toDrawn(int mapId, WorldPoint game)
     {
-        Move found = null;
-        for (Move move : MOVES)
-        {
-            if (move.map == mapId && moves(move, game))
-            {
-                found = move;
-            }
-        }
+        Move found = last(move -> move.map == mapId && moves(move, game));
         return found == null ? null : drawnBy(found, game);
     }
 
     static Drawn drawn(WorldPoint game)
     {
-        Move found = null;
-        for (Move move : MOVES)
-        {
-            if (moves(move, game))
-            {
-                found = move;
-            }
-        }
+        Move found = last(move -> moves(move, game));
         return found == null ? null : new Drawn(found.map, drawnBy(found, game));
     }
 
@@ -136,12 +108,7 @@ final class WorldMapMoves
 
     static List<WorldPoint> toWorld(int mapId, List<WorldPoint> drawn)
     {
-        List<WorldPoint> points = new ArrayList<>(drawn.size());
-        for (WorldPoint p : drawn)
-        {
-            points.add(toWorld(mapId, p));
-        }
-        return points;
+        return drawn.stream().map(p -> toWorld(mapId, p)).collect(Collectors.toList());
     }
 
     private static List<Move> load()
@@ -164,13 +131,9 @@ final class WorldMapMoves
                 }
                 try
                 {
-                    String[] cells = line.split("\t");
-                    String[] area = cells[1].split(" ");
-                    String[] move = cells[2].split(" ");
-                    moves.add(new Move(Integer.parseInt(cells[0]), Integer.parseInt(area[0]), Integer.parseInt(area[1]),
-                        Integer.parseInt(area[2]), Integer.parseInt(area[3]), Integer.parseInt(move[0]),
-                        Integer.parseInt(move[1]), Integer.parseInt(move[2]),
-                        move.length > 3 ? Integer.parseInt(move[3]) : 1));
+                    // Map id, x y width height, dx dy floor [floors].
+                    int[] v = Arrays.stream(line.trim().split("\\s+")).mapToInt(Integer::parseInt).toArray();
+                    moves.add(new Move(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v.length > 8 ? v[8] : 1));
                 }
                 catch (RuntimeException e)
                 {

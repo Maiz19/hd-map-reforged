@@ -1,10 +1,6 @@
 package com.hdmapreforged;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import com.hdmapreforged.route.Pathfinder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -32,7 +28,7 @@ final class TrustedPassages
         {
             WorldPoint from = p[0];
             WorldPoint to = p[1];
-            int d = Math.max(Math.abs(from.getX() - at.getX()), Math.abs(from.getY() - at.getY()));
+            int d = PoiLoader.chebyshev(from, at);
             boolean elsewhere = to.getPlane() != from.getPlane() || to.distanceTo2D(from) > 64;
             if (from.getPlane() != at.getPlane() || d > RADIUS || !elsewhere)
             {
@@ -56,55 +52,19 @@ final class TrustedPassages
             List<WorldPoint[]> read = new ArrayList<>();
             for (String table : TABLES)
             {
-                read(table, read);
+                for (String[] cells : Pathfinder.rows("/com/hdmapreforged/route/" + table))
+                {
+                    WorldPoint from = cells.length < 2 ? null : Tsv.parsePoint(cells[0]);
+                    WorldPoint to = from == null ? null : Tsv.parsePoint(cells[1]);
+                    if (to != null)
+                    {
+                        read.add(new WorldPoint[]{from, to});
+                    }
+                }
             }
             known = Collections.unmodifiableList(read);
             passages = known;
         }
         return known;
-    }
-
-    private static void read(String table, List<WorldPoint[]> into)
-    {
-        InputStream in = TrustedPassages.class.getResourceAsStream("/com/hdmapreforged/route/" + table);
-        if (in == null)
-        {
-            return;
-        }
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)))
-        {
-            String line;
-            while ((line = reader.readLine()) != null)
-            {
-                String[] cells = line.split("\t");
-                if (line.startsWith("#") || cells.length < 2)
-                {
-                    continue;
-                }
-                WorldPoint from = point(cells[0]);
-                WorldPoint to = point(cells[1]);
-                if (from != null && to != null)
-                {
-                    into.add(new WorldPoint[]{from, to});
-                }
-            }
-        }
-        catch (IOException | RuntimeException e)
-        {
-        }
-    }
-
-    private static WorldPoint point(String text)
-    {
-        String[] xyz = text.trim().split(" ");
-        try
-        {
-            return xyz.length == 3 ? new WorldPoint(Integer.parseInt(xyz[0]), Integer.parseInt(xyz[1]),
-                Integer.parseInt(xyz[2])) : null;
-        }
-        catch (NumberFormatException e)
-        {
-            return null;
-        }
     }
 }

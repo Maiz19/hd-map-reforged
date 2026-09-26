@@ -13,10 +13,6 @@ import java.util.Set;
  */
 public final class HouseTracker
 {
-    static final int TEMPLATE_WEST = 1856;
-    static final int TEMPLATE_EAST = 2047;
-    static final int TEMPLATE_SOUTH = 5696;
-    static final int TEMPLATE_NORTH = 5775;
     /** By varbit 2187 (POH_HOUSE_LOCATION). */
     private static final int[][] PORTALS = {
         null,
@@ -41,7 +37,7 @@ public final class HouseTracker
 
     public static boolean isTemplate(int x, int y)
     {
-        return x >= TEMPLATE_WEST && x <= TEMPLATE_EAST && y >= TEMPLATE_SOUTH && y <= TEMPLATE_NORTH;
+        return x >= 1856 && x <= 2047 && y >= 5696 && y <= 5775;
     }
 
     public static int portal(int location)
@@ -69,17 +65,9 @@ public final class HouseTracker
         if (nowInside && !inside)
         {
             int entered = lastOutside >= 0 ? portalNear(lastOutside) : 0;
-            if (entered > 0)
-            {
-                // Through a house portal: maybe a friend's house.
-                exit = portal(entered);
-                own = false;
-            }
-            else
-            {
-                exit = portal(houseLocation);
-                own = true;
-            }
+            // Through a house portal: maybe a friend's house.
+            own = entered <= 0;
+            exit = portal(own ? houseLocation : entered);
         }
         if (nowInside && buildingMode)
         {
@@ -135,19 +123,9 @@ public final class HouseTracker
         {
             return lower.startsWith("ornate") ? "box:ornate" : lower.startsWith("fancy") ? "box:fancy" : "box:basic";
         }
-        if (lower.equals("fairy ring") || lower.equals("spiritual fairy tree"))
-        {
-            return lower.equals("fairy ring") ? "fairy ring" : "spirit tree+fairy ring";
-        }
-        if (lower.equals("spirit tree"))
-        {
-            return "spirit tree";
-        }
-        if (lower.contains("amulet of glory"))
-        {
-            return "glory";
-        }
-        return null;
+        return lower.equals("fairy ring") || lower.equals("spirit tree") ? lower
+            : lower.equals("spiritual fairy tree") ? "spirit tree+fairy ring"
+            : lower.contains("amulet of glory") ? "glory" : null;
     }
 
     public Set<String> features()
@@ -160,8 +138,8 @@ public final class HouseTracker
         features.clear();
         for (String f : saved)
         {
-            if (f.startsWith("portal:") || f.startsWith("box:") || f.equals("fairy ring") || f.equals("spirit tree")
-                || f.equals("spirit tree+fairy ring") || f.equals("glory"))
+            if (f.startsWith("portal:") || f.startsWith("box:")
+                || Set.of("fairy ring", "spirit tree", "spirit tree+fairy ring", "glory").contains(f))
             {
                 features.add(f);
             }
@@ -189,7 +167,6 @@ public final class HouseTracker
         lastOutside = -1;
         exit = -1;
         own = false;
-        features.clear();
-        featuresChanged = false;
+        replaceFeatures(Collections.emptySet());
     }
 }

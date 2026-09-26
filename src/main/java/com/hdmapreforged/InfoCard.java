@@ -1,16 +1,12 @@
 package com.hdmapreforged;
 
-import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
-import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Insets;
 import java.awt.Rectangle;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
@@ -117,37 +113,17 @@ final class InfoCard extends JPanel implements Scrollable
             wiki.page(poi.wikiQuery, page -> {
                 if (page == null)
                 {
-                    SwingUtilities.invokeLater(() -> {
-                        if (this.poi == poi)
-                        {
-                            waresLoading = false;
-                            rebuild();
-                        }
-                    });
+                    SwingUtilities.invokeLater(() -> showWares(poi, null));
                     return;
                 }
-                wiki.store(page, found -> SwingUtilities.invokeLater(() -> {
-                    if (this.poi == poi)
-                    {
-                        wares = found;
-                        waresLoading = false;
-                        rebuild();
-                        loadWarePictures(poi, found);
-                    }
-                }));
+                wiki.store(page, found -> SwingUtilities.invokeLater(() -> showWares(poi, found)));
             });
         }
         if (poi != null)
         {
             List<Integer> ids = new ArrayList<>();
-            for (Poi member : poi.members())
-            {
-                ids.addAll(Requirements.itemIds(member.needs.items));
-            }
-            for (Poi.Link link : poi.links())
-            {
-                ids.addAll(Requirements.itemIds(link.needs.items));
-            }
+            poi.members().forEach(member -> ids.addAll(Requirements.itemIds(member.needs.items)));
+            poi.links().forEach(link -> ids.addAll(Requirements.itemIds(link.needs.items)));
             if (!ids.isEmpty())
             {
                 itemNames.resolve(ids, () -> {
@@ -159,6 +135,21 @@ final class InfoCard extends JPanel implements Scrollable
             }
         }
         rebuild();
+    }
+
+    /** {@code found}: the shop's stock, or null when its page could not be read. */
+    private void showWares(Poi shop, List<ItemSources.Ware> found)
+    {
+        if (poi == shop)
+        {
+            wares = found == null ? wares : found;
+            waresLoading = false;
+            rebuild();
+            if (found != null)
+            {
+                loadWarePictures(shop, found);
+            }
+        }
     }
 
     void setRoute(IntFunction<JComponent> route, boolean show)
@@ -223,9 +214,8 @@ final class InfoCard extends JPanel implements Scrollable
             removeAll();
             if (poi != null)
             {
-                JLabel title = new JLabel(poi.name);
+                JLabel title = SearchResults.bold(new JLabel(poi.name));
                 title.setForeground(Color.WHITE);
-                title.setFont(title.getFont().deriveFont(Font.BOLD));
                 title.setAlignmentX(Component.LEFT_ALIGNMENT);
                 add(title);
             }
@@ -274,8 +264,8 @@ final class InfoCard extends JPanel implements Scrollable
         }
         else if (poi == null)
         {
-            add(text("Click an icon for details. Scroll to zoom, drag to move, double-click to zoom in. "
-                + "Right-click for the nearest teleports to a spot.", ColorScheme.LIGHT_GRAY_COLOR, false));
+            add(grey("Click an icon for details. Scroll to zoom, drag to move, double-click to zoom in. "
+                + "Right-click for the nearest teleports to a spot."));
         }
         else
         {
@@ -289,11 +279,10 @@ final class InfoCard extends JPanel implements Scrollable
     private void buildNearest()
     {
         add(text("Nearest teleports to " + nearestTo.getX() + ", " + nearestTo.getY(), Color.WHITE, true));
-        add(text("As the crow flies, from where each one lands. Walking routes may differ.",
-            ColorScheme.LIGHT_GRAY_COLOR, false));
+        add(grey("As the crow flies, from where each one lands. Walking routes may differ."));
         if (nearest.isEmpty())
         {
-            add(text("None on this map.", ColorScheme.LIGHT_GRAY_COLOR, false));
+            add(grey("None on this map."));
         }
         for (Poi found : nearest)
         {
@@ -311,32 +300,25 @@ final class InfoCard extends JPanel implements Scrollable
         add(title);
         String where = poi.type.displayName + (poi.map != null ? " · " + poi.map.name : "") + " · "
             + poi.location.getX() + ", " + poi.location.getY() + (poi.location.getPlane() > 0 ? ", floor " + poi.location.getPlane() : "");
-        add(text(where, ColorScheme.LIGHT_GRAY_COLOR, false));
+        add(grey(where));
 
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        buttons.setOpaque(false);
-        buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
+        // Laid out by wrap.
+        JPanel buttons = new JPanel();
         Poi.Link inside = MapView.mapBelow(poi);
         if (inside != null)
         {
             buttons.add(button(MapView.goInText(inside), () -> map.goIn(inside)));
-            buttons.add(Box.createHorizontalStrut(4));
         }
+        Poi target = poi;
         if (router != null)
         {
-            Poi target = poi;
-            JButton route = button("Route", () -> router.accept(target.location));
-            route.setToolTipText("A route from where you are to here");
-            buttons.add(route);
-            buttons.add(Box.createHorizontalStrut(4));
+            buttons.add(SearchResults.tip(button("Route", () -> router.accept(target.location)),
+                "A route from where you are to here"));
         }
         if (stopAdder != null)
         {
-            Poi target = poi;
-            JButton add = button("+ Stop", () -> stopAdder.accept(Tour.Stop.place(target.name, target.location)));
-            add.setToolTipText("Add to your custom route (right-click the map, Custom routes...)");
-            buttons.add(add);
-            buttons.add(Box.createHorizontalStrut(4));
+            buttons.add(SearchResults.tip(button("+ Stop", () -> stopAdder.accept(Tour.Stop.place(target.name,
+                target.location))), "Add to your custom route (right-click the map, Custom routes...)"));
         }
         buttons.add(button("Wiki", () -> LinkBrowser.browse(
             WikiClient.searchUrl(poi.wikiQuery != null ? poi.wikiQuery : poi.name))));
@@ -345,8 +327,7 @@ final class InfoCard extends JPanel implements Scrollable
         if (extra != null)
         {
             add(Box.createVerticalStrut(4));
-            JLabel back = link("← Back to the search results", () -> map.select(null));
-            add(back);
+            add(link("← Back to the search results", () -> map.select(null)));
         }
 
         if (poi.note != null)
@@ -383,42 +364,33 @@ final class InfoCard extends JPanel implements Scrollable
                 addMember(member, "");
             }
         }
-        else
+        List<Requirements.Line> own = Requirements.describe(poi.needs, itemNames);
+        if (members.size() <= 1 && !own.isEmpty())
         {
-            List<Requirements.Line> requirements = Requirements.describe(poi.needs, itemNames);
-            if (!requirements.isEmpty())
-            {
-                heading("Requirements");
-                addRequirements(requirements, "");
-            }
+            heading("Requirements");
+            addRequirements(own, "");
         }
 
         List<Poi.Link> links = poi.links();
-        java.util.Set<String> ownLines = new java.util.HashSet<>();
-        for (Requirements.Line line : Requirements.describe(poi.needs, itemNames))
-        {
-            ownLines.add(line.text);
-        }
+        java.util.Set<String> ownLines = own.stream().map(line -> line.text).collect(java.util.stream.Collectors.toSet());
         if (!links.isEmpty())
         {
-            String linkHeading = poi.type.isRandomDestination() ? "Can send you to (" + links.size() + ")"
-                : poi.type.isNetwork() ? "Travel to (" + links.size() + ")" : "Leads to";
-            heading(linkHeading);
+            heading(poi.type.isRandomDestination() ? "Can send you to (" + links.size() + ")"
+                : poi.type.isNetwork() ? "Travel to (" + links.size() + ")" : "Leads to");
             javax.swing.JCheckBox lines = new javax.swing.JCheckBox("Show lines on the map", map.linesShown(poi.type));
             lines.setOpaque(false);
             lines.setFocusable(false);
             lines.setFont(FontManager.getRunescapeSmallFont());
             lines.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
             lines.setAlignmentX(Component.LEFT_ALIGNMENT);
-            lines.setToolTipText("Draw lines from this " + poi.type.displayName.toLowerCase(Locale.ROOT)
-                + " to where it leads; remembered for every " + poi.type.displayName.toLowerCase(Locale.ROOT));
-            PoiType type = poi.type;
-            lines.addActionListener(e -> map.setLinesShown(type, lines.isSelected()));
+            String type = poi.type.displayName.toLowerCase(Locale.ROOT);
+            lines.setToolTipText("Draw lines from this " + type + " to where it leads; remembered for every " + type);
+            lines.addActionListener(e -> map.setLinesShown(target.type, lines.isSelected()));
             add(lines);
             for (int i = 0; i < links.size() && i < MAX_LINKS; i++)
             {
                 Poi.Link link = links.get(i);
-                boolean usable = map.unlocks() == null || map.unlocks().usable(link.needs);
+                boolean usable = usable(link.needs);
                 if (!usable && config.onlyUsable())
                 {
                     continue;
@@ -432,7 +404,7 @@ final class InfoCard extends JPanel implements Scrollable
                 }
                 add(entry);
                 // Only what this trip needs beyond the stop's own requirements, listed above.
-                List<Requirements.Line> tripNeeds = new ArrayList<>(Requirements.describe(link.needs, itemNames));
+                List<Requirements.Line> tripNeeds = Requirements.describe(link.needs, itemNames);
                 tripNeeds.removeIf(line -> ownLines.contains(line.text));
                 if (!tripNeeds.isEmpty() && !sameNeeds(link.needs, poi.needs))
                 {
@@ -454,9 +426,14 @@ final class InfoCard extends JPanel implements Scrollable
         }
     }
 
+    private boolean usable(Needs needs)
+    {
+        return map.unlocks() == null || map.unlocks().usable(needs);
+    }
+
     private void addMember(Poi member, String kind)
     {
-        boolean usable = map.unlocks() == null || map.unlocks().usable(member.needs);
+        boolean usable = usable(member.needs);
         if (!usable && config.onlyUsable())
         {
             return;
@@ -471,10 +448,7 @@ final class InfoCard extends JPanel implements Scrollable
 
     static JPanel wrap(JPanel row, int width)
     {
-        JPanel rows = new JPanel();
-        rows.setLayout(new BoxLayout(rows, BoxLayout.Y_AXIS));
-        rows.setOpaque(false);
-        rows.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel rows = SearchResults.column();
         JPanel line = null;
         int used = 0;
         for (Component c : row.getComponents())
@@ -490,9 +464,7 @@ final class InfoCard extends JPanel implements Scrollable
                 {
                     rows.add(Box.createVerticalStrut(4));
                 }
-                line = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-                line.setOpaque(false);
-                line.setAlignmentX(Component.LEFT_ALIGNMENT);
+                line = SearchResults.panel(new FlowLayout(FlowLayout.LEFT, 0, 0));
                 rows.add(line);
                 used = 0;
             }
@@ -507,16 +479,7 @@ final class InfoCard extends JPanel implements Scrollable
         return rows;
     }
 
-    private final Map<String, BufferedImage> warePictures = new java.util.LinkedHashMap<String,
-        BufferedImage>(64, 0.75f, true)
-    {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, BufferedImage> eldest)
-        {
-            return size() > MAX_WARE_PICTURES;
-        }
-    };
-    private static final int MAX_WARE_PICTURES = 200;
+    private final Map<String, BufferedImage> warePictures = SearchResults.pictureCache(200);
     private final Map<String, JLabel> wareIcons = new java.util.HashMap<>();
 
     private void loadWarePictures(Poi shop, List<ItemSources.Ware> list)
@@ -528,18 +491,8 @@ final class InfoCard extends JPanel implements Scrollable
             {
                 continue;
             }
-            wiki.file(ware.image, image -> SwingUtilities.invokeLater(() -> {
-                if (image != null)
-                {
-                    warePictures.put(ware.item, image);
-                    // Into the row shown: no rebuild of the whole card for each picture.
-                    JLabel shown = this.poi == shop ? wareIcons.get(ware.item) : null;
-                    if (shown != null)
-                    {
-                        shown.setIcon(SearchResults.fitted(image));
-                    }
-                }
-            }));
+            wiki.file(ware.image, image -> SwingUtilities.invokeLater(() -> SearchResults.pictureLoaded(warePictures,
+                this.poi == shop ? wareIcons : Map.of(), ware.item, image)));
         }
     }
 
@@ -548,7 +501,7 @@ final class InfoCard extends JPanel implements Scrollable
         if (waresLoading)
         {
             heading("Stock");
-            add(text("Loading…", ColorScheme.LIGHT_GRAY_COLOR, false));
+            add(grey("Loading…"));
             return;
         }
         if (wares == null || wares.isEmpty())
@@ -560,62 +513,27 @@ final class InfoCard extends JPanel implements Scrollable
         {
             ItemSources.Ware ware = wares.get(i);
             boolean inStock = ItemSources.inStock(ware.stock);
-            String facts = (inStock ? ware.stock.equals("∞") ? "Endless stock" : "Stock " + ware.stock
-                : "Out of stock") + (ware.price.isEmpty() ? "" : " · " + ware.price);
+            JLabel icon = SearchResults.pictureIcon(warePictures.get(ware.item));
+            wareIcons.put(ware.item, icon);
+            JPanel line = SearchResults.panel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            JLabel detail = new JLabel((inStock ? ware.stock.equals("∞") ? "Endless stock" : "Stock " + ware.stock
+                : "Out of stock") + (ware.price.isEmpty() ? "" : " · " + ware.price));
+            detail.setForeground(inStock ? ColorScheme.LIGHT_GRAY_COLOR : new Color(170, 110, 110));
+            line.add(detail);
+            if (itemSearch != null)
+            {
+                line.add(Box.createHorizontalStrut(8));
+                line.add(SearchResults.tip(link("Where else?", () -> itemSearch.accept(ware.item)),
+                    "Spawns, other shops and drops of " + ware.item));
+            }
             add(Box.createVerticalStrut(3));
-            add(pictureRow(warePictures.get(ware.item), ware.item, facts, inStock ? ColorScheme.LIGHT_GRAY_COLOR
-                : new Color(170, 110, 110), () -> LinkBrowser.browse(WikiClient.pageUrl(ware.item)),
-                "Open " + ware.item + " on the wiki", itemSearch == null ? null : () -> itemSearch.accept(ware.item)));
+            add(SearchResults.pictureRow(icon, SearchResults.tip(SearchResults.bold(link(ware.item,
+                () -> LinkBrowser.browse(WikiClient.pageUrl(ware.item)))), "Open " + ware.item + " on the wiki"), line));
         }
         if (wares.size() > MAX_WARES)
         {
-            add(text((wares.size() - MAX_WARES) + " more on the wiki page", ColorScheme.LIGHT_GRAY_COLOR, false));
+            add(grey((wares.size() - MAX_WARES) + " more on the wiki page"));
         }
-    }
-
-    static final int PICTURE = 36;
-
-    JComponent pictureRow(BufferedImage picture, String name, String facts, Color factColor,
-        Runnable open, String tip, Runnable where)
-    {
-        JPanel row = new JPanel(new BorderLayout(8, 0));
-        row.setOpaque(false);
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JLabel icon = new JLabel();
-        icon.setPreferredSize(new Dimension(PICTURE, PICTURE));
-        icon.setHorizontalAlignment(JLabel.CENTER);
-        icon.setOpaque(true);
-        icon.setBackground(new Color(255, 255, 255, 12));
-        if (picture != null)
-        {
-            icon.setIcon(SearchResults.fitted(picture));
-        }
-        wareIcons.put(name, icon);
-        row.add(icon, BorderLayout.WEST);
-        JPanel words = new JPanel();
-        words.setLayout(new BoxLayout(words, BoxLayout.Y_AXIS));
-        words.setOpaque(false);
-        JLabel title = link(name, open);
-        title.setFont(title.getFont().deriveFont(Font.BOLD));
-        title.setToolTipText(tip);
-        words.add(title);
-        JPanel line = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        line.setOpaque(false);
-        line.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JLabel detail = new JLabel(facts);
-        detail.setForeground(factColor);
-        line.add(detail);
-        if (where != null)
-        {
-            line.add(Box.createHorizontalStrut(8));
-            JLabel find = link("Where else?", where);
-            find.setToolTipText("Spawns, other shops and drops of " + name);
-            line.add(find);
-        }
-        words.add(line);
-        row.add(words, BorderLayout.CENTER);
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Math.max(PICTURE, row.getPreferredSize().height)));
-        return row;
     }
 
     private static final int MAX_WARES = 60;
@@ -688,6 +606,11 @@ final class InfoCard extends JPanel implements Scrollable
         add(Box.createVerticalStrut(2));
     }
 
+    private JLabel grey(String text)
+    {
+        return text(text, ColorScheme.LIGHT_GRAY_COLOR, false);
+    }
+
     private JLabel text(String text, Color color, boolean bold)
     {
         JLabel label = new JLabel();
@@ -711,29 +634,7 @@ final class InfoCard extends JPanel implements Scrollable
 
     private JLabel link(String text, Runnable action)
     {
-        JLabel label = text(text, LINK, false);
-        label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        label.addMouseListener(new MouseAdapter()
-        {
-            @Override
-            public void mouseClicked(MouseEvent e)
-            {
-                action.run();
-            }
-
-            @Override
-            public void mouseEntered(MouseEvent e)
-            {
-                label.setForeground(Color.WHITE);
-            }
-
-            @Override
-            public void mouseExited(MouseEvent e)
-            {
-                label.setForeground(LINK);
-            }
-        });
-        return label;
+        return SearchResults.clickable(text(text, LINK, false), action, true);
     }
 
     private static JButton button(String text, Runnable action)

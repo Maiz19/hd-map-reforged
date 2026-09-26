@@ -9,6 +9,7 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Point;
 import java.awt.RenderingHints;
+import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.util.ArrayList;
@@ -20,6 +21,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.ImageIcon;
@@ -38,6 +43,7 @@ import javax.swing.JToggleButton;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.ui.ColorScheme;
 
@@ -99,6 +105,7 @@ final class MapScreen extends JPanel implements MapView.Listener
 
     private final HdMapReforgedConfig config;
     private final WikiClient wiki;
+    @RequiredArgsConstructor
     enum SearchMode
     {
         PLACES("Search places, patches, spots…", "Searching places, teleports, maps and every place of a kind (herb "
@@ -109,12 +116,6 @@ final class MapScreen extends JPanel implements MapView.Listener
 
         final String hint;
         final String tooltip;
-
-        SearchMode(String hint, String tooltip)
-        {
-            this.hint = hint;
-            this.tooltip = tooltip;
-        }
 
         SearchMode next()
         {
@@ -145,11 +146,8 @@ final class MapScreen extends JPanel implements MapView.Listener
             }
             showSection(section);
         });
-        card.setItemSearch(name -> npcs.findItem(name));
-        cardScroll = new JScrollPane(card, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
-            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        cardScroll.setBorder(BorderFactory.createEmptyBorder());
-        cardScroll.getVerticalScrollBar().setUnitIncrement(16);
+        card.setItemSearch(npcs::findItem);
+        cardScroll = scroll(card);
         for (Floating floating : new Floating[]{cardFloat, npcFloat, toursFloat})
         {
             floating.addPropertyChangeListener("folded", e -> placeFloatingCard());
@@ -187,26 +185,17 @@ final class MapScreen extends JPanel implements MapView.Listener
             }
         });
         typing.setRepeats(false);
-        searchMode.setFocusable(false);
-        searchMode.setMargin(new Insets(1, 3, 1, 3));
-        searchMode.addActionListener(e -> {
-            boolean typing = search.isFocusOwner();
+        plain(searchMode, null, 3, e -> keepFocus(() -> {
             mode = mode.next();
             updateSearchMode();
             showResults();
-            // Never take focus from the game.
-            if (typing)
-            {
-                search.requestFocusInWindow();
-            }
-        });
+        }));
         updateSearchMode();
         maps.setToolTipText("Map: the surface, a dungeon or another area");
         maps.addActionListener(e -> {
             BaseMap chosen = (BaseMap) maps.getSelectedItem();
             if (!syncing && chosen != null && chosen != view.map())
             {
-                view.setFollowing(false);
                 openMap(chosen);
             }
         });
@@ -217,10 +206,7 @@ final class MapScreen extends JPanel implements MapView.Listener
                 view.setPlane(floors.getSelectedIndex());
             }
         });
-        follow.setToolTipText("Follow: keep your character in view");
-        follow.setMargin(new Insets(1, 4, 1, 4));
-        follow.setFocusable(false);
-        follow.addActionListener(e -> {
+        plain(follow, "Follow: keep your character in view", 4, e -> {
             if (follow.isSelected())
             {
                 view.centerOnPlayer();
@@ -230,9 +216,7 @@ final class MapScreen extends JPanel implements MapView.Listener
                 view.setFollowing(false);
             }
         });
-        popOut.setFocusable(false);
-        popOut.setMargin(new Insets(1, 4, 1, 4));
-        popOut.addActionListener(e -> togglePopOut.run());
+        plain(popOut, null, 4, e -> togglePopOut.run());
         card.setOnRebuilt(this::placeFloatingCard);
         layers.addComponentListener(new ComponentAdapter()
         {
@@ -242,8 +226,8 @@ final class MapScreen extends JPanel implements MapView.Listener
                 placeFloatingCard();
             }
         });
-        zoomIn = small("+", "Zoom in", () -> view.zoomBy(1));
-        zoomOut = small("−", "Zoom out", () -> view.zoomBy(-1));
+        zoomIn = plain(new JButton("+"), "Zoom in", 6, e -> view.zoomBy(1));
+        zoomOut = plain(new JButton("−"), "Zoom out", 6, e -> view.zoomBy(-1));
 
         controls.setBackground(ColorScheme.DARK_GRAY_COLOR);
         controls.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
@@ -251,14 +235,24 @@ final class MapScreen extends JPanel implements MapView.Listener
         viewChanged();
     }
 
-    private JButton small(String text, String tip, Runnable action)
+    private static <B extends AbstractButton> B plain(B button, String tip, int side, ActionListener action)
     {
-        JButton button = new JButton(text);
         button.setToolTipText(tip);
         button.setFocusable(false);
-        button.setMargin(new Insets(1, 6, 1, 6));
-        button.addActionListener(e -> action.run());
+        button.setMargin(new Insets(1, side, 1, side));
+        button.addActionListener(action);
         return button;
+    }
+
+    /** Never takes focus from the game. */
+    private void keepFocus(Runnable action)
+    {
+        boolean typing = search.isFocusOwner();
+        action.run();
+        if (typing)
+        {
+            search.requestFocusInWindow();
+        }
     }
 
     void setScreenLayout(Layout layout)
@@ -271,93 +265,54 @@ final class MapScreen extends JPanel implements MapView.Listener
             split.removeAll();
             split = null;
         }
+        view.setChrome(layout == Layout.FULL ? this::showMapPicker : null);
         if (layout == Layout.FULL)
         {
-            view.setChrome(this::showMapPicker);
-            cardScroll.setBorder(BorderFactory.createEmptyBorder());
             card.setTextWidth(FLOATING_TEXT);
             layers.add(view, JLayeredPane.DEFAULT_LAYER);
             cardFloat.setContent(cardScroll);
-            cardScroll.setVisible(!cardFloat.isFolded());
-            layers.add(cardFloat, JLayeredPane.PALETTE_LAYER);
-            layers.add(search, JLayeredPane.PALETTE_LAYER);
-            layers.add(searchMode, JLayeredPane.PALETTE_LAYER);
+            for (JComponent part : new JComponent[]{cardFloat, search, searchMode})
+            {
+                layers.add(part, JLayeredPane.PALETTE_LAYER);
+            }
             cardFloat.setVisible(view.selected() != null || card.hasRoute() || card.hasExtra());
             add(layers, BorderLayout.CENTER);
             placeFloatingCard();
-            revalidate();
-            repaint();
-            return;
-        }
-        view.setChrome(null);
-        cardScroll.setBorder(BorderFactory.createEmptyBorder());
-        cardScroll.setVisible(true);
-        boolean wide = layout != Layout.SIDEBAR;
-        controls.removeAll();
-        GridBagConstraints c = new GridBagConstraints();
-        c.insets = new Insets(2, 2, 2, 2);
-        c.fill = GridBagConstraints.HORIZONTAL;
-        if (wide)
-        {
-            c.gridy = 0;
-            c.weightx = 1;
-            controls.add(search, c);
-            c.weightx = 0;
-            controls.add(searchMode, c);
-            c.weightx = 0.6;
-            controls.add(maps, c);
-            c.weightx = 0;
-            controls.add(floors, c);
-            controls.add(zoomOut, c);
-            controls.add(zoomIn, c);
-            controls.add(follow, c);
-            controls.add(popOut, c);
-            popOut.setIcon(null);
-            popOut.setText("Dock");
-            popOut.setToolTipText("Put the map back in the sidebar");
         }
         else
         {
-            c.gridx = 0;
-            c.gridy = 0;
-            c.gridwidth = 4;
-            c.weightx = 1;
-            controls.add(search, c);
-            c.gridx = 4;
-            c.gridwidth = 1;
-            c.weightx = 0;
-            controls.add(searchMode, c);
-            c.gridx = 0;
-            c.gridwidth = 5;
-            c.weightx = 1;
-            c.gridy = 1;
-            controls.add(maps, c);
-            c.gridy = 2;
-            c.gridwidth = 1;
-            c.weightx = 1;
-            controls.add(floors, c);
-            c.weightx = 0;
-            c.gridx = 1;
-            controls.add(zoomOut, c);
-            c.gridx = 2;
-            controls.add(zoomIn, c);
-            c.gridx = 3;
-            controls.add(follow, c);
-            c.gridx = 4;
-            controls.add(popOut, c);
-            popOut.setText(null);
-            popOut.setIcon(new ImageIcon(PoiIcons.popOutIcon()));
-            popOut.setToolTipText("Open the map in a large window");
+            cardScroll.setVisible(true);
+            boolean wide = layout != Layout.SIDEBAR;
+            controls.removeAll();
+            GridBagConstraints c = new GridBagConstraints();
+            c.insets = new Insets(2, 2, 2, 2);
+            c.fill = GridBagConstraints.HORIZONTAL;
+            // Wide: one row. Sidebar: search, then the map, then floor, zoom, follow and pop-out.
+            JComponent[] parts = {search, searchMode, maps, floors, zoomOut, zoomIn, follow, popOut};
+            int[] x = {0, 4, 0, 0, 1, 2, 3, 4};
+            int[] width = {4, 1, 5, 1, 1, 1, 1, 1};
+            double[] weight = wide ? new double[]{1, 0, 0.6, 0, 0, 0, 0, 0} : new double[]{1, 0, 1, 1, 0, 0, 0, 0};
+            for (int i = 0; i < parts.length; i++)
+            {
+                c.gridx = wide ? GridBagConstraints.RELATIVE : x[i];
+                c.gridy = wide ? 0 : Math.max(0, Math.min(2, i - 1));
+                c.gridwidth = wide ? 1 : width[i];
+                c.weightx = weight[i];
+                controls.add(parts[i], c);
+            }
+            popOut.setText(wide ? "Dock" : null);
+            popOut.setIcon(wide ? null : new ImageIcon(PoiIcons.popOutIcon()));
+            popOut.setToolTipText(wide ? "Put the map back in the sidebar" : "Open the map in a large window");
+            maps.setPrototypeDisplayValue(new BaseMap(0, "Gielinor Surface", 0, 0, 0, 0, 0, 0));
+            add(controls, BorderLayout.NORTH);
+            split = new JSplitPane(wide ? JSplitPane.HORIZONTAL_SPLIT : JSplitPane.VERTICAL_SPLIT, view, cardScroll);
+            split.setBorder(BorderFactory.createEmptyBorder());
+            split.setContinuousLayout(true);
+            split.setResizeWeight(wide ? 0.78 : 0.62);
+            cardScroll.setPreferredSize(wide ? new Dimension(300, 400) : new Dimension(225, 180));
+            card.setTextWidth(wide ? 250 : 160);
+            add(split, BorderLayout.CENTER);
         }
-        maps.setPrototypeDisplayValue(new BaseMap(0, "Gielinor Surface", 0, 0, 0, 0, 0, 0));
-        add(controls, BorderLayout.NORTH);
-        split = new JSplitPane(wide ? JSplitPane.HORIZONTAL_SPLIT : JSplitPane.VERTICAL_SPLIT, view, cardScroll);
-        split.setBorder(BorderFactory.createEmptyBorder());
-        split.setContinuousLayout(true);
-        split.setResizeWeight(wide ? 0.78 : 0.62);
-        cardScroll.setPreferredSize(wide ? new Dimension(300, 400) : new Dimension(225, 180));
-        card.setTextWidth(wide ? 250 : 160);
-        add(split, BorderLayout.CENTER);
         revalidate();
         repaint();
     }
@@ -377,7 +332,7 @@ final class MapScreen extends JPanel implements MapView.Listener
         }
     }
 
-    void toggleTours()
+    private void toggleTours()
     {
         if (tours != null && layout != Layout.SIDEBAR)
         {
@@ -387,17 +342,13 @@ final class MapScreen extends JPanel implements MapView.Listener
 
     void openTours()
     {
-        if (layout == Layout.SIDEBAR)
+        if (tours != null && tours.isOpen() && layout != Layout.SIDEBAR)
         {
-            return;
+            refreshTours();
         }
-        if (tours != null && !tours.isOpen())
+        else
         {
-            tours.toggle();
-        }
-        else if (tours != null)
-        {
-            tours.refresh();
+            toggleTours();
         }
     }
 
@@ -410,7 +361,6 @@ final class MapScreen extends JPanel implements MapView.Listener
     }
 
     private final JPanel toursPanel = new JPanel(new BorderLayout());
-    private JScrollPane toursScroll;
 
     /** Over the game in their own panel beside the Routes button; elsewhere in the card. */
     private void showTours(IntFunction<JComponent> section)
@@ -421,14 +371,14 @@ final class MapScreen extends JPanel implements MapView.Listener
             return;
         }
         // Above the card and search results, which could otherwise steal its clicks on a narrow map.
-        toursScroll = showFloating(toursScroll, toursPanel, toursFloat, section, JLayeredPane.PALETTE_LAYER + 1);
+        showFloating(toursPanel, toursFloat, section, JLayeredPane.PALETTE_LAYER + 1);
     }
 
     private void showSection(IntFunction<JComponent> section)
     {
         if (layout == Layout.FULL)
         {
-            npcScroll = showFloating(npcScroll, npcPanel, npcFloat, section, JLayeredPane.PALETTE_LAYER);
+            showFloating(npcPanel, npcFloat, section, JLayeredPane.PALETTE_LAYER);
             return;
         }
         card.setExtra(section);
@@ -437,21 +387,15 @@ final class MapScreen extends JPanel implements MapView.Listener
     }
 
     private final JPanel npcPanel = new JPanel(new BorderLayout());
-    private JScrollPane npcScroll;
 
-    /** A panel of its own over the game; returns its scroll pane, made on first use. */
-    private JScrollPane showFloating(JScrollPane scroll, JPanel panel, Floating floating, IntFunction<JComponent> section,
-        Integer layer)
+    /** A panel of its own over the game, in a scroll pane made on first use. */
+    private void showFloating(JPanel panel, Floating floating, IntFunction<JComponent> section, Integer layer)
     {
-        if (scroll == null)
+        if (panel.getParent() == null)
         {
             panel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
             panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-            scroll = new JScrollPane(panel, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
-                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-            scroll.setBorder(BorderFactory.createEmptyBorder());
-            scroll.getVerticalScrollBar().setUnitIncrement(16);
-            floating.setContent(scroll);
+            floating.setContent(scroll(panel));
         }
         panel.removeAll();
         if (section != null)
@@ -466,6 +410,14 @@ final class MapScreen extends JPanel implements MapView.Listener
         placeFloatingCard();
         panel.revalidate();
         layers.repaint();
+    }
+
+    private static JScrollPane scroll(JComponent content)
+    {
+        JScrollPane scroll = new JScrollPane(content, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
         return scroll;
     }
 
@@ -478,49 +430,43 @@ final class MapScreen extends JPanel implements MapView.Listener
         int w = layers.getWidth();
         int h = layers.getHeight();
         view.setBounds(0, 0, w, h);
-        int cardWidth = FLOATING_WIDTH;
-        int top = 58;
         // Clear of the zoom and follow buttons bottom right.
-        int height = cardFloat.height(Math.max(120, Math.min(card.getPreferredSize().height + 4, h - top - 170)));
-        cardFloat.setBounds(w - cardWidth - 12, top, cardWidth, height);
+        int height = cardFloat.height(Math.max(120, Math.min(card.getPreferredSize().height + 4, h - 58 - 170)));
+        cardFloat.setBounds(w - FLOATING_WIDTH - 12, 58, FLOATING_WIDTH, height);
         int searchWidth = Math.min(260, Math.max(120, w / 4));
         search.setBounds(12, 52, searchWidth, 28);
         searchMode.setBounds(12 + searchWidth + 4, 52, 28, 28);
         if (toursFloat.isVisible())
         {
-            int buttonWidth = MapView.floorGroupWidth(view.getFontMetrics(MapView.CONTROL_FONT));
             int bottomY = MapView.widgetBottom(h);
-            int toursHeight = toursFloat.height(Math.max(90, Math.min(toursPanel.getPreferredSize().height + 20,
-                bottomY - 60 - Floating.BAR)));
-            toursFloat.setBounds(12 + buttonWidth + 8, bottomY - toursHeight, FLOATING_WIDTH, toursHeight);
+            int toursHeight = fit(toursFloat, toursPanel, bottomY - 60);
+            toursFloat.setBounds(20 + MapView.floorGroupWidth(view.getFontMetrics(MapView.CONTROL_FONT)),
+                bottomY - toursHeight, FLOATING_WIDTH, toursHeight);
             toursFloat.revalidate();
         }
         if (npcFloat.isVisible())
         {
-            int npcHeight = npcFloat.height(Math.max(90, Math.min(npcPanel.getPreferredSize().height + 20,
-                h - 90 - 70 - Floating.BAR)));
-            npcFloat.setBounds(12, 90, FLOATING_WIDTH, npcHeight);
+            npcFloat.setBounds(12, 90, FLOATING_WIDTH, fit(npcFloat, npcPanel, h - 90 - 70));
             npcFloat.revalidate();
         }
         cardFloat.revalidate();
     }
 
+    private static int fit(Floating floating, JPanel panel, int room)
+    {
+        return floating.height(Math.max(90, Math.min(panel.getPreferredSize().height + 20, room - Floating.BAR)));
+    }
+
     private void showMapPicker(Point at)
     {
         JPopupMenu menu = new JPopupMenu();
-        List<BaseMap> all = allMaps();
-        BaseMaps baseMaps = view.maps();
-        WorldPoint me = view.player();
-        if (me != null && baseMaps != null)
+        BaseMap mine = myMap();
+        if (mine != null)
         {
-            BaseMap mine = baseMaps.find(me);
-            if (mine != null)
-            {
-                menu.add(mapItem("Where I am: " + mine.name, mine));
-            }
+            menu.add(mapItem("Where I am: " + mine.name, mine));
         }
         List<BaseMap> rest = new ArrayList<>();
-        for (BaseMap map : all)
+        for (BaseMap map : allMaps())
         {
             if (map.id == BaseMap.SURFACE || map.id == BaseMap.FULL)
             {
@@ -532,8 +478,7 @@ final class MapScreen extends JPanel implements MapView.Listener
             }
         }
         menu.addSeparator();
-        String[] ranges = {"A–C", "D–F", "G–K", "L–O", "P–S", "T–Z"};
-        for (String range : ranges)
+        for (String range : new String[]{"A–C", "D–F", "G–K", "L–O", "P–S", "T–Z"})
         {
             JMenu sub = new JMenu(range);
             char from = range.charAt(0);
@@ -557,10 +502,7 @@ final class MapScreen extends JPanel implements MapView.Listener
     private JMenuItem mapItem(String label, BaseMap map)
     {
         JMenuItem item = new JMenuItem(label);
-        item.addActionListener(e -> {
-            view.setFollowing(false);
-            openMap(map);
-        });
+        item.addActionListener(e -> openMap(map));
         return item;
     }
 
@@ -598,16 +540,8 @@ final class MapScreen extends JPanel implements MapView.Listener
         view.setMaps(baseMaps);
         view.setPois(pois, hidden);
         view.setLabels(labels);
-        Poi same = null;
-        for (Poi poi : pois)
-        {
-            if (previous != null && poi.type == previous.type && poi.location.equals(previous.location))
-            {
-                same = poi;
-                break;
-            }
-        }
-        view.select(same);
+        view.select(previous == null ? null : pois.stream()
+            .filter(poi -> poi.type == previous.type && poi.location.equals(previous.location)).findFirst().orElse(null));
         viewChanged();
         prepareSearch();
     }
@@ -683,14 +617,7 @@ final class MapScreen extends JPanel implements MapView.Listener
 
     KindIndex.Kind kind(String label)
     {
-        for (KindIndex.Kind kind : indexes().kinds.all())
-        {
-            if (kind.label.equalsIgnoreCase(label))
-            {
-                return kind;
-            }
-        }
-        return null;
+        return indexes().kinds.all().stream().filter(kind -> kind.label.equalsIgnoreCase(label)).findFirst().orElse(null);
     }
 
     /** Development previews. */
@@ -780,19 +707,25 @@ final class MapScreen extends JPanel implements MapView.Listener
         syncing = false;
     }
 
-    private void openMap(BaseMap map)
+    private BaseMap myMap()
     {
         WorldPoint me = view.player();
         BaseMaps baseMaps = view.maps();
-        BaseMap mine = me == null || baseMaps == null ? null : baseMaps.find(me);
-        if (mine == map)
-        {
-            view.rememberForBack(map);
-            view.showMap(map, MapView.shownOn(map, me), MapView.PLAYER_ZOOM);
-            return;
-        }
+        return me == null || baseMaps == null ? null : baseMaps.find(me);
+    }
+
+    private void openMap(BaseMap map)
+    {
+        view.setFollowing(false);
         view.rememberForBack(map);
-        view.showMap(map, null, fitZoom(map));
+        if (myMap() == map)
+        {
+            view.showMap(map, MapView.shownOn(map, view.player()), MapView.PLAYER_ZOOM);
+        }
+        else
+        {
+            view.showMap(map, null, fitZoom(map));
+        }
     }
 
     private double fitZoom(BaseMap map)
@@ -829,17 +762,11 @@ final class MapScreen extends JPanel implements MapView.Listener
         {
             return;
         }
-        JPopupMenu menu = mode == SearchMode.MONSTERS ? wikiResults(typed, false)
-            : mode == SearchMode.ITEMS ? wikiResults(typed, true) : placeResults(typed.toLowerCase(Locale.ROOT));
+        JPopupMenu menu = mode != SearchMode.PLACES ? wikiResults(typed, mode == SearchMode.ITEMS)
+            : placeResults(typed.toLowerCase(Locale.ROOT));
         menu.setFocusable(false);
         results = menu;
-        boolean typing = search.isFocusOwner();
-        menu.show(search, 0, search.getHeight());
-        // Never take focus from the game.
-        if (typing)
-        {
-            search.requestFocusInWindow();
-        }
+        keepFocus(() -> menu.show(search, 0, search.getHeight()));
     }
 
     private void chooseFirst()
@@ -905,11 +832,16 @@ final class MapScreen extends JPanel implements MapView.Listener
         }
         if (menu.getComponentCount() == 0)
         {
-            JMenuItem none = new JMenuItem("Nothing found. Looking for a monster or item? Switch the search with the button.");
-            none.setEnabled(false);
-            menu.add(none);
+            menu.add(disabled("Nothing found. Looking for a monster or item? Switch the search with the button."));
         }
         return menu;
+    }
+
+    private static JMenuItem disabled(String text)
+    {
+        JMenuItem item = new JMenuItem(text);
+        item.setEnabled(false);
+        return item;
     }
 
     private void choose(SearchIndex.Hit hit)
@@ -920,15 +852,15 @@ final class MapScreen extends JPanel implements MapView.Listener
                 view.focus(((PoiLoader.Place) hit.target).point);
                 break;
             case MAP:
-                view.setFollowing(false);
                 openMap((BaseMap) hit.target);
                 break;
             case KIND:
-                npcs.showKind((KindIndex.Kind) hit.target, this::placeName);
-                break;
             case KIND_PLACE:
                 npcs.showKind((KindIndex.Kind) hit.target, this::placeName);
-                npcs.lookAtPoint(hit.point);
+                if (hit.type == SearchIndex.Type.KIND_PLACE)
+                {
+                    npcs.lookAtPoint(hit.point);
+                }
                 break;
             default:
                 view.focus((Poi) hit.target);
@@ -936,16 +868,11 @@ final class MapScreen extends JPanel implements MapView.Listener
         }
     }
 
+    @RequiredArgsConstructor
     private static final class Indexes
     {
         final KindIndex kinds;
         final SearchIndex search;
-
-        Indexes(KindIndex kinds, SearchIndex search)
-        {
-            this.kinds = kinds;
-            this.search = search;
-        }
     }
 
     /** Builds search indexes off the Swing thread (slow on the first key otherwise). */
@@ -980,19 +907,25 @@ final class MapScreen extends JPanel implements MapView.Listener
         {
             return;
         }
-        // Read on the Swing thread; the lists are replaced, never changed.
+        buildingFrom = from;
+        Supplier<Indexes> build = builder();
+        building = INDEXER.submit(build::get);
+    }
+
+    /** Reads on the Swing thread; the lists are replaced, never changed. */
+    private Supplier<Indexes> builder()
+    {
         List<Poi> pois = view.pois();
         List<Poi> extras = view.searchExtras();
         List<SkillSpots.Spot> spots = MapIconLoader.skillSpots().all();
         List<PoiLoader.Place> labels = view.labels();
         List<BaseMap> all = allMaps();
         BaseMaps baseMaps = view.maps();
-        buildingFrom = from;
-        building = INDEXER.submit(() -> {
+        return () -> {
             KindIndex kinds = KindIndex.build(pois, extras, spots);
             return new Indexes(kinds, SearchIndex.build(labels, all, pois, extras, kinds,
                 point -> placeName(baseMaps, labels, point)));
-        });
+        };
     }
 
     private Indexes indexes()
@@ -1015,30 +948,22 @@ final class MapScreen extends JPanel implements MapView.Listener
         catch (InterruptedException e)
         {
             Thread.currentThread().interrupt();
-            ready = buildNow();
+            ready = builder().get();
         }
         catch (java.util.concurrent.ExecutionException e)
         {
-            ready = buildNow();
+            ready = builder().get();
         }
         indexes = ready;
         indexesFrom = pendingFrom;
         return ready;
     }
 
-    private Indexes buildNow()
-    {
-        KindIndex kinds = KindIndex.build(view.pois(), view.searchExtras(), MapIconLoader.skillSpots().all());
-        return new Indexes(kinds, SearchIndex.build(view.labels(), allMaps(), view.pois(), view.searchExtras(), kinds,
-            this::placeName));
-    }
-
     private JPopupMenu wikiResults(String typed, boolean items)
     {
         JPopupMenu menu = new JPopupMenu();
-        JMenuItem pending = new JMenuItem("Searching the wiki…");
-        pending.setEnabled(false);
-        menu.add(pending);
+        JMenuItem pending = menu.add(disabled("Searching the wiki…"));
+        Consumer<String> find = items ? npcs::findItem : npcs::findMonster;
         Consumer<List<String>> show = titles -> javax.swing.SwingUtilities.invokeLater(() -> {
             if (menu != results)
             {
@@ -1047,9 +972,7 @@ final class MapScreen extends JPanel implements MapView.Listener
             menu.remove(pending);
             if (titles.isEmpty())
             {
-                JMenuItem none = new JMenuItem(items ? "No items found" : "No monsters or NPCs with locations found");
-                none.setEnabled(false);
-                menu.add(none);
+                menu.add(disabled(items ? "No items found" : "No monsters or NPCs with locations found"));
             }
             for (String title : titles)
             {
@@ -1058,14 +981,7 @@ final class MapScreen extends JPanel implements MapView.Listener
                 suggestion.addActionListener(e -> {
                     search.setText(title);
                     typing.stop();
-                    if (items)
-                    {
-                        npcs.findItem(title);
-                    }
-                    else
-                    {
-                        npcs.findMonster(title);
-                    }
+                    find.accept(title);
                 });
                 menu.add(suggestion);
             }
@@ -1087,20 +1003,9 @@ final class MapScreen extends JPanel implements MapView.Listener
         return menu;
     }
 
-    private static boolean sameLists(List<Object> a, Object b)
+    private static boolean sameLists(List<Object> a, List<Object> b)
     {
-        if (!(b instanceof List) || ((List<?>) b).size() != a.size())
-        {
-            return false;
-        }
-        for (int i = 0; i < a.size(); i++)
-        {
-            if (a.get(i) != ((List<?>) b).get(i))
-            {
-                return false;
-            }
-        }
-        return true;
+        return b != null && b.size() == a.size() && IntStream.range(0, a.size()).allMatch(i -> a.get(i) == b.get(i));
     }
 
     String placeName(WorldPoint point)
@@ -1111,20 +1016,11 @@ final class MapScreen extends JPanel implements MapView.Listener
     private static String placeName(BaseMaps baseMaps, List<PoiLoader.Place> labels, WorldPoint point)
     {
         BaseMap map = baseMaps == null ? null : baseMaps.find(point);
-        if (map != null && map.id != BaseMap.SURFACE)
-        {
-            return map.name;
-        }
-        return MapIconLoader.settlement(labels, point);
+        return map != null && map.id != BaseMap.SURFACE ? map.name : MapIconLoader.settlement(labels, point);
     }
 
     private List<BaseMap> allMaps()
     {
-        List<BaseMap> list = new ArrayList<>();
-        for (int i = 0; i < maps.getItemCount(); i++)
-        {
-            list.add(maps.getItemAt(i));
-        }
-        return list;
+        return IntStream.range(0, maps.getItemCount()).mapToObj(maps::getItemAt).collect(Collectors.toList());
     }
 }

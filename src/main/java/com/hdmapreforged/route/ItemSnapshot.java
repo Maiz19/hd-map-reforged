@@ -1,5 +1,6 @@
 package com.hdmapreforged.route;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -19,23 +20,12 @@ public final class ItemSnapshot
 
     static
     {
-        NAMES.put("AIR_RUNE", AIR);
-        NAMES.put("WATER_RUNE", WATER);
-        NAMES.put("EARTH_RUNE", EARTH);
-        NAMES.put("FIRE_RUNE", FIRE);
-        NAMES.put("MIND_RUNE", 558);
-        NAMES.put("BODY_RUNE", 559);
-        NAMES.put("DEATH_RUNE", 560);
-        NAMES.put("NATURE_RUNE", 561);
-        NAMES.put("CHAOS_RUNE", 562);
-        NAMES.put("LAW_RUNE", 563);
-        NAMES.put("COSMIC_RUNE", 564);
-        NAMES.put("BLOOD_RUNE", 565);
-        NAMES.put("SOUL_RUNE", 566);
-        NAMES.put("ASTRAL_RUNE", 9075);
-        NAMES.put("WRATH_RUNE", 21880);
-        NAMES.put("COINS", 995);
-        NAMES.put("BANANA", 1963);
+        for (String name : ("AIR_RUNE=556 WATER_RUNE=555 EARTH_RUNE=557 FIRE_RUNE=554 MIND_RUNE=558 BODY_RUNE=559 DEATH_RUNE=560"
+            + " NATURE_RUNE=561 CHAOS_RUNE=562 LAW_RUNE=563 COSMIC_RUNE=564 BLOOD_RUNE=565 SOUL_RUNE=566 ASTRAL_RUNE=9075"
+            + " WRATH_RUNE=21880 COINS=995 BANANA=1963").split(" "))
+        {
+            NAMES.put(name.split("=")[0], Integer.valueOf(name.split("=")[1]));
+        }
         COMBINATIONS.put(4694, new int[]{WATER, FIRE});
         COMBINATIONS.put(4695, new int[]{AIR, WATER});
         COMBINATIONS.put(4696, new int[]{AIR, EARTH});
@@ -62,14 +52,10 @@ public final class ItemSnapshot
     {
         Map<Integer, Long> all = new HashMap<>();
         carried.forEach((id, n) -> add(all, id, n));
-        Map<Integer, Long> banked = null;
+        Map<Integer, Long> banked = bank == null ? null : new HashMap<>();
         if (bank != null)
         {
-            banked = new HashMap<>();
-            for (Map.Entry<Integer, Long> e : bank.entrySet())
-            {
-                add(banked, e.getKey(), e.getValue());
-            }
+            bank.forEach((id, n) -> add(banked, id, n));
         }
         return new ItemSnapshot(Collections.unmodifiableMap(all), Collections.unmodifiableSet(new HashSet<>(unlimited)),
             banked == null ? null : Collections.unmodifiableMap(banked));
@@ -98,30 +84,20 @@ public final class ItemSnapshot
     public static Set<Integer> runesFromWeapon(String name)
     {
         Set<Integer> runes = new HashSet<>();
-        if (name == null)
-        {
-            return runes;
-        }
-        String n = name.toLowerCase(Locale.ROOT);
+        String n = name == null ? "" : name.toLowerCase(Locale.ROOT);
         if (!n.contains("staff") && !n.contains("tome of") && !n.contains("wand"))
         {
             return runes;
         }
-        if (n.contains("air") || n.contains("smoke") || n.contains("mist") || n.contains("dust"))
+        // The words that give each rune.
+        String[] words = {"air smoke mist dust", "water mud steam mist kodai", "earth lava mud dust", "fire lava steam smoke"};
+        int[] ids = {AIR, WATER, EARTH, FIRE};
+        for (int i = 0; i < ids.length; i++)
         {
-            runes.add(AIR);
-        }
-        if (n.contains("water") || n.contains("mud") || n.contains("steam") || n.contains("mist") || n.contains("kodai"))
-        {
-            runes.add(WATER);
-        }
-        if (n.contains("earth") || n.contains("lava") || n.contains("mud") || n.contains("dust"))
-        {
-            runes.add(EARTH);
-        }
-        if (n.contains("fire") || n.contains("lava") || n.contains("steam") || n.contains("smoke"))
-        {
-            runes.add(FIRE);
+            if (Arrays.stream(words[i].split(" ")).anyMatch(n::contains))
+            {
+                runes.add(ids[i]);
+            }
         }
         return runes;
     }
@@ -132,11 +108,7 @@ public final class ItemSnapshot
      */
     public boolean has(String column, boolean bankToo)
     {
-        if (this == EVERYTHING)
-        {
-            return true;
-        }
-        if (column == null || column.trim().isEmpty())
+        if (this == EVERYTHING || column == null || column.trim().isEmpty())
         {
             return true;
         }
@@ -161,7 +133,7 @@ public final class ItemSnapshot
                     }
                     catch (NumberFormatException e)
                     {
-                        quantity = 1;
+                        // One then.
                     }
                 }
                 Integer id = !token.chars().allMatch(Character::isDigit) ? NAMES.get(token)

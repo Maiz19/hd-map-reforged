@@ -45,7 +45,7 @@ public final class CollisionMap
         this.obstacles = obstacles;
         for (int node : obstacles.keySet())
         {
-            obstacleRegions[(Tiles.x(node) >> 6) << 8 | (Tiles.y(node) >> 6)] = true;
+            obstacleRegions[region(Tiles.x(node), Tiles.y(node))] = true;
         }
     }
 
@@ -56,9 +56,9 @@ public final class CollisionMap
         {
             throw new IOException("Missing " + RESOURCE);
         }
-        try (InputStream stream = in)
+        try (in)
         {
-            return read(stream);
+            return read(in);
         }
     }
 
@@ -129,24 +129,30 @@ public final class CollisionMap
             {
                 if ((mask & 1 << z) != 0)
                 {
-                    long[] layers = new long[LAYERS];
-                    for (int j = 0; j < LAYERS; j++)
-                    {
-                        layers[j] = in.readLong();
-                    }
-                    floors[region << 2 | z] = layers;
+                    floors[region << 2 | z] = longs(in, LAYERS);
                 }
             }
             if ((mask & 16) != 0)
             {
-                long[] bits = new long[64];
-                for (int j = 0; j < 64; j++)
-                {
-                    bits[j] = in.readLong();
-                }
-                water[region] = bits;
+                water[region] = longs(in, 64);
             }
         }
+    }
+
+    private static long[] longs(DataInputStream in, int count) throws IOException
+    {
+        long[] longs = new long[count];
+        for (int j = 0; j < count; j++)
+        {
+            longs[j] = in.readLong();
+        }
+        return longs;
+    }
+
+    /** The region of a tile, or -1 off the world. */
+    private static int region(int x, int y)
+    {
+        return (x | y) >>> 14 == 0 ? (x >> 6) << 8 | (y >> 6) : -1;
     }
 
     /** "x y plane <tab> name <tab> action <tab> what it takes"; bad lines are skipped. */
@@ -178,17 +184,14 @@ public final class CollisionMap
 
     public boolean isObstacle(int x, int y, int node)
     {
-        return x >= 0 && y >= 0 && x < 1 << 14 && y < 1 << 14 && obstacleRegions[(x >> 6) << 8 | (y >> 6)]
-            && obstacles.containsKey(node);
+        int region = region(x, y);
+        return region >= 0 && obstacleRegions[region] && obstacles.containsKey(node);
     }
 
     private long[] layers(int x, int y, int z)
     {
-        if (x < 0 || y < 0 || x >= 1 << 14 || y >= 1 << 14 || z < 0 || z > 3)
-        {
-            return null;
-        }
-        return floors[((x >> 6) << 8 | (y >> 6)) << 2 | z];
+        int region = region(x, y);
+        return region < 0 || z < 0 || z > 3 ? null : floors[region << 2 | z];
     }
 
     private static boolean bit(long[] layers, int offset, int x, int y)
@@ -214,12 +217,8 @@ public final class CollisionMap
 
     public boolean water(int x, int y)
     {
-        if (x < 0 || y < 0 || x >= 1 << 14 || y >= 1 << 14)
-        {
-            return false;
-        }
-        long[] bits = water[(x >> 6) << 8 | (y >> 6)];
-        return bits != null && bit(bits, 0, x, y);
+        int region = region(x, y);
+        return region >= 0 && water[region] != null && bit(water[region], 0, x, y);
     }
 
     private boolean edge(int x, int y, int z, int offset)
@@ -239,10 +238,8 @@ public final class CollisionMap
         if (dx != 0 && dy != 0)
         {
             // Diagonal: both straight routes around the corner must be open, and no door on the way.
-            return walkable(x + dx, y, z) && walkable(x, y + dy, z)
-                && straightOpen(x, y, z, dx, 0) && straightOpen(x + dx, y, z, 0, dy)
-                && straightOpen(x, y, z, 0, dy) && straightOpen(x, y + dy, z, dx, 0)
-                && !door(x, y, z, dx, 0) && !door(x + dx, y, z, 0, dy) && !door(x, y, z, 0, dy) && !door(x, y + dy, z, dx, 0);
+            return walkable(x + dx, y, z) && walkable(x, y + dy, z) && clear(x, y, z, dx, 0) && clear(x + dx, y, z, 0, dy)
+                && clear(x, y, z, 0, dy) && clear(x, y + dy, z, dx, 0);
         }
         return straightOpen(x, y, z, dx, dy);
     }
@@ -250,6 +247,11 @@ public final class CollisionMap
     private boolean straightOpen(int x, int y, int z, int dx, int dy)
     {
         return !crosses(x, y, z, dx, dy, WALL_N, WALL_E);
+    }
+
+    private boolean clear(int x, int y, int z, int dx, int dy)
+    {
+        return straightOpen(x, y, z, dx, dy) && !door(x, y, z, dx, dy);
     }
 
     public boolean door(int x, int y, int z, int dx, int dy)
@@ -266,8 +268,13 @@ public final class CollisionMap
     /** 1 north wall, 2 east wall, 4 north door, 8 east door. */
     public int edges(int x, int y, int z)
     {
-        return (edge(x, y, z, WALL_N) ? 1 : 0) | (edge(x, y, z, WALL_E) ? 2 : 0) | (edge(x, y, z, DOOR_N) ? 4 : 0)
-            | (edge(x, y, z, DOOR_E) ? 8 : 0);
+        int edges = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            // WALL_N, WALL_E, DOOR_N, DOOR_E.
+            edges |= edge(x, y, z, WALL_N * (i + 1)) ? 1 << i : 0;
+        }
+        return edges;
     }
 
     /** Nearest walkable tile within {@code radius} (Chebyshev rings, then straight distance), packed, or -1. */

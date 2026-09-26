@@ -2,15 +2,19 @@ package com.hdmapreforged;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /** Where a monster or NPC is, from the {@code {{LocLine}}} templates on its wiki page. */
 final class NpcSpawns
 {
+    @RequiredArgsConstructor
     static final class Group
     {
         final String name;
@@ -29,48 +33,18 @@ final class NpcSpawns
             this(name, location, levels, members, mapId, points, null, null, null);
         }
 
-        Group(String name, String location, String levels, boolean members, int mapId, List<WorldPoint> points,
-            String category, String note, java.awt.Color color)
-        {
-            this.name = name;
-            this.location = location;
-            this.levels = levels;
-            this.members = members;
-            this.mapId = mapId;
-            this.points = points;
-            this.category = category;
-            this.note = note;
-            this.color = color;
-        }
-
         Group as(String category, String note, java.awt.Color color)
         {
             return new Group(name, location, levels, members, mapId, points, category, note, color);
         }
 
+        /** The point nearest the middle of them all. */
         WorldPoint center()
         {
-            double x = 0;
-            double y = 0;
-            for (WorldPoint p : points)
-            {
-                x += p.getX();
-                y += p.getY();
-            }
-            x /= points.size();
-            y /= points.size();
-            WorldPoint best = points.get(0);
-            double bestDistance = Double.MAX_VALUE;
-            for (WorldPoint p : points)
-            {
-                double d = (p.getX() - x) * (p.getX() - x) + (p.getY() - y) * (p.getY() - y);
-                if (d < bestDistance)
-                {
-                    best = p;
-                    bestDistance = d;
-                }
-            }
-            return best;
+            double x = points.stream().mapToInt(WorldPoint::getX).average().orElse(0);
+            double y = points.stream().mapToInt(WorldPoint::getY).average().orElse(0);
+            return points.stream().min(java.util.Comparator.comparingDouble(p -> (p.getX() - x) * (p.getX() - x)
+                + (p.getY() - y) * (p.getY() - y))).orElse(null);
         }
     }
 
@@ -106,12 +80,7 @@ final class NpcSpawns
 
     int spawnCount()
     {
-        int n = 0;
-        for (Group group : groups)
-        {
-            n += group.points.size();
-        }
-        return n;
+        return groups.stream().mapToInt(group -> group.points.size()).sum();
     }
 
     static NpcSpawns parse(String page, String wikitext)
@@ -166,49 +135,10 @@ final class NpcSpawns
 
     private static Group group(String page, String body)
     {
-        String name = page;
-        String location = "";
-        String levels = "";
-        boolean members = false;
-        int mapId = -1;
-        int plane = 0;
         List<String> anonymous = new ArrayList<>();
-        // Links first: their "|" would split a field.
-        String text = TEMPLATE.matcher(LINK.matcher(body).replaceAll("$1")).replaceAll("");
-        for (String part : text.split("\\|"))
-        {
-            int eq = part.indexOf('=');
-            if (eq < 0)
-            {
-                anonymous.add(part);
-                continue;
-            }
-            String key = part.substring(0, eq).trim().toLowerCase(Locale.ROOT);
-            String value = part.substring(eq + 1).trim();
-            switch (key)
-            {
-                case "name":
-                    name = clean(value);
-                    break;
-                case "location":
-                    location = clean(value);
-                    break;
-                case "levels":
-                    levels = clean(value);
-                    break;
-                case "members":
-                    members = value.equalsIgnoreCase("yes");
-                    break;
-                case "mapid":
-                    mapId = number(value, -1);
-                    break;
-                case "plane":
-                    plane = number(value, 0);
-                    break;
-                default:
-                    break;
-            }
-        }
+        Map<String, String> fields = fields(body, anonymous);
+        int mapId = number(fields, "mapid", -1);
+        int plane = number(fields, "plane", 0);
         List<WorldPoint> points = new ArrayList<>();
         for (String part : anonymous)
         {
@@ -218,9 +148,31 @@ final class NpcSpawns
         {
             return null;
         }
+        String name = fields.containsKey("name") ? clean(fields.get("name")) : page;
         // Where the wiki's map draws them; the game has some elsewhere (the Kalphite Lair).
-        return new Group(name.isEmpty() ? page : name, location, levels, members, mapId,
+        return new Group(name.isEmpty() ? page : name, clean(fields.getOrDefault("location", "")),
+            clean(fields.getOrDefault("levels", "")), "yes".equalsIgnoreCase(fields.get("members")), mapId,
             WorldMapMoves.toWorld(mapId, points));
+    }
+
+    /** A template's named fields (lower-case names, later ones win), its unnamed ones into {@code anonymous}. */
+    private static Map<String, String> fields(String body, List<String> anonymous)
+    {
+        Map<String, String> fields = new HashMap<>();
+        // Links first: their "|" would split a field.
+        for (String part : TEMPLATE.matcher(LINK.matcher(body).replaceAll("$1")).replaceAll("").split("\\|"))
+        {
+            int eq = part.indexOf('=');
+            if (eq < 0)
+            {
+                anonymous.add(part);
+            }
+            else
+            {
+                fields.put(part.substring(0, eq).trim().toLowerCase(Locale.ROOT), part.substring(eq + 1).trim());
+            }
+        }
+        return fields;
     }
 
     /** The points of an unnamed map argument, as the wiki's map module reads them ("3200,3200", "x:3200", "plane:1"). */
@@ -236,40 +188,33 @@ final class NpcSpawns
                 continue;
             }
             String[] kv = COLON.split(option, 2);
-            Integer value = null;
             if (kv.length == 1 || kv[0].equalsIgnoreCase("x") || kv[0].equalsIgnoreCase("y"))
             {
-                value = coordinate(kv[kv.length - 1]);
+                Integer value = coordinate(kv[kv.length - 1]);
                 if (value == null)
                 {
                     // A word, not coordinates at all.
                     return;
+                }
+                if (open == null)
+                {
+                    open = new int[]{value, -1};
+                }
+                else
+                {
+                    open[1] = value;
+                    xy.add(open);
+                    open = null;
                 }
             }
             else if (coordinate(kv[0]) != null && coordinate(kv[1]) != null)
             {
                 xy.add(new int[]{coordinate(kv[0]), coordinate(kv[1])});
                 open = null;
-                continue;
             }
             else if (kv[0].equalsIgnoreCase("plane"))
             {
                 z = number(kv[1], plane);
-                continue;
-            }
-            else
-            {
-                continue;
-            }
-            if (open == null)
-            {
-                open = new int[]{value, -1};
-            }
-            else
-            {
-                open[1] = value;
-                xy.add(open);
-                open = null;
             }
         }
         z = Math.max(0, Math.min(3, z));
@@ -313,46 +258,14 @@ final class NpcSpawns
             {
                 break;
             }
-            String body = TEMPLATE.matcher(LINK.matcher(wikitext.substring(start.end(), end - 2)).replaceAll("$1"))
-                .replaceAll("");
-            String name = "";
-            int plane = 0;
-            int mapId = -1;
-            Integer x = null;
-            Integer y = null;
-            List<WorldPoint> points = new ArrayList<>();
             List<String> anonymous = new ArrayList<>();
-            for (String part : body.split("\\|"))
-            {
-                int eq = part.indexOf('=');
-                if (eq < 0)
-                {
-                    anonymous.add(part);
-                    continue;
-                }
-                String key = part.substring(0, eq).trim().toLowerCase(Locale.ROOT);
-                String value = part.substring(eq + 1).trim();
-                switch (key)
-                {
-                    case "name":
-                        name = clean(value);
-                        break;
-                    case "x":
-                        x = number(value, -1) >= 0 ? number(value, -1) : null;
-                        break;
-                    case "y":
-                        y = number(value, -1) >= 0 ? number(value, -1) : null;
-                        break;
-                    case "plane":
-                        plane = number(value, 0);
-                        break;
-                    case "mapid":
-                        mapId = number(value, -1);
-                        break;
-                    default:
-                        break;
-                }
-            }
+            Map<String, String> fields = fields(wikitext.substring(start.end(), end - 2), anonymous);
+            String name = clean(fields.getOrDefault("name", ""));
+            int plane = number(fields, "plane", 0);
+            int mapId = number(fields, "mapid", -1);
+            int x = number(fields, "x", -1);
+            int y = number(fields, "y", -1);
+            List<WorldPoint> points = new ArrayList<>();
             for (String part : anonymous)
             {
                 // Only plain points: lines and text labels ("mtype:line…") are no place.
@@ -361,7 +274,7 @@ final class NpcSpawns
                     points(part, plane, points);
                 }
             }
-            if (points.isEmpty() && x != null && y != null)
+            if (points.isEmpty() && x >= 0 && y >= 0)
             {
                 points.add(new WorldPoint(x, y, Math.max(0, Math.min(3, plane))));
             }
@@ -390,10 +303,7 @@ final class NpcSpawns
                 continue;
             }
             target = Character.toUpperCase(target.charAt(0)) + target.substring(1);
-            if (!counts.containsKey(target))
-            {
-                counts.put(target, occurrences(lower, target.toLowerCase(Locale.ROOT)));
-            }
+            counts.computeIfAbsent(target, t -> occurrences(lower, t.toLowerCase(Locale.ROOT)));
         }
         List<String> ranked = new ArrayList<>(counts.keySet());
         // Stable: equal counts keep the order they are first linked in.
@@ -434,6 +344,12 @@ final class NpcSpawns
         text = BOLD.matcher(TAG.matcher(TEMPLATE.matcher(text).replaceAll("")).replaceAll("")).replaceAll("");
         text = EMPTY_BRACKETS.matcher(text).replaceAll("");
         return SPACES.matcher(text).replaceAll(" ").trim();
+    }
+
+    private static int number(Map<String, String> fields, String key, int fallback)
+    {
+        String value = fields.get(key);
+        return value == null ? fallback : number(value, fallback);
     }
 
     private static int number(String value, int fallback)

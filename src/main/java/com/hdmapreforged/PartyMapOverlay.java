@@ -16,15 +16,18 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.function.BiFunction;
 import java.util.function.IntSupplier;
 import java.util.function.LongFunction;
 import java.util.function.LongPredicate;
 import java.util.function.Supplier;
 import javax.swing.Timer;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /** Party members on the map: a disc (or avatar) with their initial; name and world when pointed at or clicked. */
+@RequiredArgsConstructor
 final class PartyMapOverlay implements MapView.Overlay
 {
     /** Distinct from the player's yellow and the icon colours. */
@@ -50,15 +53,6 @@ final class PartyMapOverlay implements MapView.Overlay
     /** Only the clicked member and the one under the mouse show a name. */
     private LongPredicate selected = id -> false;
     private LongPredicate hovered = id -> false;
-
-    PartyMapOverlay(Supplier<List<PartyMapMembers.Marker>> markers, Supplier<Set<String>> favourites,
-        Supplier<Boolean> onlyFavourites, IntSupplier myWorld)
-    {
-        this.markers = markers;
-        this.favourites = favourites;
-        this.onlyFavourites = onlyFavourites;
-        this.myWorld = myWorld;
-    }
 
     private LongFunction<List<PartyMapMembers.Loot>> loot = id -> Collections.emptyList();
     private BiFunction<Integer, Integer, BufferedImage> itemImage = (id, q) -> null;
@@ -107,10 +101,7 @@ final class PartyMapOverlay implements MapView.Overlay
             if (moving)
             {
                 lastMoving = System.currentTimeMillis();
-                if (!timer.isRunning())
-                {
-                    timer.start();
-                }
+                timer.start(); // no-op while running
             }
         }
 
@@ -290,26 +281,17 @@ final class PartyMapOverlay implements MapView.Overlay
                 layer.drawString(initial, (float) (x - metrics.stringWidth(initial) / 2.0),
                     (float) (y + metrics.getAscent() / 2.0 - 1.5));
             }
-            layer.setStroke(new BasicStroke(favourite ? 3f : 2f));
             // White even for favourites: gold would read as the local player's yellow marker.
-            layer.setColor(Color.WHITE);
-            layer.draw(disc);
-            layer.setColor(color);
-            layer.setStroke(new BasicStroke(1f));
-            layer.draw(circle(x, y, r + 2));
-            boolean otherWorld = otherWorld(marker, myWorld);
+            ring(layer, disc, favourite ? 3f : 2f, Color.WHITE);
+            ring(layer, circle(x, y, r + 2), 1f, color);
             if (chosen)
             {
-                layer.setStroke(new BasicStroke(3f));
-                layer.setColor(Color.WHITE);
-                layer.draw(circle(x, y, r + 5));
-                layer.setColor(color);
-                layer.setStroke(new BasicStroke(2f));
-                layer.draw(circle(x, y, r + 8));
+                ring(layer, circle(x, y, r + 5), 3f, Color.WHITE);
+                ring(layer, circle(x, y, r + 8), 2f, color);
             }
             if (chosen || hover)
             {
-                paintLabel(layer, marker, x, y + r + 4, color, favourite, otherFloor, otherWorld);
+                paintLabel(layer, marker, x, y + r + 4, color, favourite, otherFloor, otherWorld(marker, myWorld));
             }
         }
         finally
@@ -318,13 +300,19 @@ final class PartyMapOverlay implements MapView.Overlay
         }
     }
 
+    private static void ring(Graphics2D g, Shape shape, float width, Color color)
+    {
+        g.setStroke(new BasicStroke(width));
+        g.setColor(color);
+        g.draw(shape);
+    }
+
     private static Ellipse2D circle(double x, double y, double r)
     {
         return new Ellipse2D.Double(x - r, y - r, r * 2, r * 2);
     }
 
-    private static void paintLabel(
-Graphics2D g, PartyMapMembers.Marker marker, double x, double top, Color color,
+    private static void paintLabel(Graphics2D g, PartyMapMembers.Marker marker, double x, double top, Color color,
         boolean favourite, boolean otherFloor, boolean otherWorld)
     {
         String name = marker.name != null ? marker.name : "Party member";
@@ -341,9 +329,7 @@ Graphics2D g, PartyMapMembers.Marker marker, double x, double top, Color color,
         RoundRectangle2D box = new RoundRectangle2D.Double(left, top, width, height, 8, 8);
         g.setColor(LABEL_BACKGROUND);
         g.fill(box);
-        g.setColor(color);
-        g.setStroke(new BasicStroke(1f));
-        g.draw(box);
+        ring(g, box, 1f, color);
         double textLeft = x - nameWidth / 2.0;
         float baseline = (float) (top + 1 + nameMetrics.getAscent());
         if (favourite)
@@ -368,32 +354,22 @@ Graphics2D g, PartyMapMembers.Marker marker, double x, double top, Color color,
     }
 
     /** "World 330 · floor 1 · 3 min ago", leaving out what is not worth saying. */
-
     static String detail(PartyMapMembers.Marker marker, boolean otherFloor, boolean otherWorld)
     {
-        StringBuilder text = new StringBuilder();
+        StringJoiner text = new StringJoiner(" · ");
         if (otherWorld)
         {
-            text.append("World ").append(marker.world);
+            text.add("World " + marker.world);
         }
         if (otherFloor)
         {
-            append(text, "floor " + marker.point.getPlane());
+            text.add("floor " + marker.point.getPlane());
         }
         if (marker.stale())
         {
-            append(text, ago(marker.ageMillis));
+            text.add(ago(marker.ageMillis));
         }
         return text.length() == 0 ? null : text.toString();
-    }
-
-    private static void append(StringBuilder text, String part)
-    {
-        if (text.length() > 0)
-        {
-            text.append(" · ");
-        }
-        text.append(part);
     }
 
     static String ago(long millis)

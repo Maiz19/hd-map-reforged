@@ -2,6 +2,7 @@ package com.hdmapreforged;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,11 +11,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /** Every place of one kind (herb patches, shark fishing spots, banks) from our icons, game icons and skill spots. */
 final class KindIndex
 {
+    @RequiredArgsConstructor
     static final class Entry
     {
         final String name;
@@ -22,41 +26,21 @@ final class KindIndex
         final String detail;
         /** Null for a listed skilling spot. */
         final Poi poi;
-
-        Entry(String name, WorldPoint point, String detail)
-        {
-            this(name, point, detail, null);
-        }
-
-        Entry(String name, WorldPoint point, String detail, Poi poi)
-        {
-            this.name = name;
-            this.point = point;
-            this.detail = detail;
-            this.poi = poi;
-        }
     }
 
+    @RequiredArgsConstructor
     static final class Kind
     {
         final String label;
         final PoiType type;
         final String page;
         final List<Entry> entries = new ArrayList<>();
-
-        Kind(String label, PoiType type, String page)
-        {
-            this.label = label;
-            this.type = type;
-            this.page = page;
-        }
     }
 
-    private static final Set<PoiType> COUNTED = EnumSet.of(PoiType.FAIRY_RING, PoiType.SPIRIT_TREE, PoiType.GNOME_GLIDER,
-        PoiType.BALLOON, PoiType.QUETZAL, PoiType.MUSHTREE, PoiType.OBELISK, PoiType.CHARTER, PoiType.CANOE,
-        PoiType.CARPET, PoiType.MINECART, PoiType.DUNGEON_ENTRANCE, PoiType.MOORING, PoiType.SALVAGE,
-        PoiType.RUNECRAFT_ALTAR, PoiType.AGILITY_COURSE, PoiType.AGILITY_SHORTCUT, PoiType.FARMING_PATCH,
-        PoiType.MINIGAME, PoiType.BANK, PoiType.ALTAR, PoiType.ANVIL, PoiType.QUEST_START);
+    /** Every type but these; a new type is counted unless added here. */
+    private static final Set<PoiType> COUNTED = EnumSet.complementOf(EnumSet.of(PoiType.TELEPORT, PoiType.BOAT,
+        PoiType.PORTAL, PoiType.LEVER, PoiType.TRANSPORT, PoiType.MAP_EXIT, PoiType.SHOP, PoiType.MAP_LINK,
+        PoiType.GAME_ICON, PoiType.FOUND));
     /** "3 × Copper (1)", "Willow tree (30 Woodcutting)", "Shark (76)". */
     private static final Pattern SKILL_NOTE = Pattern.compile("^(Fishing|Mining|Hunter|Woodcutting): .*");
     private static final Pattern TRAILING_BRACKETS = Pattern.compile("\\s*\\([^()]*\\)$");
@@ -94,15 +78,8 @@ final class KindIndex
         {
             addSpot(kinds, spot);
         }
-        List<Kind> kept = new ArrayList<>();
-        for (Kind kind : kinds.values())
-        {
-            if (kind.entries.size() >= MIN_ENTRIES)
-            {
-                kept.add(kind);
-            }
-        }
-        return new KindIndex(kept);
+        return new KindIndex(kinds.values().stream().filter(kind -> kind.entries.size() >= MIN_ENTRIES)
+            .collect(Collectors.toList()));
     }
 
     private static void addIcon(Map<String, Kind> kinds, Poi poi)
@@ -111,11 +88,11 @@ final class KindIndex
         {
             return;
         }
+        Entry entry = new Entry(poi.name, poi.location, poi.note, poi);
         if (COUNTED.contains(poi.type))
         {
-            String label = poi.type == PoiType.SALVAGE ? "Salvaging spots" : plural(poi.type.displayName);
-            add(kinds, label, poi.type, poi.type.wikiPage,
-                new Entry(poi.name, poi.location, poi.note, poi));
+            add(kinds, poi.type == PoiType.SALVAGE ? "Salvaging spots" : plural(poi.type.displayName), poi.type,
+                poi.type.wikiPage, entry);
         }
         if (poi.type == PoiType.FARMING_PATCH)
         {
@@ -126,7 +103,7 @@ final class KindIndex
                 String what = sentence(part.trim());
                 if (!what.isEmpty())
                 {
-                    add(kinds, what + " patches", poi.type, what + " patch", new Entry(poi.name, poi.location, poi.note, poi));
+                    add(kinds, what + " patches", poi.type, what + " patch", entry);
                 }
             }
         }
@@ -145,18 +122,17 @@ final class KindIndex
             String spotKind = SkillSpots.kindOf(base);
             if (spotKind != null)
             {
-                add(kinds, spotLabel(spotKind), null, spotPage(spotKind), new Entry(poi.name, poi.location, poi.note, poi));
+                add(kinds, spotLabel(spotKind), null, spotPage(spotKind), entry);
                 return;
             }
-            add(kinds, plural(base), poi.type, poi.wikiQuery != null && !poi.wikiQuery.contains("(") ? base : null,
-                new Entry(poi.name, poi.location, poi.note, poi));
+            add(kinds, plural(base), poi.type, poi.wikiQuery != null && !poi.wikiQuery.contains("(") ? base : null, entry);
         }
     }
 
     private static void addSpot(Map<String, Kind> kinds, SkillSpots.Spot spot)
     {
         String details = spot.details.replace("; ", ", ");
-        Entry entry = new Entry(spot.name, spot.location, details);
+        Entry entry = new Entry(spot.name, spot.location, details, null);
         add(kinds, spotLabel(spot.kind), null, spotPage(spot.kind), entry);
         for (String part : spot.details.split(";"))
         {
@@ -214,32 +190,14 @@ final class KindIndex
 
     private static String spotLabel(String kind)
     {
-        switch (kind)
-        {
-            case "fishing":
-                return "Fishing spots";
-            case "mining":
-                return "Mining sites";
-            case "hunter":
-                return "Hunter areas";
-            default:
-                return "Rare trees";
-        }
+        return kind.equals("fishing") ? "Fishing spots" : kind.equals("mining") ? "Mining sites"
+            : kind.equals("hunter") ? "Hunter areas" : "Rare trees";
     }
 
     private static String spotPage(String kind)
     {
-        switch (kind)
-        {
-            case "fishing":
-                return "Fishing spots";
-            case "mining":
-                return "Mining";
-            case "hunter":
-                return "Hunter";
-            default:
-                return "Woodcutting";
-        }
+        return kind.equals("fishing") ? "Fishing spots" : kind.equals("mining") ? "Mining"
+            : kind.equals("hunter") ? "Hunter" : "Woodcutting";
     }
 
     private static void add(Map<String, Kind> kinds, String label, PoiType type, String page, Entry entry)
@@ -247,16 +205,10 @@ final class KindIndex
         // "Agility short-cuts" and "Agility shortcuts" are one kind.
         String key = NOT_KEY.matcher(label.toLowerCase(Locale.ROOT)).replaceAll("");
         Kind kind = kinds.computeIfAbsent(key, k -> new Kind(label, type, page));
-        for (Entry other : kind.entries)
+        if (kind.entries.stream().noneMatch(other -> PoiLoader.near(other.point, entry.point, SAME_PLACE)))
         {
-            if (other.point.getPlane() == entry.point.getPlane()
-                && Math.abs(other.point.getX() - entry.point.getX()) <= SAME_PLACE
-                && Math.abs(other.point.getY() - entry.point.getY()) <= SAME_PLACE)
-            {
-                return;
-            }
+            kind.entries.add(entry);
         }
-        kind.entries.add(entry);
     }
 
     /** Best match first, then more places first. */
@@ -264,39 +216,23 @@ final class KindIndex
     {
         String q = query.trim().toLowerCase(Locale.ROOT);
         List<Kind> found = new ArrayList<>();
-        if (q.length() < 2)
+        for (Kind kind : kinds)
         {
-            return found;
-        }
-        for (int pass = 0; pass < 3; pass++)
-        {
-            List<Kind> part = new ArrayList<>();
-            for (Kind kind : kinds)
+            if (q.length() >= 2 && score(kind.label.toLowerCase(Locale.ROOT), q) >= 0)
             {
-                if (score(kind.label.toLowerCase(Locale.ROOT), q) == pass)
-                {
-                    part.add(kind);
-                }
+                found.add(kind);
             }
-            part.sort((a, b) -> a.entries.size() != b.entries.size() ? b.entries.size() - a.entries.size()
-                : a.label.compareToIgnoreCase(b.label));
-            found.addAll(part);
         }
+        found.sort(Comparator.comparingInt((Kind k) -> score(k.label.toLowerCase(Locale.ROOT), q))
+            .thenComparing(k -> -k.entries.size()).thenComparing(k -> k.label, String::compareToIgnoreCase));
         return found.size() > limit ? new ArrayList<>(found.subList(0, limit)) : found;
     }
 
     /** 0: starts with the query; 1: a word does; 2: contains it; -1: no match. */
     static int score(String label, String query)
     {
-        if (label.startsWith(query))
-        {
-            return 0;
-        }
-        if (label.contains(" " + query) || label.contains("/" + query))
-        {
-            return 1;
-        }
-        return label.contains(query) ? 2 : -1;
+        return label.startsWith(query) ? 0 : label.contains(" " + query) || label.contains("/" + query) ? 1
+            : label.contains(query) ? 2 : -1;
     }
 
     /** "Farming patch" gives "Farming patches", "Agility shortcut (one way)" "Agility shortcuts (one way)". */
@@ -308,27 +244,14 @@ final class KindIndex
             return plural(name.substring(0, bracket)) + name.substring(bracket);
         }
         String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.endsWith("ss") || lower.endsWith("x") || lower.endsWith("ch") || lower.endsWith("sh"))
-        {
-            return name + "es";
-        }
-        if (lower.endsWith("s"))
-        {
-            return name;
-        }
-        if (lower.endsWith("y") && lower.length() > 1 && "aeiou".indexOf(lower.charAt(lower.length() - 2)) < 0)
-        {
-            return name.substring(0, name.length() - 1) + "ies";
-        }
-        return name + "s";
+        return lower.endsWith("ss") || lower.endsWith("x") || lower.endsWith("ch") || lower.endsWith("sh") ? name + "es"
+            : lower.endsWith("s") ? name
+            : lower.endsWith("y") && lower.length() > 1 && "aeiou".indexOf(lower.charAt(lower.length() - 2)) < 0
+            ? name.substring(0, name.length() - 1) + "ies" : name + "s";
     }
 
     static String sentence(String name)
     {
-        if (name.isEmpty())
-        {
-            return name;
-        }
-        return Character.toUpperCase(name.charAt(0)) + name.substring(1).toLowerCase(Locale.ROOT);
+        return name.isEmpty() ? name : Character.toUpperCase(name.charAt(0)) + name.substring(1).toLowerCase(Locale.ROOT);
     }
 }

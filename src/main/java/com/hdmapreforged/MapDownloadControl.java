@@ -6,8 +6,10 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.geom.RoundRectangle2D;
 import javax.swing.Timer;
+import lombok.RequiredArgsConstructor;
 
 /** Shows the progress of "Download the whole map" on the map. Swing thread only. */
+@RequiredArgsConstructor
 final class MapDownloadControl implements MapView.Overlay
 {
     private static final int MESSAGE_MS = 8000;
@@ -17,16 +19,9 @@ final class MapDownloadControl implements MapView.Overlay
     private static final Font FONT = new Font(Font.SANS_SERIF, Font.BOLD, 12);
 
     private final MapDownloader downloader;
+    private final Runnable repaint;
     private String shownMessage;
     private Timer messageTimer;
-
-    private final Runnable repaint;
-
-    MapDownloadControl(MapDownloader downloader, Runnable repaint)
-    {
-        this.downloader = downloader;
-        this.repaint = repaint;
-    }
 
     /** Stops the timer so nothing runs after shutdown. */
     void dispose()
@@ -47,7 +42,8 @@ final class MapDownloadControl implements MapView.Overlay
         {
             return;
         }
-        if (downloader.isRunning())
+        boolean running = downloader.isRunning();
+        if (running)
         {
             shownMessage = null;
         }
@@ -69,24 +65,24 @@ final class MapDownloadControl implements MapView.Overlay
         }
         g.setFont(FONT);
         FontMetrics metrics = g.getFontMetrics();
-        if (metrics.stringWidth(status) + 24 > projection.width() - 16 && downloader.isRunning())
+        if (metrics.stringWidth(status) + 24 > projection.width() - 16 && running)
         {
             // Narrow sidebar: just the percentage.
             status = "Downloading map " + downloader.done() * 100 / Math.max(1, downloader.total()) + "%";
         }
         int width = Math.min(projection.width() - 16, metrics.stringWidth(status) + 24);
-        g.clip(new java.awt.Rectangle(0, 0, projection.width(), projection.height()));
-        int height = downloader.isRunning() ? 34 : 26;
+        g.clipRect(0, 0, projection.width(), projection.height());
+        int height = running ? 34 : 26;
         double x = (projection.width() - width) / 2.0;
         double y = 10;
         g.setColor(PANEL);
         g.fill(new RoundRectangle2D.Double(x, y, width, height, 10, 10));
         g.setColor(Color.WHITE);
         java.awt.Shape before = g.getClip();
-        g.clip(new java.awt.Rectangle((int) x + 6, (int) y, width - 12, height));
+        g.clipRect((int) x + 6, (int) y, width - 12, height);
         g.drawString(status, (float) (x + 12), (float) (y + 6 + metrics.getAscent()));
         g.setClip(before);
-        if (downloader.isRunning())
+        if (running)
         {
             double fraction = downloader.done() / (double) Math.max(1, downloader.total());
             double barWidth = width - 24;

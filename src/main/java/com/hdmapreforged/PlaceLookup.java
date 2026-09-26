@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /**
@@ -13,16 +14,11 @@ import net.runelite.api.coords.WorldPoint;
  */
 final class PlaceLookup
 {
+    @RequiredArgsConstructor
     static final class Found
     {
         final String name;
         final WorldPoint point;
-
-        Found(String name, WorldPoint point)
-        {
-            this.name = name;
-            this.point = point;
-        }
     }
 
     /** Lower-case boss page name to lair entrance, from boss_entrances.tsv. */
@@ -77,19 +73,16 @@ final class PlaceLookup
             return null;
         }
         List<String> tried = names.size() > MAX_NAMES ? names.subList(0, MAX_NAMES) : names;
-        List<Poi> hosts = new ArrayList<>();
-        List<Poi> icons = new ArrayList<>();
-        List<String> iconNames = new ArrayList<>();
+        Icons flat = new Icons();
         for (Poi poi : Poi.flatten(pois))
         {
             for (Poi member : poi.members())
             {
-                hosts.add(poi);
-                icons.add(member);
-                iconNames.add(member.name.toLowerCase(Locale.ROOT));
+                flat.hosts.add(poi);
+                flat.members.add(member);
+                flat.names.add(member.name.toLowerCase(Locale.ROOT));
             }
         }
-        Icons flat = new Icons(hosts, icons, iconNames);
         for (boolean regions : new boolean[]{false, true})
         {
             for (String name : tried)
@@ -113,26 +106,20 @@ final class PlaceLookup
 
     private static final Pattern PAGE_KIND = Pattern.compile("\\s*\\((location|area|dungeon)\\)$");
 
+    /** Every icon, flattened, with its host and lower-case name. */
     private static final class Icons
     {
-        final List<Poi> hosts;
-        final List<Poi> members;
-        final List<String> names;
-
-        Icons(List<Poi> hosts, List<Poi> members, List<String> names)
-        {
-            this.hosts = hosts;
-            this.members = members;
-            this.names = names;
-        }
+        final List<Poi> hosts = new ArrayList<>();
+        final List<Poi> members = new ArrayList<>();
+        final List<String> names = new ArrayList<>();
     }
 
     private static WorldPoint place(String name, boolean regions, BaseMaps maps, List<PoiLoader.Place> labels,
         Icons icons)
     {
-        String lower = name.toLowerCase(Locale.ROOT);
         if (!regions)
         {
+            String lower = name.toLowerCase(Locale.ROOT);
             for (int i = 0; i < icons.members.size(); i++)
             {
                 Poi host = icons.hosts.get(i);
@@ -141,28 +128,20 @@ final class PlaceLookup
                     return host.location;
                 }
             }
-            for (PoiLoader.Place place : labels)
-            {
-                if (!"region".equals(place.kind) && place.name.equalsIgnoreCase(name) && onMap(maps, place.point))
-                {
-                    return place.point;
-                }
-            }
-            for (BaseMap map : maps.all())
-            {
-                if (map.id != BaseMap.FULL && map.id != BaseMap.SURFACE && map.name.equalsIgnoreCase(name))
-                {
-                    WorldPoint middle = new WorldPoint((map.minX + map.maxX) / 2, (map.minY + map.maxY) / 2, 0);
-                    return maps.find(middle.getX(), middle.getY()) == map ? middle : null;
-                }
-            }
-            return null;
         }
         for (PoiLoader.Place place : labels)
         {
-            if ("region".equals(place.kind) && place.name.equalsIgnoreCase(name) && onMap(maps, place.point))
+            if ("region".equals(place.kind) == regions && place.name.equalsIgnoreCase(name) && onMap(maps, place.point))
             {
                 return place.point;
+            }
+        }
+        for (BaseMap map : regions ? List.<BaseMap>of() : maps.all())
+        {
+            if (map.id != BaseMap.FULL && map.id != BaseMap.SURFACE && map.name.equalsIgnoreCase(name))
+            {
+                WorldPoint middle = new WorldPoint((map.minX + map.maxX) / 2, (map.minY + map.maxY) / 2, 0);
+                return maps.find(middle.getX(), middle.getY()) == map ? middle : null;
             }
         }
         return null;

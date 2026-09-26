@@ -1,16 +1,22 @@
 package com.hdmapreforged.route;
 
 import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.stream.Collectors;
 
 /**
  * A* over tiles, sea blocks and jumps ({@link Edge}); costs in half ticks. The heuristic stays a lower bound by folding
@@ -34,6 +40,7 @@ public final class Pathfinder
     private static final int BLOCK = 8;
     private static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
     private static final int[] DY = {0, 0, 1, -1, 1, -1, 1, -1};
+    private static final int[] NO_EDGES = {};
 
     private final CollisionMap map;
     private final SeaMap sea;
@@ -65,11 +72,10 @@ public final class Pathfinder
             int cost = STAIRS + (fee == null ? 0 : fee.cost) + (t.through ? THROUGH : 0);
             for (int origin : t.origins)
             {
-                if (!sameSpot(origin, t.to) && !confirmed(mapLinks, origin, t.to) && !confirmed(handLinks, origin, t.to))
+                if (sameSpot(origin, t.to) || confirmed(mapLinks, origin, t.to) || confirmed(handLinks, origin, t.to))
                 {
-                    continue;
+                    edges.add(new Edge(origin, t.to, kind, name, detail, cost));
                 }
-                edges.add(new Edge(origin, t.to, kind, name, detail, cost));
             }
         }
         edges.addAll(mapLinks);
@@ -94,15 +100,7 @@ public final class Pathfinder
         SHORTCUT_PASSAGES.put(map, shortcutPassages);
         stairs = Collections.unmodifiableList(edges);
         stairsByOrigin = EdgeIndex.of(edges, 0);
-        List<Edge> cutting = new ArrayList<>();
-        for (Edge e : edges)
-        {
-            if (shortCut(e))
-            {
-                cutting.add(e);
-            }
-        }
-        heuristicStairs = Collections.unmodifiableList(cutting);
+        heuristicStairs = edges.stream().filter(Pathfinder::shortCut).collect(Collectors.toUnmodifiableList());
     }
 
     public List<ShortcutPassage> shortcutPassages()
@@ -128,9 +126,7 @@ public final class Pathfinder
 
     static boolean sameSpot(int from, int to)
     {
-        int dx = Math.abs(Tiles.x(from) - Tiles.x(to));
-        int dy = Math.abs(Tiles.y(from) - Tiles.y(to));
-        return Math.max(dx, dy) <= SAME_SPOT;
+        return Math.max(Math.abs(Tiles.x(from) - Tiles.x(to)), Math.abs(Tiles.y(from) - Tiles.y(to))) <= SAME_SPOT;
     }
 
     /** Guessed cache passages leap far further (6400 tiles north), so this keeps only what the game decides. */
@@ -138,50 +134,49 @@ public final class Pathfinder
 
     private static boolean confirmed(List<Edge> passages, int from, int to)
     {
-        for (Edge e : passages)
-        {
-            if (Tiles.z(e.from) == Tiles.z(from) && Tiles.distance(e.from, from) <= 4 && Tiles.z(e.to) == Tiles.z(to)
-                && Tiles.distance(e.to, to) <= 16)
-            {
-                return true;
-            }
-        }
-        return false;
+        return passages.stream().anyMatch(e -> Tiles.z(e.from) == Tiles.z(from) && Tiles.distance(e.from, from) <= 4
+            && Tiles.z(e.to) == Tiles.z(to) && Tiles.distance(e.to, to) <= 16);
     }
 
     private static List<Edge> links(CollisionMap map, String resource)
     {
         List<Edge> edges = new ArrayList<>();
-        java.io.InputStream in = Pathfinder.class.getResourceAsStream(resource);
-        if (in == null)
+        for (String[] parts : rows(resource))
         {
-            return edges;
-        }
-        try (BufferedReader reader = new BufferedReader(
-            new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8)))
-        {
-            String line;
-            while ((line = reader.readLine()) != null)
+            int a = parts.length < 3 ? -1 : Tiles.parse(parts[0]);
+            int b = a < 0 ? -1 : Tiles.parse(parts[1]);
+            int from = b < 0 ? -1 : map.nearestWalkable(Tiles.x(a), Tiles.y(a), Tiles.z(a), 2);
+            int to = from < 0 ? -1 : map.nearestWalkable(Tiles.x(b), Tiles.y(b), Tiles.z(b), 2);
+            if (to >= 0)
             {
-                String[] parts = line.split("\t");
-                if (line.startsWith("#") || parts.length < 3)
-                {
-                    continue;
-                }
-                int a = Tiles.parse(parts[0]);
-                int b = Tiles.parse(parts[1]);
-                int from = a < 0 ? -1 : map.nearestWalkable(Tiles.x(a), Tiles.y(a), Tiles.z(a), 2);
-                int to = b < 0 ? -1 : map.nearestWalkable(Tiles.x(b), Tiles.y(b), Tiles.z(b), 2);
-                if (from >= 0 && to >= 0)
-                {
-                    edges.add(new Edge(from, to, Edge.Kind.ENTRANCE, parts[2].trim(), null, STAIRS));
-                }
+                edges.add(new Edge(from, to, Edge.Kind.ENTRANCE, parts[2].trim(), null, STAIRS));
             }
         }
-        catch (java.io.IOException e)
-        {
-        }
         return edges;
+    }
+
+    /** A bundled table's lines split at tabs, without {@code #} comments; what could be read. */
+    public static List<String[]> rows(String resource)
+    {
+        List<String[]> rows = new ArrayList<>();
+        InputStream in = Pathfinder.class.getResourceAsStream(resource);
+        if (in != null)
+        {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)))
+            {
+                for (String line = reader.readLine(); line != null; line = reader.readLine())
+                {
+                    if (!line.startsWith("#"))
+                    {
+                        rows.add(line.split("\t"));
+                    }
+                }
+            }
+            catch (IOException e)
+            {
+            }
+        }
+        return rows;
     }
 
     public SeaMap sea()
@@ -231,26 +226,16 @@ public final class Pathfinder
             return near;
         }
         // Only a pocket here: the wiki may give the icon on the wrong floor.
-        for (int dz = 1; dz < 4; dz++)
+        int there = otherFloor(x, y, z, 3, true);
+        if (there >= 0 || near >= 0)
         {
-            for (int other : new int[]{z - dz, z + dz})
-            {
-                int there = other >= 0 && other < 4 ? nearestOpen(x, y, other, 3) : -1;
-                if (there >= 0 && !pocket(there))
-                {
-                    return there;
-                }
-            }
-        }
-        if (near >= 0)
-        {
-            return near;
+            return there >= 0 ? there : near;
         }
         // Wrong floor in the wiki (Brimhaven's upper fire giants): the same spot on another floor first.
-        near = otherFloor(x, y, z, 1);
+        near = otherFloor(x, y, z, 1, false);
         if (near < 0)
         {
-            near = otherFloor(x, y, z, SNAP_RADIUS);
+            near = otherFloor(x, y, z, SNAP_RADIUS, false);
         }
         if (near >= 0)
         {
@@ -264,14 +249,16 @@ public final class Pathfinder
         return -1;
     }
 
-    private int otherFloor(int x, int y, int z, int radius)
+    /** {@code open}: the nearest open non-pocket tile, else any walkable one. */
+    private int otherFloor(int x, int y, int z, int radius, boolean open)
     {
         for (int dz = 1; dz < 4; dz++)
         {
             for (int other : new int[]{z - dz, z + dz})
             {
-                int near = other >= 0 && other < 4 ? map.nearestWalkable(x, y, other, radius) : -1;
-                if (near >= 0)
+                int near = other < 0 || other > 3 ? -1
+                    : open ? nearestOpen(x, y, other, radius) : map.nearestWalkable(x, y, other, radius);
+                if (near >= 0 && !(open && pocket(near)))
                 {
                     return near;
                 }
@@ -344,11 +331,11 @@ public final class Pathfinder
             {
                 return false;
             }
+            int ax = Tiles.x(at);
+            int ay = Tiles.y(at);
+            int az = Tiles.z(at);
             for (int d = 0; d < 4; d++)
             {
-                int ax = Tiles.x(at);
-                int ay = Tiles.y(at);
-                int az = Tiles.z(at);
                 if (map.canStep(ax, ay, az, DX[d], DY[d]))
                 {
                     int next = Tiles.pack(ax + DX[d], ay + DY[d], az);
@@ -394,46 +381,26 @@ public final class Pathfinder
         while (!queue.isEmpty())
         {
             int node = queue.poll();
-            if (Tiles.isSea(node))
+            boolean sailing = Tiles.isSea(node);
+            int x = sailing ? Tiles.cellX(node) : Tiles.x(node);
+            int y = sailing ? Tiles.cellY(node) : Tiles.y(node);
+            int z = Tiles.z(node);
+            for (int d = 0; d < 8; d++)
             {
-                int cx = Tiles.cellX(node);
-                int cy = Tiles.cellY(node);
-                for (int d = 0; d < 8; d++)
+                if (sailing ? sea.sailable(x + DX[d], y + DY[d], request.sailingLevel) : map.canStep(x, y, z, DX[d], DY[d]))
                 {
-                    if (sea.sailable(cx + DX[d], cy + DY[d], request.sailingLevel))
-                    {
-                        visit.accept(Tiles.sea(cx + DX[d], cy + DY[d]));
-                    }
+                    visit.accept(sailing ? Tiles.sea(x + DX[d], y + DY[d]) : Tiles.pack(x + DX[d], y + DY[d], z));
                 }
             }
-            else
-            {
-                int x = Tiles.x(node);
-                int y = Tiles.y(node);
-                int z = Tiles.z(node);
-                for (int d = 0; d < 8; d++)
-                {
-                    if (map.canStep(x, y, z, DX[d], DY[d]))
-                    {
-                        visit.accept(Tiles.pack(x + DX[d], y + DY[d], z));
-                    }
-                }
-                int[] up = stairsByOrigin.get(node);
-                if (up != null)
-                {
-                    for (int i : up)
-                    {
-                        visit.accept(stairs.get(i).to);
-                    }
-                }
-            }
+            int[] up = sailing ? null : stairsByOrigin.get(node);
             int[] out = requestByOrigin.get(node);
-            if (out != null)
+            for (int i : up != null ? up : NO_EDGES)
             {
-                for (int i : out)
-                {
-                    visit.accept(request.edges.get(i).to);
-                }
+                visit.accept(stairs.get(i).to);
+            }
+            for (int i : out != null ? out : NO_EDGES)
+            {
+                visit.accept(request.edges.get(i).to);
             }
         }
         return seen;
@@ -466,17 +433,11 @@ public final class Pathfinder
         int start = startNode(request.start);
         if (start >= 0)
         {
-            nodes.put(start, 0, -1, -1);
-            open.push(key(heuristic.h(start), start));
+            relax(nodes, open, heuristic, -1, start, 0, -1);
         }
         for (int i = startOffset; i < all.size(); i++)
         {
-            Edge e = all.get(i);
-            if (e.cost < nodes.cost(e.to))
-            {
-                nodes.put(e.to, e.cost, -1, i);
-                open.push(key(e.cost + heuristic.h(e.to), e.to));
-            }
+            relax(nodes, open, heuristic, -1, all.get(i).to, all.get(i).cost, i);
         }
         int best = -1;
         long bestScore = Long.MAX_VALUE;
@@ -603,8 +564,8 @@ public final class Pathfinder
                 flush(reversed, run, nodes);
                 Edge e = all.get(via);
                 int from = parent >= 0 ? parent : node;
-                reversed.add(new Route.Step(kind(e.kind), new int[]{from, node}, e.name, e.detail, e.time, 0,
-                    Collections.emptyList(), e.category));
+                reversed.add(new Route.Step(Route.Step.Kind.valueOf(e.kind.name()), new int[]{from, node}, e.name,
+                    e.detail, e.time, 0, Collections.emptyList(), e.category));
                 run.clear();
             }
             if (parent < 0)
@@ -662,55 +623,24 @@ public final class Pathfinder
                 }
             }
             reversed.add(new Route.Step(sailing ? Route.Step.Kind.SAIL : Route.Step.Kind.WALK, points, null,
-                sailing ? hazards(points) : detail.length() > 0 ? detail.toString() : null, cost, doors, obstacles));
+                sailing ? hazards(points) : detail.length() > 0 ? detail.toString() : null, cost, doors, obstacles, null));
         }
-        int last = run.isEmpty() ? -1 : run.get(run.size() - 1);
-        run.clear();
-        if (last >= 0)
-        {
-            run.add(last);
-        }
+        // Only the last point stays.
+        run.subList(0, Math.max(0, run.size() - 1)).clear();
     }
 
     private String hazards(int[] points)
     {
-        List<String> names = new ArrayList<>();
+        Set<String> names = new LinkedHashSet<>();
         for (int i = 0; i < points.length; i += 3)
         {
             SeaMap.Area area = sea.nearest(Tiles.x(points[i]), Tiles.y(points[i]));
             if (area != null && area.level > 0 && !area.hazard.isEmpty())
             {
-                String text = area.hazard + " (" + area.name + ", " + area.level + " Sailing)";
-                if (!names.contains(text))
-                {
-                    names.add(text);
-                }
+                names.add(area.hazard + " (" + area.name + ", " + area.level + " Sailing)");
             }
         }
         return names.isEmpty() ? null : "Crosses " + String.join(", ", names);
-    }
-
-    private static Route.Step.Kind kind(Edge.Kind kind)
-    {
-        switch (kind)
-        {
-            case STAIRS:
-                return Route.Step.Kind.STAIRS;
-            case ENTRANCE:
-                return Route.Step.Kind.ENTRANCE;
-            case TELEPORT:
-                return Route.Step.Kind.TELEPORT;
-            case SHIP:
-                return Route.Step.Kind.SHIP;
-            case BOARD:
-                return Route.Step.Kind.BOARD;
-            case DISEMBARK:
-                return Route.Step.Kind.DISEMBARK;
-            case HOUSE:
-                return Route.Step.Kind.HOUSE;
-            default:
-                return Route.Step.Kind.TRANSPORT;
-        }
     }
 
     /** Folded distance, or via a jump's backward-searched bound; jump bounds cached per 8×8 block. */
@@ -774,9 +704,8 @@ public final class Pathfinder
                 if (known == IntMap.MISSING)
                 {
                     keys[count++] = from[i];
-                    byOrigin.put(from[i], b);
                 }
-                else if (b < known)
+                if (known == IntMap.MISSING || b < known)
                 {
                     byOrigin.put(from[i], b);
                 }

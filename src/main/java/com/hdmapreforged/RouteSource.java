@@ -18,9 +18,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /** The jumps a route may take for this player. Thread-safe: requests come from Swing and the extras thread. */
+@RequiredArgsConstructor
 final class RouteSource
 {
     private static final int SNAP = 5;
@@ -90,6 +92,7 @@ final class RouteSource
     }
 
     /** Tiles a kind of trip must save to be taken (a teleport for a few tiles wastes runes); search weight only. */
+    @RequiredArgsConstructor
     static final class Saving
     {
         static final Saving NONE = new Saving(0, 0, 0, 0, 0, 0);
@@ -100,16 +103,6 @@ final class RouteSource
         final int canoe;
         final int carpet;
         final int ship;
-
-        Saving(int teleport, int shortcut, int transport, int canoe, int carpet, int ship)
-        {
-            this.teleport = teleport;
-            this.shortcut = shortcut;
-            this.transport = transport;
-            this.canoe = canoe;
-            this.carpet = carpet;
-            this.ship = ship;
-        }
 
         int tiles(PoiType type)
         {
@@ -140,12 +133,6 @@ final class RouteSource
     private final CollisionMap map;
     private final SeaMap sea;
 
-    RouteSource(CollisionMap map, SeaMap sea)
-    {
-        this.map = map;
-        this.sea = sea;
-    }
-
     RouteRequest request(int start, int target, List<Poi> pois, Unlocks unlocks, PlayerState state, Options options,
         int nodeLimit)
     {
@@ -153,13 +140,11 @@ final class RouteSource
         if (options.ignoreLevels)
         {
             unlocks = null;
-            state = new PlayerState(state.items, 99, true, state.boats, state.running, state.inHouse, state.houseExit,
-                state.ownHouse, state.houseFeatures);
+            state = state.with(state.items, 99, true);
         }
         if (options.ignoreItems)
         {
-            state = new PlayerState(ItemSnapshot.EVERYTHING, state.sailingLevel, state.sailing, state.boats, state.running,
-                state.inHouse, state.houseExit, state.ownHouse, state.houseFeatures);
+            state = state.with(ItemSnapshot.EVERYTHING, state.sailingLevel, state.sailing);
         }
         List<Edge> startEdges = new ArrayList<>();
         List<Edge> edges = new ArrayList<>();
@@ -234,20 +219,13 @@ final class RouteSource
         }
     }
 
+    @RequiredArgsConstructor
     private static final class Gate
     {
         final WorldPoint from;
         final WorldPoint to;
         final String name;
         final Needs needs;
-
-        Gate(WorldPoint from, WorldPoint to, String name, Needs needs)
-        {
-            this.from = from;
-            this.to = to;
-            this.name = name;
-            this.needs = needs;
-        }
     }
 
     /** Read once, so the unlocks' per-requirement cache hits. */
@@ -342,30 +320,15 @@ final class RouteSource
         return known.needs;
     }
 
+    // Not obelisks (they lead to a random other obelisk) nor entrances (map links, in Pathfinder, not our icons).
+    private static final Set<PoiType> TRANSPORTS = java.util.EnumSet.of(PoiType.FAIRY_RING, PoiType.SPIRIT_TREE,
+        PoiType.GNOME_GLIDER, PoiType.BALLOON, PoiType.QUETZAL, PoiType.MUSHTREE, PoiType.BOAT, PoiType.CHARTER,
+        PoiType.CANOE, PoiType.CARPET, PoiType.MINECART, PoiType.PORTAL, PoiType.LEVER, PoiType.TRANSPORT,
+        PoiType.AGILITY_SHORTCUT);
+
     static boolean isTransport(PoiType type)
     {
-        switch (type)
-        {
-            case FAIRY_RING:
-            case SPIRIT_TREE:
-            case GNOME_GLIDER:
-            case BALLOON:
-            case QUETZAL:
-            case MUSHTREE:
-            case BOAT:
-            case CHARTER:
-            case CANOE:
-            case CARPET:
-            case MINECART:
-            case PORTAL:
-            case LEVER:
-            case TRANSPORT:
-            case AGILITY_SHORTCUT:
-                return true;
-            default:
-                // Obelisks lead to a random other obelisk; entrances come from map links (Pathfinder), not our icons.
-                return false;
-        }
+        return TRANSPORTS.contains(type);
     }
 
     private boolean usable(Unlocks unlocks, Needs needs)
@@ -385,8 +348,8 @@ final class RouteSource
 
     private void teleport(Call call, Poi member, Unlocks unlocks, PlayerState state, List<Edge> into)
     {
-        if (HouseSpots.insideHouse(member.location) || !usable(unlocks, member.needs)
-            || !state.items.has(member.needs.items, false))
+        if (com.hdmapreforged.route.HouseTracker.isTemplate(member.location.getX(), member.location.getY())
+            || !usable(unlocks, member.needs) || !state.items.has(member.needs.items, false))
         {
             return;
         }
@@ -399,30 +362,25 @@ final class RouteSource
         {
             return;
         }
-        String name = member.name;
+        String name = member.name.toLowerCase(Locale.ROOT);
         String category = member.group != null && !member.group.isEmpty() ? member.group : "Teleports";
-        if (call.avoiding.contains(name.toLowerCase(Locale.ROOT)) || call.avoiding.contains(typeKey(category)))
+        if (call.avoiding.contains(name) || call.avoiding.contains(typeKey(category)))
         {
             return;
         }
-        boolean home = name.toLowerCase(Locale.ROOT).contains("home teleport");
-        into.add(new Edge(Edge.ANYWHERE, to, Edge.Kind.TELEPORT, name, needsText(call, member.needs, false),
-            teleportTime(home, member.group), category).weighed(call.saving.teleport * PER_TILE + lacking));
+        into.add(new Edge(Edge.ANYWHERE, to, Edge.Kind.TELEPORT, member.name, needsText(call, member.needs, false),
+            teleportTime(name.contains("home teleport"), member.group), category)
+            .weighed(call.saving.teleport * PER_TILE + lacking));
     }
 
     private void transport(Call call, Poi poi, Unlocks unlocks, PlayerState state, List<Edge> into)
     {
-        if (!usable(unlocks, poi.needs) || !state.items.has(poi.needs.items, true))
-        {
-            return;
-        }
-        if (snap(poi.location) < 0)
+        if (!usable(unlocks, poi.needs) || !state.items.has(poi.needs.items, true) || snap(poi.location) < 0)
         {
             return;
         }
         Edge.Kind kind = kind(poi.type);
-        List<Poi.Link> links = poi.links();
-        for (Poi.Link link : links)
+        for (Poi.Link link : poi.links())
         {
             if (!usable(unlocks, link.needs) || !state.items.has(link.needs.items, true))
             {
@@ -442,8 +400,7 @@ final class RouteSource
             {
                 continue;
             }
-            Fees.Fee fee = Fees.at(poi.location.getX(),
-                poi.location.getY(), poi.location.getPlane());
+            Fees.Fee fee = Fees.at(poi.location.getX(), poi.location.getY(), poi.location.getPlane());
             String needs = needsText(call, link.needs, true);
             if (fee != null)
             {
@@ -509,18 +466,12 @@ final class RouteSource
             case QUETZAL:
                 return 12;
             case LEVER:
+            case AGILITY_SHORTCUT:
                 return 8;
             case OBELISK:
                 return 16;
             case PORTAL:
                 return 6;
-            case AGILITY_SHORTCUT:
-                return 8;
-            case GNOME_GLIDER:
-            case BALLOON:
-            case MINECART:
-            case TRANSPORT:
-                return 20;
             case CHARTER:
                 return 30;
             case BOAT:
@@ -557,50 +508,40 @@ final class RouteSource
         String lacking = call.realSailing < needed
             ? "You lack: " + (call.realSailing <= 0 ? "Sailing" : needed + " Sailing")
             : null;
-        boolean boatHere = false;
-        for (int boat : state.boats)
+        String name = "Board your boat at " + poi.name;
+        String hint = null;
+        int cost = 10;
+        if (java.util.Arrays.stream(state.boats).anyMatch(boat -> Tiles.distance(boat, land) <= PORT_RADIUS))
         {
-            boatHere |= Tiles.distance(boat, land) <= PORT_RADIUS;
-        }
-        if (boatHere)
-        {
-            into.add(new Edge(land, water, Edge.Kind.BOARD, "Board your boat at " + poi.name + dockLevel(poi), lacking,
-                10));
+            name += dockLevel(poi);
         }
         else if (options.focus != HdMapReforgedConfig.BoatFocus.NONE)
         {
-            into.add(new Edge(land, water, Edge.Kind.BOARD, "Summon your boat and board it at " + poi.name,
-                lacking != null ? lacking : "Summon Boat (needs the teleport focus on your boat)", 16));
+            name = "Summon your boat and board it at " + poi.name;
+            hint = "Summon Boat (needs the teleport focus on your boat)";
+            cost = 16;
         }
-        else if (nearShipwright(land, options))
+        else if (java.util.Arrays.stream(options.shipwrights).anyMatch(s -> Tiles.distance(s, land) <= SHIPWRIGHT_REACH))
         {
-            into.add(new Edge(land, water, Edge.Kind.BOARD, "Board your boat at " + poi.name,
-                lacking != null ? lacking : "Ask the shipwright here to bring your boat (fee)", 60));
+            hint = "Ask the shipwright here to bring your boat (fee)";
+            cost = 60;
         }
         else if (state.boats.length == 0 && !onBoat)
         {
             // Where the boat lies is not known yet (not logged in): any dock, with a hint.
-            into.add(new Edge(land, water, Edge.Kind.BOARD, "Board your boat at " + poi.name,
-                lacking != null ? lacking : "If your boat is moored here (a shipwright can bring it)", 10));
+            hint = "If your boat is moored here (a shipwright can bring it)";
         }
+        else
+        {
+            return;
+        }
+        into.add(new Edge(land, water, Edge.Kind.BOARD, name, lacking != null || hint == null ? lacking : hint, cost));
     }
 
     private static String dockLevel(Poi poi)
     {
         int level = level(poi.needs);
         return level > 1 ? " (" + level + " Sailing)" : "";
-    }
-
-    private static boolean nearShipwright(int land, Options options)
-    {
-        for (int shipwright : options.shipwrights)
-        {
-            if (Tiles.distance(shipwright, land) <= SHIPWRIGHT_REACH)
-            {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void teleportToBoat(PlayerState state, Options options, List<Edge> into)
@@ -630,11 +571,8 @@ final class RouteSource
     {
         if (state.houseExit >= 0)
         {
-            int exit = map.nearestWalkable(Tiles.x(state.houseExit), Tiles.y(state.houseExit), 0, SNAP);
-            if (exit >= 0)
-            {
-                into.add(new Edge(Edge.ANYWHERE, exit, Edge.Kind.HOUSE, "Leave the house by its portal", null, 6));
-            }
+            addHouse(into, new WorldPoint(Tiles.x(state.houseExit), Tiles.y(state.houseExit), 0),
+                "Leave the house by its portal", 6);
         }
         if (!state.ownHouse)
         {
@@ -652,31 +590,15 @@ final class RouteSource
             }
             else if (feature.startsWith("box:") || feature.equals("glory"))
             {
-                List<String> groups = new ArrayList<>();
-                if (feature.equals("glory"))
-                {
-                    groups.add("Amulet of glory");
-                }
-                else
-                {
-                    groups.add("Ring of dueling");
-                    groups.add("Games necklace");
-                    if (!feature.equals("box:basic"))
-                    {
-                        groups.add("Combat bracelet");
-                        groups.add("Skills necklace");
-                    }
-                    if (feature.equals("box:ornate"))
-                    {
-                        groups.add("Ring of wealth");
-                        groups.add("Amulet of glory");
-                    }
-                }
+                boolean glory = feature.equals("glory");
+                List<String> groups = glory ? List.of("Amulet of glory") : new ArrayList<>(List.of("Ring of dueling",
+                    "Games necklace", "Combat bracelet", "Skills necklace", "Ring of wealth", "Amulet of glory"))
+                    .subList(0, feature.equals("box:basic") ? 2 : feature.equals("box:ornate") ? 6 : 4);
                 for (Poi teleport : teleports.values())
                 {
                     if (teleport.group != null && groups.contains(teleport.group) && usable(unlocks, teleport.needs))
                     {
-                        addHouse(into, teleport.location, (feature.equals("glory") ? "Mounted glory: " : "Jewellery box: ")
+                        addHouse(into, teleport.location, (glory ? "Mounted glory: " : "Jewellery box: ")
                             + teleport.name, 8);
                     }
                 }
@@ -748,7 +670,7 @@ final class RouteSource
         List<String> parts = new ArrayList<>();
         if (call.missingLevels != null)
         {
-            for (Requirements.Line line : Requirements.describe(new Needs(needs.skills, "", needs.quests, ""), id -> null))
+            for (Requirements.Line line : levelLines(needs))
             {
                 if (Boolean.FALSE.equals(call.missingLevels.met(line)))
                 {
@@ -766,28 +688,16 @@ final class RouteSource
     /** A step's requirements when not all could be checked (logged out, unknown quest or item); else null. */
     private static String uncheckedText(Unlocks realUnlocks, Needs needs)
     {
-        List<Requirements.Line> lines = Requirements.describe(new Needs(needs.skills, "", needs.quests, ""), id -> null);
-        boolean unchecked = false;
-        for (Requirements.Line line : lines)
-        {
-            unchecked |= realUnlocks == null || realUnlocks.met(line) == null;
-        }
+        List<Requirements.Line> lines = levelLines(needs);
+        boolean unchecked = lines.stream().anyMatch(line -> realUnlocks == null || realUnlocks.met(line) == null);
         // Items named rather than numbered (keys, tools) are not checked.
-        boolean namedItems = false;
-        for (String token : needs.items.split("&&|\\|\\|"))
-        {
-            String t = token.split("=")[0].trim();
-            namedItems |= !t.isEmpty() && !t.chars().allMatch(Character::isDigit);
-        }
+        boolean namedItems = java.util.Arrays.stream(needs.items.split("&&|\\|\\|"))
+            .map(token -> token.split("=")[0].trim()).anyMatch(t -> !t.isEmpty() && !t.chars().allMatch(Character::isDigit));
         if (!unchecked && !namedItems)
         {
             return null;
         }
-        List<String> parts = new ArrayList<>();
-        for (Requirements.Line line : lines)
-        {
-            parts.add(line.text);
-        }
+        List<String> parts = lines.stream().map(line -> line.text).collect(java.util.stream.Collectors.toList());
         if (namedItems || !needs.items.trim().isEmpty() && realUnlocks == null)
         {
             parts.add("items");
@@ -795,15 +705,8 @@ final class RouteSource
         return parts.isEmpty() ? null : "Needs: " + String.join(", ", parts);
     }
 
-    static final class HouseSpots
+    private static List<Requirements.Line> levelLines(Needs needs)
     {
-        private HouseSpots()
-        {
-        }
-
-        static boolean insideHouse(WorldPoint point)
-        {
-            return com.hdmapreforged.route.HouseTracker.isTemplate(point.getX(), point.getY());
-        }
+        return Requirements.describe(new Needs(needs.skills, "", needs.quests, ""), id -> null);
     }
 }

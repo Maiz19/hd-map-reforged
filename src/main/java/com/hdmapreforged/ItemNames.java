@@ -5,11 +5,13 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntFunction;
 import javax.swing.SwingUtilities;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.ItemComposition;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.game.ItemManager;
 
 /** Item names for requirement lists; looked up on the client thread, read from Swing. */
+@RequiredArgsConstructor
 final class ItemNames implements IntFunction<String>
 {
     private final ClientThread clientThread;
@@ -18,12 +20,6 @@ final class ItemNames implements IntFunction<String>
     /** Id to last lookup time; retried later, as the game's item data may not have been ready. */
     private final Map<Integer, Long> unnamed = new ConcurrentHashMap<>();
     private static final long RETRY_MS = 30_000;
-
-    ItemNames(ClientThread clientThread, ItemManager itemManager)
-    {
-        this.clientThread = clientThread;
-        this.itemManager = itemManager;
-    }
 
     @Override
     public String apply(int id)

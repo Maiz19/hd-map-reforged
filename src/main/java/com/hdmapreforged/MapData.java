@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
 
@@ -41,23 +42,15 @@ final class MapData
     List<WorldPoint> points()
     {
         List<WorldPoint> points = new ArrayList<>();
-        for (Poi poi : pois)
-        {
-            points.add(poi.location);
-            for (Poi.Link link : poi.links())
-            {
-                points.add(link.point);
-            }
-        }
-        for (MapIconLoader.Icon icon : icons)
-        {
-            points.add(icon.location);
-            for (Poi.Link link : icon.poi.links())
-            {
-                points.add(link.point);
-            }
-        }
+        pois.forEach(poi -> points(points, poi.location, poi));
+        icons.forEach(icon -> points(points, icon.location, icon.poi));
         return points;
+    }
+
+    private static void points(List<WorldPoint> points, WorldPoint at, Poi poi)
+    {
+        points.add(at);
+        poi.links().forEach(link -> points.add(link.point));
     }
 
     static boolean passage(Poi poi)
@@ -79,14 +72,7 @@ final class MapData
         List<Poi> shown = new ArrayList<>();
         for (Poi poi : pois)
         {
-            if (passage(poi))
-            {
-                hidden.add(poi);
-            }
-            else
-            {
-                shown.add(poi);
-            }
+            (passage(poi) ? hidden : shown).add(poi);
         }
         List<MapIconLoader.Icon> icons;
         try
@@ -124,9 +110,7 @@ final class MapData
             for (Poi other : pois)
             {
                 if (other != mine && other.type == mine.type && !covered.contains(other) && !hidden.contains(other)
-                    && other.location.getPlane() == mine.location.getPlane()
-                    && Math.max(Math.abs(other.location.getX() - mine.location.getX()),
-                    Math.abs(other.location.getY() - mine.location.getY())) <= STATION && sameStation(mine, other))
+                    && near(other.location, mine.location, STATION) && sameStation(mine, other))
                 {
                     same.add(other);
                     if (other.links().size() > best.links().size())
@@ -135,13 +119,8 @@ final class MapData
                     }
                 }
             }
-            for (Poi other : same)
-            {
-                if (other != best)
-                {
-                    hidden.add(other);
-                }
-            }
+            same.remove(best);
+            hidden.addAll(same);
             if (best != mine)
             {
                 hidden.add(mine);
@@ -174,13 +153,7 @@ final class MapData
     private static Set<Poi> covered(List<MapIconLoader.Icon> icons)
     {
         Set<Poi> covered = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (MapIconLoader.Icon icon : icons)
-        {
-            if (icon.own)
-            {
-                covered.add(icon.poi);
-            }
-        }
+        icons.stream().filter(icon -> icon.own).forEach(icon -> covered.add(icon.poi));
         return covered;
     }
 
@@ -188,14 +161,7 @@ final class MapData
     static Set<Poi> otherEnds(List<Poi> pois, List<MapIconLoader.Icon> icons)
     {
         Set<Poi> covered = covered(icons);
-        List<Poi> shortcuts = new ArrayList<>();
-        for (Poi poi : pois)
-        {
-            if (poi.type == PoiType.AGILITY_SHORTCUT)
-            {
-                shortcuts.add(poi);
-            }
-        }
+        List<Poi> shortcuts = pois.stream().filter(poi -> poi.type == PoiType.AGILITY_SHORTCUT).collect(Collectors.toList());
         Set<Poi> ends = Collections.newSetFromMap(new IdentityHashMap<>());
         for (int i = 0; i < shortcuts.size(); i++)
         {
@@ -216,12 +182,17 @@ final class MapData
     {
         for (Poi.Link link : from.links())
         {
-            if (link.point.getPlane() == to.location.getPlane() && Math.max(Math.abs(link.point.getX()
-                - to.location.getX()), Math.abs(link.point.getY() - to.location.getY())) <= 2)
+            if (near(link.point, to.location, 2))
             {
                 return true;
             }
         }
         return false;
+    }
+
+    /** On the same floor and at most {@code tiles} apart either way. */
+    private static boolean near(WorldPoint a, WorldPoint b, int tiles)
+    {
+        return a.getPlane() == b.getPlane() && Math.max(Math.abs(a.getX() - b.getX()), Math.abs(a.getY() - b.getY())) <= tiles;
     }
 }

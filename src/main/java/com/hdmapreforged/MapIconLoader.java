@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /**
@@ -48,6 +49,7 @@ final class MapIconLoader
         }
     }
 
+    @RequiredArgsConstructor
     static final class Kind
     {
         final int id;
@@ -56,41 +58,22 @@ final class MapIconLoader
         final String name;
         /** Wiki page, or empty. */
         final String wiki;
-
-        Kind(int id, String kind, String name, String wiki)
-        {
-            this.id = id;
-            this.kind = kind;
-            this.name = name;
-            this.wiki = wiki;
-        }
     }
 
+    @RequiredArgsConstructor
     static final class Entry
     {
         final WorldPoint location;
         final Kind kind;
         /** Where a map link leads, or null. */
         final WorldPoint target;
-
-        Entry(WorldPoint location, Kind kind, WorldPoint target)
-        {
-            this.location = location;
-            this.kind = kind;
-            this.target = target;
-        }
     }
 
+    @RequiredArgsConstructor
     private static final class Match
     {
         final Set<PoiType> types;
         final int radius;
-
-        Match(Set<PoiType> types, int radius)
-        {
-            this.types = types;
-            this.radius = radius;
-        }
     }
 
     private static final Map<String, Match> MATCHES = new HashMap<>();
@@ -107,18 +90,25 @@ final class MapIconLoader
                 TRANSPORTS.add(type);
             }
         }
-        MATCHES.put("bank", new Match(EnumSet.of(PoiType.BANK), 3));
-        MATCHES.put("altar", new Match(EnumSet.of(PoiType.ALTAR), 3));
-        MATCHES.put("anvil", new Match(EnumSet.of(PoiType.ANVIL), 3));
         MATCHES.put("transportation", new Match(TRANSPORTS, 8));
-        MATCHES.put("agility short-cut", new Match(EnumSet.of(PoiType.AGILITY_SHORTCUT), 4));
-        MATCHES.put("agility shortcut (one way)", new Match(EnumSet.of(PoiType.AGILITY_SHORTCUT), 4));
-        MATCHES.put("agility training", new Match(EnumSet.of(PoiType.AGILITY_COURSE), 10));
-        MATCHES.put("farming patch", new Match(EnumSet.of(PoiType.FARMING_PATCH), 4));
-        MATCHES.put("minigame", new Match(EnumSet.of(PoiType.MINIGAME), 14));
-        MATCHES.put("raids lobby", new Match(EnumSet.of(PoiType.MINIGAME), 10));
-        MATCHES.put("docking point", new Match(EnumSet.of(PoiType.MOORING), 8));
-        MATCHES.put("salvaging spot", new Match(EnumSet.of(PoiType.SALVAGE), 8));
+        match(PoiType.BANK, 3, "bank");
+        match(PoiType.ALTAR, 3, "altar");
+        match(PoiType.ANVIL, 3, "anvil");
+        match(PoiType.AGILITY_SHORTCUT, 4, "agility short-cut", "agility shortcut (one way)");
+        match(PoiType.AGILITY_COURSE, 10, "agility training");
+        match(PoiType.FARMING_PATCH, 4, "farming patch");
+        match(PoiType.MINIGAME, 14, "minigame");
+        match(PoiType.MINIGAME, 10, "raids lobby");
+        match(PoiType.MOORING, 8, "docking point");
+        match(PoiType.SALVAGE, 8, "salvaging spot");
+    }
+
+    private static void match(PoiType type, int radius, String... kinds)
+    {
+        for (String kind : kinds)
+        {
+            MATCHES.put(kind, new Match(EnumSet.of(type), radius));
+        }
     }
 
     private MapIconLoader()
@@ -159,7 +149,7 @@ final class MapIconLoader
         List<PoiLoader.Place> dungeons = new ArrayList<>();
         for (Tsv.Row row : dungeonRows)
         {
-            WorldPoint at = row.isComment() ? null : row.point("Location");
+            WorldPoint at = row.point("Location");
             if (at != null && !row.get("Name").isEmpty())
             {
                 dungeons.add(new PoiLoader.Place(at, row.get("Name"), null));
@@ -171,30 +161,22 @@ final class MapIconLoader
             for (Tsv.Row row : Tsv.parse(reader))
             {
                 WorldPoint at = row.isComment() ? null : row.point("Location");
-                if (at != null && !row.get("Name").isEmpty())
+                String name = row.get("Name");
+                if (at != null && !name.isEmpty())
                 {
-                    names.put(at, new String[]{row.get("Name"), row.get("Wiki")});
+                    names.put(at, new String[]{name, row.or("Wiki", name)});
                 }
             }
         }
         catch (IOException | RuntimeException e)
         {
         }
-        List<Icon> icons = build(maps, entries, own, places, dungeons);
-        List<Icon> named = new ArrayList<>(icons.size());
-        for (Icon icon : icons)
+        List<Icon> named = new ArrayList<>();
+        for (Icon icon : build(maps, entries, own, places, dungeons))
         {
             String[] name = icon.own ? null : names.get(icon.location);
-            if (name == null)
-            {
-                named.add(icon);
-                continue;
-            }
-            Poi poi = icon.poi;
-            Poi renamed = new Poi(poi.type, name[0], poi.location, poi.map, poi.group, poi.needs,
-                name[1].isEmpty() ? name[0] : name[1], poi.target, poi.note);
-            poi.links().forEach(renamed::addLink);
-            named.add(new Icon(icon.location, icon.map, renamed, false, icon.element));
+            named.add(name == null ? icon
+                : new Icon(icon.location, icon.map, PoiLoader.renamed(icon.poi, name[0], name[1]), false, icon.element));
         }
         return named;
     }
@@ -267,10 +249,8 @@ final class MapIconLoader
                 Poi made = create(maps, map, entry, places, dungeons);
                 if (made.target != null)
                 {
-                    Poi named = new Poi(made.type, match.name, made.location, made.map, null, Needs.NONE, match.wikiQuery,
-                        made.target, null);
-                    made.links().forEach(named::addLink);
-                    icons.add(new Icon(entry.location, map, named, false, entry.kind.id));
+                    icons.add(new Icon(entry.location, map, PoiLoader.renamed(made, match.name, match.wikiQuery), false,
+                        entry.kind.id));
                     // The tile already shows the game's icon, so ours is not drawn beside it.
                     icons.add(new Icon(entry.location, map, match, true, entry.kind.id));
                     continue;
@@ -298,14 +278,9 @@ final class MapIconLoader
         {
             for (int dy = -1; dy <= 1; dy++)
             {
-                List<Poi> near = ownByArea.get(area(at.getX() + dx * 64, at.getY() + dy * 64));
-                if (near == null)
+                for (Poi poi : ownByArea.getOrDefault(area(at.getX() + dx * 64, at.getY() + dy * 64), List.of()))
                 {
-                    continue;
-                }
-                for (Poi poi : near)
-                {
-                    int d = chebyshev(poi.location, at);
+                    int d = PoiLoader.chebyshev(poi.location, at);
                     if (d < bestDistance && poi.location.getPlane() == at.getPlane() && match.types.contains(poi.type))
                     {
                         best = poi;
@@ -330,60 +305,52 @@ final class MapIconLoader
         Kind kind = entry.kind;
         WorldPoint at = entry.location;
         String wiki = kind.wiki.isEmpty() ? kind.name : kind.wiki;
-        switch (kind.kind)
+        boolean dungeon = kind.kind.equals("dungeon");
+        if (kind.kind.equals("quest"))
         {
-            case "quest":
-                return new Poi(PoiType.QUEST_START, kind.name, at, map, null, Needs.NONE, kind.name, null, null);
-            case "shop":
-            {
-                String place = map.id == BaseMap.SURFACE ? settlement(places, at) : null;
-                String name = place == null ? kind.name : kind.name + " (" + place + ")";
-                return new Poi(PoiType.SHOP, name, at, map, null, Needs.NONE, place == null ? wiki : place + " " + kind.name,
-                    null, null);
-            }
-            case "link":
-            case "dungeon":
-            {
-                // Only where the game says where it leads: guesses too often led to the wrong entrance.
-                WorldPoint target = entry.target;
-                if (target == null && kind.kind.equals("dungeon"))
-                {
-                    // A dungeon marker has no link: use a trusted passage beside it (Waterbirth's ladder).
-                    target = TrustedPassages.leadsFrom(at, p -> {
-                        BaseMap drawn = maps.find(p);
-                        return drawn == null || drawn.id == BaseMap.SURFACE;
-                    });
-                }
-                BaseMap targetMap = target == null ? null : maps.find(target);
-                boolean dungeon = kind.kind.equals("dungeon");
-                String named = dungeonName(dungeons, at);
-                if (targetMap == null)
-                {
-                    String plain = named != null ? named : dungeon ? "Dungeon" : "Map link";
-                    return new Poi(PoiType.GAME_ICON, plain, at, map, null, Needs.NONE,
-                        named != null ? named : dungeon ? "Dungeons" : null, null, null);
-                }
-                String place = targetMap.id == BaseMap.SURFACE ? settlement(places, target) : null;
-                String where = place != null ? place : targetMap != map ? targetMap.name : null;
-                String name = named != null && (targetMap != map || dungeon) && targetMap.id != BaseMap.SURFACE ? named
-                    : where != null ? "To " + where : dungeon ? "Dungeon" : "Map link";
-                PoiType type = dungeon && targetMap != map ? PoiType.DUNGEON_ENTRANCE : PoiType.MAP_LINK;
-                Poi poi = new Poi(type, name, at, map, null, Needs.NONE, where, targetMap, null);
-                poi.addLink(new Poi.Link(place != null ? place : "Where it leads", target, targetMap, Needs.NONE));
-                return poi;
-            }
-            default:
-            {
-                String place = map.id == BaseMap.SURFACE ? settlement(places, at) : null;
-                SkillSpots.Spot spot = spots.near(kind.name, at);
-                if (spot != null)
-                {
-                    return SkillSpots.poi(spot, at, map, place);
-                }
-                return new Poi(PoiType.GAME_ICON, place == null ? kind.name : kind.name + " (" + place + ")", at, map, null,
-                    Needs.NONE, wiki, null, null);
-            }
+            return icon(PoiType.QUEST_START, kind.name, at, map, kind.name, null);
         }
+        if (!dungeon && !kind.kind.equals("link"))
+        {
+            String place = map.id == BaseMap.SURFACE ? settlement(places, at) : null;
+            String name = place == null ? kind.name : kind.name + " (" + place + ")";
+            if (kind.kind.equals("shop"))
+            {
+                return icon(PoiType.SHOP, name, at, map, place == null ? wiki : place + " " + kind.name, null);
+            }
+            SkillSpots.Spot spot = spots.near(kind.name, at);
+            return spot != null ? SkillSpots.poi(spot, at, map, place) : icon(PoiType.GAME_ICON, name, at, map, wiki, null);
+        }
+        // Only where the game says where it leads: guesses too often led to the wrong entrance.
+        WorldPoint target = entry.target;
+        if (target == null && dungeon)
+        {
+            // A dungeon marker has no link: use a trusted passage beside it (Waterbirth's ladder).
+            target = TrustedPassages.leadsFrom(at, p -> {
+                BaseMap drawn = maps.find(p);
+                return drawn == null || drawn.id == BaseMap.SURFACE;
+            });
+        }
+        BaseMap targetMap = target == null ? null : maps.find(target);
+        String named = dungeonName(dungeons, at);
+        if (targetMap == null)
+        {
+            return icon(PoiType.GAME_ICON, named != null ? named : dungeon ? "Dungeon" : "Map link", at, map,
+                named != null ? named : dungeon ? "Dungeons" : null, null);
+        }
+        String place = targetMap.id == BaseMap.SURFACE ? settlement(places, target) : null;
+        String where = place != null ? place : targetMap != map ? targetMap.name : null;
+        String name = named != null && (targetMap != map || dungeon) && targetMap.id != BaseMap.SURFACE ? named
+            : where != null ? "To " + where : dungeon ? "Dungeon" : "Map link";
+        Poi poi = icon(dungeon && targetMap != map ? PoiType.DUNGEON_ENTRANCE : PoiType.MAP_LINK, name, at, map, where,
+            targetMap);
+        poi.addLink(new Poi.Link(place != null ? place : "Where it leads", target, targetMap, Needs.NONE));
+        return poi;
+    }
+
+    private static Poi icon(PoiType type, String name, WorldPoint at, BaseMap map, String wiki, BaseMap target)
+    {
+        return new Poi(type, name, at, map, null, Needs.NONE, wiki, target, null);
     }
 
     static String dungeonName(List<PoiLoader.Place> dungeons, WorldPoint at)
@@ -392,7 +359,7 @@ final class MapIconLoader
         int bestDistance = DUNGEON_NAME_RADIUS + 1;
         for (PoiLoader.Place dungeon : dungeons)
         {
-            int d = chebyshev(dungeon.point, at);
+            int d = PoiLoader.chebyshev(dungeon.point, at);
             if (dungeon.point.getPlane() == at.getPlane() && d < bestDistance)
             {
                 best = dungeon.name;
@@ -414,7 +381,7 @@ final class MapIconLoader
             {
                 continue;
             }
-            int d = chebyshev(place.point, at);
+            int d = PoiLoader.chebyshev(place.point, at);
             if (d < bestDistance)
             {
                 best = place.name;
@@ -432,10 +399,5 @@ final class MapIconLoader
     private static long area(int x, int y)
     {
         return ((long) (x >> 6) << 32) | ((y >> 6) & 0xffffffffL);
-    }
-
-    private static int chebyshev(WorldPoint a, WorldPoint b)
-    {
-        return Math.max(Math.abs(a.getX() - b.getX()), Math.abs(a.getY() - b.getY()));
     }
 }

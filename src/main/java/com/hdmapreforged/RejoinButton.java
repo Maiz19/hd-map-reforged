@@ -43,24 +43,11 @@ final class RejoinButton extends Overlay
         @Override
         public MouseEvent mousePressed(MouseEvent e)
         {
-            if (!showing || !SwingUtilities.isLeftMouseButton(e))
-            {
-                return e;
-            }
-            Point at = local(e.getPoint());
-            if (at == null)
-            {
-                return e;
-            }
-            if (joinArea.contains(at))
+            Point at = at(e);
+            if (at != null && (joinArea.contains(at) || closeArea.contains(at)))
             {
                 e.consume();
-                rejoin.run();
-            }
-            else if (closeArea.contains(at))
-            {
-                e.consume();
-                dismiss.run();
+                (joinArea.contains(at) ? rejoin : dismiss).run();
             }
             return e;
         }
@@ -80,12 +67,18 @@ final class RejoinButton extends Overlay
         /** The rest of a left click on the button is ours too, so the game never sees half of it. */
         private MouseEvent onButton(MouseEvent e)
         {
-            Point at = showing && SwingUtilities.isLeftMouseButton(e) ? local(e.getPoint()) : null;
+            Point at = at(e);
             if (at != null && (joinArea.contains(at) || closeArea.contains(at)))
             {
                 e.consume();
             }
             return e;
+        }
+
+        /** A left click's point on the overlay, or null. */
+        private Point at(MouseEvent e)
+        {
+            return showing && SwingUtilities.isLeftMouseButton(e) ? local(e.getPoint()) : null;
         }
 
         @Override
@@ -132,8 +125,7 @@ final class RejoinButton extends Overlay
         FontMetrics metrics = g.getFontMetrics();
         String text = "Rejoin party";
         int height = 18;
-        int markWidth
- = 14;
+        int markWidth = 14;
         int joinWidth = 6 + markWidth + metrics.stringWidth(text) + 6;
         int closeWidth = 15;
         int width = joinWidth + 1 + closeWidth;
@@ -166,11 +158,11 @@ final class RejoinButton extends Overlay
         g.setColor(ACCENT.darker());
         g.fillOval(mx, my - 4, 4, 4);
         g.fillArc(mx - 2, my + 1, 8, 7, 0, 180);
+        int baseline = (height + metrics.getAscent()) / 2 - 1;
         g.setColor(onJoin ? Color.WHITE : TEXT);
-        g.drawString(text, 6 + markWidth, (height + metrics.getAscent()) / 2 - 1);
+        g.drawString(text, 6 + markWidth, baseline);
         g.setColor(onClose ? Color.WHITE : new Color(160, 160, 165));
-        g.drawString("\u00D7", close.x + (closeWidth - metrics.stringWidth("\u00D7")) / 2 - 1,
-            (height + metrics.getAscent()) / 2 - 1);
+        g.drawString("\u00D7", close.x + (closeWidth - metrics.stringWidth("\u00D7")) / 2 - 1, baseline);
         joinArea = join;
         closeArea = close;
         return new Dimension(width + 1, height + 1);

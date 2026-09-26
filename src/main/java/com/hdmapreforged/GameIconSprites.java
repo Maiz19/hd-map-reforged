@@ -12,23 +12,16 @@ import net.runelite.api.worldmap.MapElementConfig;
 /** The game's own world map icons, read from the client, so our icons look like those in the tiles. */
 final class GameIconSprites
 {
-    static final Map<PoiType, Integer> ELEMENTS = new EnumMap<>(PoiType.class);
+    /** The game map elements whose icons stand for our types. */
+    private static final Map<PoiType, Integer> ELEMENTS = new EnumMap<>(PoiType.class);
 
     static
     {
-        ELEMENTS.put(PoiType.BANK, 5);
-        ELEMENTS.put(PoiType.ANVIL, 10);
-        ELEMENTS.put(PoiType.DUNGEON_ENTRANCE, 12);
-        ELEMENTS.put(PoiType.MAP_EXIT, 13);
-        ELEMENTS.put(PoiType.MAP_LINK, 13);
-        ELEMENTS.put(PoiType.ALTAR, 21);
-        ELEMENTS.put(PoiType.MINIGAME, 40);
-        ELEMENTS.put(PoiType.AGILITY_COURSE, 51);
-        ELEMENTS.put(PoiType.FARMING_PATCH, 55);
-        ELEMENTS.put(PoiType.AGILITY_SHORTCUT, 71);
-        ELEMENTS.put(PoiType.FAIRY_RING, 965);
-        ELEMENTS.put(PoiType.SALVAGE, 1050);
-        ELEMENTS.put(PoiType.MOORING, 1055);
+        for (String element : ("BANK=5 ANVIL=10 DUNGEON_ENTRANCE=12 MAP_EXIT=13 MAP_LINK=13 ALTAR=21 MINIGAME=40"
+            + " AGILITY_COURSE=51 FARMING_PATCH=55 AGILITY_SHORTCUT=71 FAIRY_RING=965 SALVAGE=1050 MOORING=1055").split(" "))
+        {
+            ELEMENTS.put(PoiType.valueOf(element.split("=")[0]), Integer.valueOf(element.split("=")[1]));
+        }
     }
 
     private static final Map<PoiType, BufferedImage> SPRITES = new ConcurrentHashMap<>();

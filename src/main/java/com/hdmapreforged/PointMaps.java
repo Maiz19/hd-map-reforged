@@ -70,26 +70,18 @@ final class PointMaps
 
     static boolean drawnAnywhere(TileCache tiles, String version, BaseMaps maps, WorldPoint point)
     {
-        for (BaseMap map : maps.all())
-        {
-            if (map.contains(point.getX(), point.getY()) && check(tiles, version, map, point) > 0)
-            {
-                return true;
-            }
-        }
-        return false;
+        return drawn(tiles, version, maps, point, true);
     }
 
     static boolean drawnOnAMap(TileCache tiles, String version, BaseMaps maps, WorldPoint point)
     {
-        for (BaseMap map : maps.all())
-        {
-            if (map.id != BaseMap.FULL && map.contains(point.getX(), point.getY()) && check(tiles, version, map, point) > 0)
-            {
-                return true;
-            }
-        }
-        return false;
+        return drawn(tiles, version, maps, point, false);
+    }
+
+    private static boolean drawn(TileCache tiles, String version, BaseMaps maps, WorldPoint point, boolean full)
+    {
+        return maps.all().stream().anyMatch(map -> (full || map.id != BaseMap.FULL)
+            && map.contains(point.getX(), point.getY()) && check(tiles, version, map, point) > 0);
     }
 
     static boolean shows(TileCache tiles, String version, BaseMap map, WorldPoint point)
@@ -109,12 +101,8 @@ final class PointMaps
     {
         String key = version + "/" + map.id + "/" + point.getX() + "," + point.getY() + "," + point.getPlane();
         Integer known = CHECKED.get(key);
-        if (known != null)
-        {
-            return known;
-        }
-        int answer = checkTile(tiles, version, map, point);
-        if (answer >= 0)
+        int answer = known != null ? known : checkTile(tiles, version, map, point);
+        if (known == null && answer >= 0)
         {
             if (CHECKED.size() > 20_000)
             {
@@ -168,9 +156,6 @@ final class PointMaps
     /** Not black, nor the dark grey (16, 16, 16) the wiki fills empty upper floors with. */
     static boolean isDrawn(int rgb)
     {
-        int r = (rgb >> 16) & 0xff;
-        int g = (rgb >> 8) & 0xff;
-        int b = rgb & 0xff;
-        return r + g + b > 60;
+        return (rgb >> 16 & 0xff) + (rgb >> 8 & 0xff) + (rgb & 0xff) > 60;
     }
 }

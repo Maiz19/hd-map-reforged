@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.LongSupplier;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -18,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
  * (Swing); results come back through {@code callbacks}, also when a search fails.
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class RouteController
 {
     public static final long FIRST_BACKOFF_MS = 3_000;
@@ -26,15 +28,11 @@ public final class RouteController
     /** Tiles from the route before the player counts as having left it. */
     public static final int STRAY = 12;
 
-    /** Builds a search for a target, or null when there is no start. */
-    public interface Requests extends IntFunction<RouteRequest>
-    {
-    }
-
     private final Executor searches;
     private final Executor callbacks;
     private final Pathfinder pathfinder;
-    private final Requests requests;
+    /** Builds a search for a target, or null when there is no start. */
+    private final IntFunction<RouteRequest> requests;
     private final Consumer<RouteController> changed;
     private final LongSupplier clock;
 
@@ -53,17 +51,6 @@ public final class RouteController
     /** A search could not start for want of a position, and when to try again. */
     private boolean noStart;
     private long nextStartTry;
-
-    public RouteController(Executor searches, Executor callbacks, Pathfinder pathfinder, Requests requests,
-        Consumer<RouteController> changed, LongSupplier clock)
-    {
-        this.searches = searches;
-        this.callbacks = callbacks;
-        this.pathfinder = pathfinder;
-        this.requests = requests;
-        this.changed = changed;
-        this.clock = clock;
-    }
 
     public void setTarget(int target)
     {
@@ -181,28 +168,22 @@ public final class RouteController
 
     boolean onRoute(int player)
     {
-        if (route.steps.isEmpty())
-        {
-            // Already there; or no start found, which a later position may fix.
-            return route.end >= 0 && near(player, route.end, STRAY);
-        }
+        // With no steps: already there, or no start found, which a later position may fix.
         if (route.end >= 0 && near(player, route.end, STRAY))
         {
             return true;
         }
         for (Route.Step step : route.steps)
         {
-            int[] points = step.points;
             if (step.isJump())
             {
-                if (near(player, points[points.length - 1], STRAY) || points[0] != points[points.length - 1]
-                    && near(player, points[0], STRAY))
+                if (near(player, step.last(), STRAY) || step.first() != step.last() && near(player, step.first(), STRAY))
                 {
                     return true;
                 }
                 continue;
             }
-            for (int point : points)
+            for (int point : step.points)
             {
                 if (near(player, point, Tiles.isSea(point) ? STRAY + Tiles.CELL : STRAY))
                 {
@@ -325,7 +306,6 @@ public final class RouteController
     }
 
     /** For tests. */
-
     public int searchesStarted()
     {
         return searchesStarted;

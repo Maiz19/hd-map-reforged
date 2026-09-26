@@ -7,22 +7,17 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 
 /** One-way passages ({@code one_way.tsv}, e.g. a slide): a passage of any source going back between the areas is left out. */
 public final class OneWay
 {
+    @RequiredArgsConstructor
     private static final class Rule
     {
         final int from;
         final int to;
         final int radius;
-
-        Rule(int from, int to, int radius)
-        {
-            this.from = from;
-            this.to = to;
-            this.radius = radius;
-        }
     }
 
     private final List<Rule> rules;
@@ -34,33 +29,38 @@ public final class OneWay
 
     public static OneWay load()
     {
-        return load("/com/hdmapreforged/route/one_way.tsv");
-    }
-
-    private static OneWay load(String resource)
-    {
         List<Rule> rules = new ArrayList<>();
-        InputStream in = OneWay.class.getResourceAsStream(resource);
-        if (in == null)
+        for (String line : lines("/com/hdmapreforged/route/one_way.tsv"))
         {
-            return new OneWay(rules);
-        }
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)))
-        {
-            String line;
-            while ((line = reader.readLine()) != null)
+            Rule rule = parse(line);
+            if (rule != null)
             {
-                Rule rule = parse(line);
-                if (rule != null)
-                {
-                    rules.add(rule);
-                }
+                rules.add(rule);
             }
         }
-        catch (IOException e)
-        {
-        }
         return new OneWay(rules);
+    }
+
+    /** A bundled text resource's lines, as far as they could be read. */
+    static List<String> lines(String resource)
+    {
+        List<String> lines = new ArrayList<>();
+        InputStream in = OneWay.class.getResourceAsStream(resource);
+        if (in != null)
+        {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)))
+            {
+                for (String line = reader.readLine(); line != null; line = reader.readLine())
+                {
+                    lines.add(line);
+                }
+            }
+            catch (IOException e)
+            {
+                // Those read so far.
+            }
+        }
+        return lines;
     }
 
     /** "x y plane <tab> x y plane <tab> radius <tab> name"; null when not a rule. */

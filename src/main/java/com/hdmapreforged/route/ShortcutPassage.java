@@ -64,12 +64,8 @@ public final class ShortcutPassage
         /** Its name names the object, and it starts or ends here. */
         boolean stands(Edge e)
         {
-            if (e.name == null || !e.name.toLowerCase(Locale.ROOT).contains(object))
-            {
-                return false;
-            }
-            return near(e.from, origin) || near(e.to, origin)
-                || destination >= 0 && (near(e.from, destination) || near(e.to, destination));
+            return e.name != null && e.name.toLowerCase(Locale.ROOT).contains(object) && (near(e.from, origin)
+                || near(e.to, origin) || destination >= 0 && (near(e.from, destination) || near(e.to, destination)));
         }
 
         private static boolean near(int a, int b)

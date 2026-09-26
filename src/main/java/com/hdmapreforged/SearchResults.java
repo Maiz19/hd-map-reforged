@@ -6,13 +6,14 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.LayoutManager;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
@@ -23,13 +24,16 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.stream.Collectors;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -140,40 +144,38 @@ final class SearchResults implements MapView.Overlay
         List<Poi> pois = view.pois();
         wiki.spawns(name, found -> {
             Result shown = found == null ? null : monsterResult(found, maps, labels, pois);
-            SwingUtilities.invokeLater(() -> {
-                if (id != request)
-                {
-                    return;
-                }
-                if (found == null)
-                {
-                    fail("The wiki could not be reached.");
-                }
-                else if (shown == null)
-                {
-                    fail("The wiki page \"" + found.page + "\" lists no locations.");
-                }
-                else
-                {
-                    show(shown);
-                }
-            });
+            String empty = found != null && shown == null ? "The wiki page \"" + found.page + "\" lists no locations."
+                : null;
+            SwingUtilities.invokeLater(() -> answer(id, found, empty, () -> show(shown)));
         });
+    }
+
+    /** A wiki answer, unless a newer lookup started; {@code empty}: why it shows nothing. */
+    private void answer(int id, Object found, String empty, Runnable show)
+    {
+        if (id != request)
+        {
+            return;
+        }
+        if (found == null || empty != null)
+        {
+            fail(found == null ? "The wiki could not be reached." : empty);
+        }
+        else
+        {
+            show.run();
+        }
     }
 
     /** A monster's spawns; when none is on a visible map (instanced boss), first the place to go. Pure. */
     static Result monsterResult(NpcSpawns found, BaseMaps maps, List<PoiLoader.Place> labels, List<Poi> pois)
     {
-        boolean seen = false;
-        for (NpcSpawns.Group group : found.groups)
+        String spawns = found.spawnCount() + " spawns in " + places(found.groups.size());
+        if (found.groups.stream().map(NpcSpawns.Group::center)
+            .anyMatch(c -> maps == null || maps.find(c.getX(), c.getY()) != null))
         {
-            WorldPoint c = group.center();
-            seen |= maps == null || maps.find(c.getX(), c.getY()) != null;
-        }
-        if (!found.groups.isEmpty() && seen)
-        {
-            return new Result(found.page, found.page, found.spawnCount() + " spawns in " + places(found.groups.size())
-                + ", marked with green arrows. Click a place to go there.", found.groups, null, null);
+            return new Result(found.page, found.page, spawns + ", marked with green arrows. Click a place to go there.",
+                found.groups, null, null);
         }
         PlaceLookup.Found place = PlaceLookup.boss(found.page);
         if (place == null)
@@ -182,8 +184,8 @@ final class SearchResults implements MapView.Overlay
         }
         if (place == null)
         {
-            return found.groups.isEmpty() ? null : new Result(found.page, found.page, found.spawnCount() + " spawns in "
-                + places(found.groups.size()) + ", only on the wiki's map of everything.", found.groups, null, null);
+            return found.groups.isEmpty() ? null : new Result(found.page, found.page,
+                spawns + ", only on the wiki's map of everything.", found.groups, null, null);
         }
         List<NpcSpawns.Group> groups = new ArrayList<>();
         groups.add(new NpcSpawns.Group(place.name, place.name, "", false, -1, Collections.singletonList(place.point), null,
@@ -198,25 +200,11 @@ final class SearchResults implements MapView.Overlay
     {
         previous = null;
         int id = startLoading(name);
-        wiki.item(name, found -> SwingUtilities.invokeLater(() -> {
-            if (id != request)
-            {
-                return;
-            }
-            if (found == null)
-            {
-                fail("The wiki could not be reached.");
-            }
-            else if (found.isEmpty())
-            {
-                fail("The wiki lists no spawns, shops with stock, or drops for \"" + found.page + "\".");
-            }
-            else
-            {
+        wiki.item(name, found -> SwingUtilities.invokeLater(() -> answer(id, found, found != null && found.isEmpty()
+            ? "The wiki lists no spawns, shops with stock, or drops for \"" + found.page + "\"." : null, () -> {
                 show(itemResult(found, view.player()));
                 loadDropPictures(found.drops);
-            }
-        }));
+            })));
     }
 
     void showKind(KindIndex.Kind kind, Function<WorldPoint, String> placeName)
@@ -235,54 +223,37 @@ final class SearchResults implements MapView.Overlay
     /** A kind's places, those close together in one town merged ("Catherby, 4 spots"). */
     static List<NpcSpawns.Group> kindGroups(KindIndex.Kind kind, Function<WorldPoint, String> placeName, WorldPoint player)
     {
-        List<String> names = new ArrayList<>();
-        List<Poi> icons = new ArrayList<>();
-        List<String> places = new ArrayList<>();
-        List<String> notes = new ArrayList<>();
-        List<List<WorldPoint>> points = new ArrayList<>();
+        List<NpcSpawns.Group> groups = new ArrayList<>();
+        entries:
         for (KindIndex.Entry entry : kind.entries)
         {
             String place = placeName.apply(entry.point);
             place = place == null ? "" : place;
             String name = kind.type == null && !place.isEmpty() ? place : entry.name;
-            int together = -1;
-            for (int i = 0; i < names.size() && !place.isEmpty(); i++)
+            for (NpcSpawns.Group group : groups)
             {
-                WorldPoint first = points.get(i).get(0);
-                if (places.get(i).equals(place) && names.get(i).equals(name) && first.getPlane() == entry.point.getPlane()
-                    && Math.abs(first.getX() - entry.point.getX()) <= TOGETHER
+                WorldPoint first = group.points.get(0);
+                if (!place.isEmpty() && group.location.equals(place) && group.name.equals(name)
+                    && first.getPlane() == entry.point.getPlane() && Math.abs(first.getX() - entry.point.getX()) <= TOGETHER
                     && Math.abs(first.getY() - entry.point.getY()) <= TOGETHER)
                 {
-                    together = i;
-                    break;
+                    group.points.add(entry.point);
+                    continue entries;
                 }
             }
-            if (together >= 0)
-            {
-                points.get(together).add(entry.point);
-                continue;
-            }
-            names.add(name);
-            icons.add(entry.poi);
-            places.add(place);
-            notes.add(entry.detail == null ? "" : entry.detail);
-            points.add(new ArrayList<>(Collections.singletonList(entry.point)));
-        }
-        List<NpcSpawns.Group> groups = new ArrayList<>();
-        for (int i = 0; i < names.size(); i++)
-        {
-            int n = points.get(i).size();
-            String note = notes.get(i);
-            if (n > 1)
-            {
-                note = n + " spots" + (note.isEmpty() ? "" : " · " + note);
-            }
             // A note, even an empty one, instead of "1 spawn".
-            NpcSpawns.Group group = new NpcSpawns.Group(names.get(i), places.get(i), "", false, -1, points.get(i), null,
-                note, null);
-            group.poi = icons.get(i);
+            NpcSpawns.Group group = new NpcSpawns.Group(name, place, "", false, -1,
+                new ArrayList<>(Collections.singletonList(entry.point)), null, entry.detail == null ? "" : entry.detail,
+                null);
+            group.poi = entry.poi;
             groups.add(group);
         }
+        groups.replaceAll(g -> {
+            int n = g.points.size();
+            NpcSpawns.Group group = n > 1 ? g.as(null, n + " spots" + (g.note.isEmpty() ? "" : " · " + g.note), null) : g;
+            group.poi = g.poi;
+            return group;
+        });
         return nearestFirst(groups, player);
     }
 
@@ -306,20 +277,11 @@ final class SearchResults implements MapView.Overlay
                 SHOPS, storeNote(store), SHOP));
         }
         groups.addAll(nearestFirst(shops, player));
-        int npcs = 0;
-        for (ItemSources.Drop drop : found.drops)
-        {
-            npcs += drop.npc ? 1 : 0;
-        }
+        int npcs = (int) found.drops.stream().filter(drop -> drop.npc).count();
         Result item = new Result(found.page, found.page, "Where to get it. Pick a list: the map marks only that one "
             + "(spawns green, shops gold).", groups, width -> itemExtra(unplaced, found.drops, width),
             null);
-        int spawnCount = 0;
-        for (NpcSpawns.Group spawn : found.spawns)
-        {
-            spawnCount += spawn.points.size();
-        }
-        item.tabs.put(SPAWNS, spawnCount);
+        item.tabs.put(SPAWNS, found.spawns.stream().mapToInt(spawn -> spawn.points.size()).sum());
         item.tabs.put(SHOPS, found.stores.size());
         item.tabs.put(DROPS, npcs);
         item.tabs.put(OTHER, found.drops.size() - npcs);
@@ -363,8 +325,7 @@ final class SearchResults implements MapView.Overlay
         allPlaces = false;
         allDrops = false;
         request++;
-        card.show(this::section);
-        view.repaint();
+        refresh();
         return request;
     }
 
@@ -372,6 +333,11 @@ final class SearchResults implements MapView.Overlay
     {
         loading = null;
         failed = message;
+        refresh();
+    }
+
+    private void refresh()
+    {
         card.show(this::section);
         view.repaint();
     }
@@ -384,14 +350,8 @@ final class SearchResults implements MapView.Overlay
         result = found;
         if (found.tab == null)
         {
-            for (Map.Entry<String, Integer> tab : found.tabs.entrySet())
-            {
-                if (tab.getValue() > 0)
-                {
-                    found.tab = tab.getKey();
-                    break;
-                }
-            }
+            found.tab = found.tabs.entrySet().stream().filter(tab -> tab.getValue() > 0).map(Map.Entry::getKey)
+                .findFirst().orElse(null);
         }
         image = null;
         allPlaces = false;
@@ -406,26 +366,17 @@ final class SearchResults implements MapView.Overlay
                 }
             }));
         }
-        card.show(this::section);
-        view.repaint();
-        List<WorldPoint> centers = new ArrayList<>();
-        for (NpcSpawns.Group group : found.groups)
+        refresh();
+        if (!found.groups.isEmpty())
         {
-            centers.add(group.center());
+            regionCheck.accept(found.groups.stream().map(NpcSpawns.Group::center).collect(Collectors.toList()), maps -> {
+                if (result == found)
+                {
+                    placeMaps = maps;
+                    refresh();
+                }
+            });
         }
-        if (centers.isEmpty())
-        {
-            return;
-        }
-        regionCheck.accept(centers, maps -> {
-            if (result != found)
-            {
-                return;
-            }
-            placeMaps = maps;
-            card.show(this::section);
-            view.repaint();
-        });
     }
 
     void clear()
@@ -476,23 +427,12 @@ final class SearchResults implements MapView.Overlay
         }
         WorldPoint c = group.center();
         boolean shop = SHOPS.equals(group.category);
-        if (shop)
+        Optional<Poi> icon = view.searchExtras().stream().filter(poi -> shop && poi.type == PoiType.SHOP
+            && poi.location.getPlane() == c.getPlane() && PoiLoader.chebyshev(poi.location, c) <= SHOP_ICON_RADIUS)
+            .min(java.util.Comparator.comparingInt(poi -> PoiLoader.chebyshev(poi.location, c)));
+        if (icon.isPresent())
         {
-            Poi best = null;
-            int bestDistance = SHOP_ICON_RADIUS + 1;
-            for (Poi poi : view.searchExtras())
-            {
-                int d = poi.location.getPlane() == c.getPlane() ? PoiLoader.chebyshev(poi.location, c) : Integer.MAX_VALUE;
-                if (poi.type == PoiType.SHOP && d < bestDistance)
-                {
-                    best = poi;
-                    bestDistance = d;
-                }
-            }
-            if (best != null)
-            {
-                return best;
-            }
+            return icon.get();
         }
         String title = result == null ? group.name : result.title;
         String name = placeName(group, title);
@@ -507,48 +447,30 @@ final class SearchResults implements MapView.Overlay
         if (result != null && result.tabs.containsKey(tab))
         {
             result.tab = tab;
-            card.show(this::section);
-            view.repaint();
+            refresh();
         }
     }
 
     void lookAtPoint(WorldPoint at)
     {
-        if (result == null || at == null)
+        if (result != null && at != null)
         {
-            return;
-        }
-        for (NpcSpawns.Group group : result.groups)
-        {
-            if (group.points.contains(at))
-            {
-                look(group);
-                return;
-            }
+            result.groups.stream().filter(group -> group.points.contains(at)).findFirst().ifPresent(this::look);
         }
     }
 
     void lookAt(int index)
     {
-        if (result == null)
+        if (result != null && index >= 0)
         {
-            return;
-        }
-        int n = 0;
-        for (NpcSpawns.Group group : result.groups)
-        {
-            if (result.shows(group) && n++ == index)
-            {
-                look(group);
-                return;
-            }
+            result.groups.stream().filter(result::shows).skip(index).findFirst().ifPresent(this::look);
         }
     }
 
     private static final int SHOP_ICON_RADIUS = 12;
 
     /** Each place's map, worked out once per result and tile check, not in every frame. */
-    private final Map<NpcSpawns.Group, java.util.Optional<BaseMap>> groupMaps = new IdentityHashMap<>();
+    private final Map<NpcSpawns.Group, Optional<BaseMap>> groupMaps = new IdentityHashMap<>();
     private Map<WorldPoint, BaseMap> groupMapsFor;
     private BaseMaps groupMapsFrom;
 
@@ -561,8 +483,7 @@ final class SearchResults implements MapView.Overlay
             groupMapsFor = placeMaps;
             groupMapsFrom = maps;
         }
-        return groupMaps.computeIfAbsent(group, g -> java.util.Optional.ofNullable(mapOf(g, maps, placeMaps)))
-            .orElse(null);
+        return groupMaps.computeIfAbsent(group, g -> Optional.ofNullable(mapOf(g, maps, placeMaps))).orElse(null);
     }
 
     private final Map<NpcSpawns.Group, int[]> groupBounds = new IdentityHashMap<>();
@@ -590,68 +511,68 @@ final class SearchResults implements MapView.Overlay
         }
         // By where the spawns are: the wiki's map ids on these pages do not always match its map list.
         WorldPoint c = group.center();
-        BaseMap checked = placeMaps.get(c);
-        if (checked != null || placeMaps.containsKey(c))
+        if (placeMaps.containsKey(c))
         {
-            return checked;
+            return placeMaps.get(c);
         }
         BaseMap found = maps.find(c);
-        if (found != null)
-        {
-            return found;
-        }
-        return group.mapId >= 0 ? maps.byId(group.mapId) : null;
+        return found != null || group.mapId < 0 ? found : maps.byId(group.mapId);
     }
+
+    /** The corners after the tip, in radii: right, up. */
+    private static final double[][] ARROW = {{-1.2, 1.4}, {-0.45, 1.4}, {-0.45, 2.6}, {0.45, 2.6}, {0.45, 1.4},
+        {1.2, 1.4}};
 
     static Path2D arrow(double x, double y, double r)
     {
         Path2D arrow = new Path2D.Double();
         arrow.moveTo(x, y);
-        arrow.lineTo(x - r * 1.2, y - r * 1.4);
-        arrow.lineTo(x - r * 0.45, y - r * 1.4);
-        arrow.lineTo(x - r * 0.45, y - r * 2.6);
-        arrow.lineTo(x + r * 0.45, y - r * 2.6);
-        arrow.lineTo(x + r * 0.45, y - r * 1.4);
-        arrow.lineTo(x + r * 1.2, y - r * 1.4);
+        for (double[] corner : ARROW)
+        {
+            arrow.lineTo(x + r * corner[0], y - r * corner[1]);
+        }
         arrow.closePath();
         return arrow;
     }
 
     static BufferedImage dotIcon()
     {
-        BufferedImage image = new BufferedImage(14, 14, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = antialiased(image);
-        Path2D arrow = arrow(7, 13, 4.4);
-        g.setColor(DOT);
-        g.fill(arrow);
-        g.setColor(DOT_EDGE);
-        g.draw(arrow);
-        g.dispose();
-        return image;
+        return sprite(14, 14, 1, g -> paintArrow(g, arrow(7, 13, 4.4), DOT, new BasicStroke()));
     }
 
     static BufferedImage itemIcon()
     {
-        BufferedImage image = new BufferedImage(14, 14, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = antialiased(image);
-        g.setColor(SHOP);
-        g.fill(new java.awt.geom.Ellipse2D.Double(1.5, 4.5, 11, 9));
-        g.fill(new java.awt.geom.Rectangle2D.Double(5, 2, 4, 4));
-        g.setColor(new Color(90, 60, 10));
-        g.setStroke(new BasicStroke(1f));
-        g.draw(new java.awt.geom.Ellipse2D.Double(1.5, 4.5, 11, 9));
-        g.draw(new java.awt.geom.Line2D.Double(4.5, 5, 9.5, 5));
+        return sprite(14, 14, 1, g -> {
+            g.setColor(SHOP);
+            g.fill(new Ellipse2D.Double(1.5, 4.5, 11, 9));
+            g.fill(new java.awt.geom.Rectangle2D.Double(5, 2, 4, 4));
+            g.setColor(new Color(90, 60, 10));
+            g.setStroke(new BasicStroke(1f));
+            g.draw(new Ellipse2D.Double(1.5, 4.5, 11, 9));
+            g.draw(new java.awt.geom.Line2D.Double(4.5, 5, 9.5, 5));
+        });
+    }
+
+    private static void paintArrow(Graphics2D g, Path2D arrow, Color fill, BasicStroke edge)
+    {
+        g.setColor(fill);
+        g.fill(arrow);
+        g.setColor(DOT_EDGE);
+        g.setStroke(edge);
+        g.draw(arrow);
+    }
+
+    /** A picture drawn antialiased at {@code scale}. */
+    private static BufferedImage sprite(int width, int height, double scale, Consumer<Graphics2D> paint)
+    {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.scale(scale, scale);
+        paint.accept(g);
         g.dispose();
         return image;
     }
-
-    private static Graphics2D antialiased(BufferedImage image)
-    {
-        Graphics2D g = image.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        return g;
-    }
-
 
     private JComponent section(int width)
     {
@@ -664,18 +585,15 @@ final class SearchResults implements MapView.Overlay
         }
         if (result == null)
         {
-            panel.add(text(failed != null ? failed : "Nothing found.", ColorScheme.LIGHT_GRAY_COLOR, false, width));
-            panel.add(Box.createVerticalStrut(6));
-            panel.add(InfoCard.wrap(buttons(null), width));
+            panel.add(grey(failed != null ? failed : "Nothing found.", width));
+            add(panel, 6, InfoCard.wrap(buttons(null), width));
             return panel;
         }
         JLabel title = text(result.title, Color.WHITE, true, width - 70);
         if (image != null)
         {
-            JPanel head = new JPanel(new BorderLayout(8, 0));
-            head.setOpaque(false);
-            head.setAlignmentX(Component.LEFT_ALIGNMENT);
-            head.add(new JLabel(new javax.swing.ImageIcon(image)), BorderLayout.WEST);
+            JPanel head = panel(new BorderLayout(8, 0));
+            head.add(new JLabel(new ImageIcon(image)), BorderLayout.WEST);
             head.add(title, BorderLayout.CENTER);
             panel.add(head);
         }
@@ -683,46 +601,30 @@ final class SearchResults implements MapView.Overlay
         {
             panel.add(title);
         }
-        panel.add(text(result.summary, ColorScheme.LIGHT_GRAY_COLOR, false, width));
-        panel.add(Box.createVerticalStrut(6));
-        panel.add(InfoCard.wrap(buttons(result.page), width));
+        panel.add(grey(result.summary, width));
+        add(panel, 6, InfoCard.wrap(buttons(result.page), width));
         panel.add(Box.createVerticalStrut(4));
         if (!result.tabs.isEmpty())
         {
-            panel.add(Box.createVerticalStrut(4));
-            panel.add(tabs(result));
+            add(panel, 4, tabs(result));
         }
         String category = null;
-        int shown = 0;
-        List<NpcSpawns.Group> listed = new ArrayList<>();
-        for (NpcSpawns.Group group : result.groups)
+        List<NpcSpawns.Group> listed = result.groups.stream().filter(result::shows).collect(Collectors.toList());
+        for (int i = 0; i < listed.size(); i++)
         {
-            if (result.shows(group))
+            if (!allPlaces && i == SHOWN)
             {
-                listed.add(group);
-            }
-        }
-        for (NpcSpawns.Group group : listed)
-        {
-            if (!allPlaces && shown == SHOWN)
-            {
-                int more = listed.size() - SHOWN;
-                panel.add(Box.createVerticalStrut(4));
-                panel.add(link("Show all " + listed.size() + " places (" + more + " more)", () -> {
-                    allPlaces = true;
-                    card.show(this::section);
-                }, width));
+                more(panel, "Show all " + listed.size() + " places (" + (listed.size() - SHOWN) + " more)",
+                    () -> allPlaces = true, width);
                 break;
             }
+            NpcSpawns.Group group = listed.get(i);
             if (result.tabs.isEmpty() && group.category != null && !group.category.equals(category))
             {
                 category = group.category;
-                panel.add(Box.createVerticalStrut(6));
-                panel.add(heading(category, width));
+                add(panel, 6, heading(category, width));
             }
-            panel.add(Box.createVerticalStrut(4));
-            panel.add(place(group, width));
-            shown++;
+            add(panel, 4, place(group, width));
         }
         if (result.extra != null)
         {
@@ -730,10 +632,17 @@ final class SearchResults implements MapView.Overlay
         }
         if (result.credit != null)
         {
-            panel.add(Box.createVerticalStrut(10));
-            panel.add(text(result.credit, ColorScheme.MEDIUM_GRAY_COLOR, false, width));
+            add(panel, 10, text(result.credit, ColorScheme.MEDIUM_GRAY_COLOR, false, width));
         }
         return panel;
+    }
+
+    private void more(JPanel panel, String text, Runnable all, int width)
+    {
+        add(panel, 4, link(text, () -> {
+            all.run();
+            card.show(this::section);
+        }, width));
     }
 
     private JComponent itemExtra(List<ItemSources.Store> unplaced, List<ItemSources.Drop> drops, int width)
@@ -742,42 +651,35 @@ final class SearchResults implements MapView.Overlay
         JPanel panel = column();
         if (SHOPS.equals(tab) && !unplaced.isEmpty())
         {
-            panel.add(Box.createVerticalStrut(8));
-            panel.add(heading("Shops not on the map", width));
+            add(panel, 8, heading("Shops not on the map", width));
             for (ItemSources.Store store : unplaced)
             {
-                panel.add(Box.createVerticalStrut(4));
-                panel.add(link(store.shop, () -> LinkBrowser.browse(WikiClient.pageUrl(store.shop)), width));
-                panel.add(text(storeNote(store), ColorScheme.LIGHT_GRAY_COLOR, false, width));
+                add(panel, 4, link(store.shop, () -> LinkBrowser.browse(WikiClient.pageUrl(store.shop)), width));
+                panel.add(grey(storeNote(store), width));
             }
         }
-        List<ItemSources.Drop> npcs = new ArrayList<>();
-        List<ItemSources.Drop> other = new ArrayList<>();
-        for (ItemSources.Drop drop : drops)
+        if (DROPS.equals(tab) || OTHER.equals(tab))
         {
-            (drop.npc ? npcs : other).add(drop);
-        }
-        if (DROPS.equals(tab))
-        {
-            dropList(panel, npcs, true, width);
-        }
-        else if (OTHER.equals(tab))
-        {
-            dropList(panel, other, false, width);
+            boolean npcs = DROPS.equals(tab);
+            dropList(panel, drops.stream().filter(drop -> drop.npc == npcs).collect(Collectors.toList()), npcs, width);
         }
         return panel;
     }
 
-    private final Map<String, BufferedImage> dropPictures = new LinkedHashMap<String, BufferedImage>(64, 0.75f,
-        true)
+    /** Pictures by name, the least recently used dropped beyond {@code max}. */
+    static Map<String, BufferedImage> pictureCache(int max)
     {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, BufferedImage> eldest)
+        return new LinkedHashMap<String, BufferedImage>(64, 0.75f, true)
         {
-            return size() > MAX_DROP_PICTURES;
-        }
-    };
-    private static final int MAX_DROP_PICTURES = 200;
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, BufferedImage> eldest)
+            {
+                return size() > max;
+            }
+        };
+    }
+
+    private final Map<String, BufferedImage> dropPictures = pictureCache(200);
 
     private void loadDropPictures(List<ItemSources.Drop> drops)
     {
@@ -789,57 +691,62 @@ final class SearchResults implements MapView.Overlay
                 pages.add(drop.monster);
             }
         }
-        wiki.pageImages(pages, 64, (page, image) -> SwingUtilities.invokeLater(() -> {
-            if (image != null)
-            {
-                dropPictures.put(page, image);
-                // Into the row already shown: rebuilding the whole card for each picture made the map stutter.
-                JLabel shown = dropIcons.get(page);
-                if (shown != null)
-                {
-                    shown.setIcon(fitted(image));
-                }
-            }
-        }));
+        wiki.pageImages(pages, 64, (page, image) -> SwingUtilities.invokeLater(
+            () -> pictureLoaded(dropPictures, dropIcons, page, image)));
     }
 
-    private static final int PICTURE = 36;
+    /** Keeps a loaded picture and puts it into its row if shown: rebuilding the card for each made the map stutter. */
+    static void pictureLoaded(Map<String, BufferedImage> pictures, Map<String, JLabel> shown, String key,
+        BufferedImage picture)
+    {
+        if (picture != null)
+        {
+            pictures.put(key, picture);
+            JLabel label = shown.get(key);
+            if (label != null)
+            {
+                label.setIcon(fitted(picture));
+            }
+        }
+    }
+
+    static final int PICTURE = 36;
     private final Map<String, JLabel> dropIcons = new HashMap<>();
 
     static javax.swing.Icon fitted(BufferedImage picture)
     {
         double k = Math.min(1.0, (PICTURE - 2.0) / Math.max(picture.getWidth(), picture.getHeight()));
-        return new javax.swing.ImageIcon(k >= 1 ? picture : picture.getScaledInstance(
+        return new ImageIcon(k >= 1 ? picture : picture.getScaledInstance(
             (int) Math.round(picture.getWidth() * k), (int) Math.round(picture.getHeight() * k),
             java.awt.Image.SCALE_SMOOTH));
     }
 
-    private JComponent pictureRow(String key, BufferedImage picture, JComponent name, JComponent facts)
+    /** The square a picture shows in, empty until it has one. */
+    static JLabel pictureIcon(BufferedImage picture)
     {
-        JPanel row = new JPanel(new BorderLayout(8, 0));
-        row.setOpaque(false);
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
         JLabel icon = new JLabel();
         icon.setPreferredSize(new Dimension(PICTURE, PICTURE));
         icon.setHorizontalAlignment(JLabel.CENTER);
-        icon.setVerticalAlignment(JLabel.TOP);
         icon.setOpaque(true);
         icon.setBackground(new Color(255, 255, 255, 12));
         if (picture != null)
         {
             icon.setIcon(fitted(picture));
         }
-        dropIcons.put(key, icon);
-        JPanel iconBox = new JPanel(new BorderLayout());
-        iconBox.setOpaque(false);
-        iconBox.add(icon, BorderLayout.NORTH);
-        row.add(iconBox, BorderLayout.WEST);
-        JPanel words = new JPanel();
-        words.setLayout(new BoxLayout(words, BoxLayout.Y_AXIS));
-        words.setOpaque(false);
-        words.add(name);
-        words.add(facts);
-        row.add(words, BorderLayout.CENTER);
+        return icon;
+    }
+
+    /** A picture at the left, words stacked beside it. */
+    static JPanel pictureRow(JComponent icon, JComponent... words)
+    {
+        JPanel row = panel(new BorderLayout(8, 0));
+        row.add(icon, BorderLayout.WEST);
+        JPanel column = column();
+        for (JComponent word : words)
+        {
+            column.add(word);
+        }
+        row.add(column, BorderLayout.CENTER);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Math.max(PICTURE, row.getPreferredSize().height)));
         return row;
     }
@@ -850,45 +757,35 @@ final class SearchResults implements MapView.Overlay
         {
             return;
         }
-        panel.add(Box.createVerticalStrut(4));
-        panel.add(text(npcs ? "The likeliest first. Click one to see where it is." : "Chests, packs, rocks and other "
-            + "sources, the likeliest first.", ColorScheme.LIGHT_GRAY_COLOR, false, width));
-        int shown = 0;
-        for (ItemSources.Drop drop : drops)
+        add(panel, 4, grey(npcs ? "The likeliest first. Click one to see where it is." : "Chests, packs, rocks and other "
+            + "sources, the likeliest first.", width));
+        int textWidth = width - PICTURE - 8;
+        for (int i = 0; i < drops.size(); i++)
         {
-            if (!allDrops && shown == SHOWN)
+            if (!allDrops && i == SHOWN)
             {
-                panel.add(Box.createVerticalStrut(4));
-                panel.add(link("Show all " + drops.size() + " (" + (drops.size() - SHOWN) + " more)", () -> {
-                    allDrops = true;
-                    card.show(this::section);
-                }, width));
+                more(panel, "Show all " + drops.size() + " (" + (drops.size() - SHOWN) + " more)", () -> allDrops = true,
+                    width);
                 break;
             }
-            panel.add(Box.createVerticalStrut(5));
-            int textWidth = width - PICTURE - 8;
-            JLabel name = link(drop.monster, npcs ? () -> {
+            ItemSources.Drop drop = drops.get(i);
+            JLabel name = bold(link(drop.monster, npcs ? () -> {
                 previous = result;
                 lookUpMonster(drop.monster);
-            } : () -> LinkBrowser.browse(WikiClient.pageUrl(drop.monster)), textWidth);
-            name.setFont(name.getFont().deriveFont(Font.BOLD));
-            List<String> facts = new ArrayList<>();
-            if (!drop.how.isEmpty())
-            {
-                facts.add(drop.how);
-            }
-            facts.add(String.join(", ", drop.lines));
-            panel.add(pictureRow(drop.monster, dropPictures.get(drop.monster), name,
-                text(String.join(" · ", facts), ColorScheme.LIGHT_GRAY_COLOR, false, textWidth)));
-            shown++;
+            } : () -> LinkBrowser.browse(WikiClient.pageUrl(drop.monster)), textWidth));
+            JLabel icon = pictureIcon(dropPictures.get(drop.monster));
+            icon.setVerticalAlignment(JLabel.TOP);
+            dropIcons.put(drop.monster, icon);
+            JPanel iconBox = panel(new BorderLayout());
+            iconBox.add(icon, BorderLayout.NORTH);
+            add(panel, 5, pictureRow(iconBox, name, grey((drop.how.isEmpty() ? "" : drop.how + " · ")
+                + String.join(", ", drop.lines), textWidth)));
         }
     }
 
     private JComponent tabs(Result shown)
     {
-        JPanel row = new JPanel(new java.awt.GridLayout(0, 2, 4, 4));
-        row.setOpaque(false);
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel row = panel(new java.awt.GridLayout(0, 2, 4, 4));
         javax.swing.ButtonGroup group = new javax.swing.ButtonGroup();
         for (Map.Entry<String, Integer> tab : shown.tabs.entrySet())
         {
@@ -901,8 +798,7 @@ final class SearchResults implements MapView.Overlay
                 shown.tab = tab.getKey();
                 allPlaces = false;
                 allDrops = false;
-                card.show(this::section);
-                view.repaint();
+                refresh();
             });
             group.add(button);
             row.add(button);
@@ -916,9 +812,7 @@ final class SearchResults implements MapView.Overlay
         JPanel row = column();
         String where = placeName(group, result.title);
         boolean undrawn = undrawn(group);
-        JLabel name = undrawn ? text(where, Color.WHITE, true, width) : link(where, () -> look(group), width);
-        name.setFont(name.getFont().deriveFont(Font.BOLD));
-        row.add(name);
+        row.add(bold(undrawn ? text(where, Color.WHITE, true, width) : link(where, () -> look(group), width)));
         if (undrawn)
         {
             row.add(text("Not on the wiki map yet", new Color(255, 190, 120), false, width));
@@ -933,13 +827,14 @@ final class SearchResults implements MapView.Overlay
         {
             facts.add(map.name);
         }
-        if (group.points.get(0).getPlane() > 0)
+        int floor = group.points.get(0).getPlane();
+        if (floor > 0)
         {
-            facts.add("Floor " + group.points.get(0).getPlane());
+            facts.add("Floor " + floor);
         }
         if (!facts.isEmpty())
         {
-            row.add(text(String.join(" · ", facts), ColorScheme.LIGHT_GRAY_COLOR, false, width));
+            row.add(grey(String.join(" · ", facts), width));
         }
         return row;
     }
@@ -975,11 +870,10 @@ final class SearchResults implements MapView.Overlay
         return group.name + " – " + group.location;
     }
 
+    /** Only for {@link InfoCard#wrap}, which lays the buttons out itself. */
     private JPanel buttons(String page)
     {
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        buttons.setOpaque(false);
-        buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel buttons = new JPanel();
         Result back = previous;
         if (back != null)
         {
@@ -988,28 +882,21 @@ final class SearchResults implements MapView.Overlay
                 request++;
                 show(back);
             }));
-            buttons.add(Box.createHorizontalStrut(4));
         }
         if (result != null && result.kind != null && stopAdder != null)
         {
             String kind = result.kind;
-            JButton add = button("+ Stop", () -> stopAdder.accept(Tour.Stop.kind(kind)));
-            add.setToolTipText("Add \"the nearest of these\" to your custom route");
-            buttons.add(add);
-            buttons.add(Box.createHorizontalStrut(4));
+            buttons.add(tip(button("+ Stop", () -> stopAdder.accept(Tour.Stop.kind(kind))),
+                "Add \"the nearest of these\" to your custom route"));
         }
         NpcSpawns.Group closest = closest();
         if (closest != null)
         {
-            JButton near = button("Closest to me", () -> look(closest));
-            near.setToolTipText("Go to the place nearest to you");
-            buttons.add(near);
-            buttons.add(Box.createHorizontalStrut(4));
+            buttons.add(tip(button("Closest to me", () -> look(closest)), "Go to the place nearest to you"));
         }
         if (page != null)
         {
             buttons.add(button("Wiki", () -> LinkBrowser.browse(WikiClient.pageUrl(page))));
-            buttons.add(Box.createHorizontalStrut(4));
         }
         buttons.add(button("Clear", this::clear));
         return buttons;
@@ -1018,19 +905,8 @@ final class SearchResults implements MapView.Overlay
     private NpcSpawns.Group closest()
     {
         WorldPoint me = view.player();
-        if (me == null || result == null)
-        {
-            return null;
-        }
-        List<NpcSpawns.Group> shown = new ArrayList<>();
-        for (NpcSpawns.Group group : result.groups)
-        {
-            if (result.shows(group) && !undrawn(group))
-            {
-                shown.add(group);
-            }
-        }
-        return closest(shown, me);
+        return me == null || result == null ? null : closest(result.groups.stream()
+            .filter(group -> result.shows(group) && !undrawn(group)).collect(Collectors.toList()), me);
     }
 
     static NpcSpawns.Group closest(List<NpcSpawns.Group> groups, WorldPoint me)
@@ -1052,21 +928,51 @@ final class SearchResults implements MapView.Overlay
         return best;
     }
 
-    private static JPanel column()
+    /** A see-through panel, left-aligned in a column. */
+    static JPanel panel(LayoutManager layout)
     {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        JPanel panel = new JPanel(layout);
         panel.setOpaque(false);
         panel.setAlignmentX(Component.LEFT_ALIGNMENT);
         return panel;
     }
 
-    private static JButton button(String text, Runnable action)
+    static JPanel column()
+    {
+        JPanel panel = panel(null);
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        return panel;
+    }
+
+    private static void add(JPanel panel, int space, Component c)
+    {
+        panel.add(Box.createVerticalStrut(space));
+        panel.add(c);
+    }
+
+    static JButton button(String text, Runnable action)
     {
         JButton button = new JButton(text);
         button.setFocusable(false);
         button.addActionListener(e -> action.run());
         return button;
+    }
+
+    static <T extends JComponent> T tip(T c, String tip)
+    {
+        c.setToolTipText(tip);
+        return c;
+    }
+
+    static JLabel bold(JLabel label)
+    {
+        label.setFont(label.getFont().deriveFont(Font.BOLD));
+        return label;
+    }
+
+    private static JLabel grey(String text, int width)
+    {
+        return text(text, ColorScheme.LIGHT_GRAY_COLOR, false, width);
     }
 
     private static JLabel heading(String text, int width)
@@ -1078,7 +984,7 @@ final class SearchResults implements MapView.Overlay
         return label;
     }
 
-    private static JLabel text(String text, Color color, boolean bold, int width)
+    static JLabel text(String text, Color color, boolean bold, int width)
     {
         JLabel label = new JLabel("<html><div style='width:" + width + "px'>" + InfoCard.escape(text) + "</div></html>");
         label.setForeground(color);
@@ -1093,7 +999,12 @@ final class SearchResults implements MapView.Overlay
 
     private static JLabel link(String text, Runnable action, int width)
     {
-        JLabel label = text(text, LINK, false, width);
+        return clickable(text(text, LINK, false, width), action, true);
+    }
+
+    /** A label that runs {@code action} when clicked; {@code hover}: a link that turns white under the mouse. */
+    static JLabel clickable(JLabel label, Runnable action, boolean hover)
+    {
         label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         label.addMouseListener(new MouseAdapter()
         {
@@ -1106,99 +1017,61 @@ final class SearchResults implements MapView.Overlay
             @Override
             public void mouseEntered(MouseEvent e)
             {
-                label.setForeground(Color.WHITE);
+                if (hover)
+                {
+                    label.setForeground(Color.WHITE);
+                }
             }
 
             @Override
             public void mouseExited(MouseEvent e)
             {
-                label.setForeground(LINK);
+                if (hover)
+                {
+                    label.setForeground(LINK);
+                }
             }
         });
         return label;
     }
 
-
     private static final BasicStroke EDGE = new BasicStroke(1.2f);
-    /** Arrows and labels as pictures made once: drawing hundreds of shapes and texts every frame was slow. */
-    private final Map<String, BufferedImage> sprites = new HashMap<>();
     private final Map<NpcSpawns.Group, WorldPoint> centers = new IdentityHashMap<>();
 
-    private WorldPoint center(NpcSpawns.Group group)
-    {
-        if (centers.size() > 5000)
-        {
-            centers.clear();
-        }
-        return centers.computeIfAbsent(group, NpcSpawns.Group::center);
-    }
-
-    private static final class Tag
-    {
-        final Color color;
-        final double device;
-        final BufferedImage image;
-
-        Tag(Color color, double device, BufferedImage image)
-        {
-            this.color = color;
-            this.device = device;
-            this.image = image;
-        }
-    }
-
-    private final Map<NpcSpawns.Group, Tag> tags = new IdentityHashMap<>();
+    /**
+     * Arrows and each place's label as pictures made once: drawing hundreds of shapes and texts every frame was slow.
+     * Labels for {@link #tagsDevice}; a label's colour follows from its place.
+     */
+    private final Map<NpcSpawns.Group, BufferedImage> tags = new IdentityHashMap<>();
+    private double tagsDevice;
     private final Map<Long, BufferedImage> arrows = new HashMap<>();
 
-    private BufferedImage groupTag(NpcSpawns.Group group, Color color, FontMetrics metrics, double device)
+    private static void cap(Map<?, ?> cache, int max)
     {
-        Tag tag = tags.get(group);
-        if (tag == null || !tag.color.equals(color) || tag.device != device)
+        if (cache.size() > max)
         {
-            String label = (group.location.isEmpty() ? group.name : group.location)
-                + (group.levels.isEmpty() ? "" : " (" + group.levels + ")");
-            tag = new Tag(color, device, labelSprite(label, color, metrics, device));
-            tags.put(group, tag);
+            cache.clear();
         }
-        return tag.image;
     }
 
     private BufferedImage arrowSprite(Color fill, double r, double device)
     {
         long key = (long) fill.getRGB() << 32 | (Math.round(r * 4) & 0xffffL) << 16 | Math.round(device * 10) & 0xffffL;
-        if (arrows.size() > 500)
-        {
-            arrows.clear();
-        }
+        cap(arrows, 500);
         return arrows.computeIfAbsent(key, k -> {
             double w = r * 2.4 + 4;
             double h = r * 2.6 + 4;
-            BufferedImage image = new BufferedImage((int) Math.ceil(w * device),
-                (int) Math.ceil(h * device), BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = antialiased(image);
-            g.scale(device, device);
-            Path2D arrow = arrow(w / 2, h - 2, r);
-            g.setColor(fill);
-            g.fill(arrow);
-            g.setColor(DOT_EDGE);
-            g.setStroke(EDGE);
-            g.draw(arrow);
-            g.dispose();
-            return image;
+            return sprite((int) Math.ceil(w * device), (int) Math.ceil(h * device), device,
+                g -> paintArrow(g, arrow(w / 2, h - 2, r), fill, EDGE));
         });
     }
 
-    private BufferedImage labelSprite(String label, Color color, FontMetrics metrics, double device)
+    private static BufferedImage labelSprite(String label, Color color, FontMetrics metrics, double device)
     {
-        String key = "l" + color.getRGB() + "/" + Math.round(device * 10) + "/" + label;
-        return sprites.computeIfAbsent(key, k -> {
-            int width = metrics.stringWidth(label) + 10;
-            int height = metrics.getHeight() + 2;
-            BufferedImage image = new BufferedImage((int) Math.ceil((width + 2) * device),
-                (int) Math.ceil((height + 2) * device), BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = antialiased(image);
+        int width = metrics.stringWidth(label) + 10;
+        int height = metrics.getHeight() + 2;
+        return sprite((int) Math.ceil((width + 2) * device), (int) Math.ceil((height + 2) * device), device, g -> {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            g.scale(device, device);
             g.setFont(LABEL_FONT);
             RoundRectangle2D box = new RoundRectangle2D.Double(1, 1, width, height, 8, 8);
             g.setColor(LABEL_BACKGROUND);
@@ -1207,16 +1080,10 @@ final class SearchResults implements MapView.Overlay
             g.draw(box);
             g.setColor(Color.WHITE);
             g.drawString(label, 6f, (float) (1 + metrics.getHeight() - metrics.getDescent()));
-            g.dispose();
-            return image;
         });
     }
-    private static final Map<Color, Color> FADED = new java.util.concurrent.ConcurrentHashMap<>();
 
-    private static Color faded(Color color)
-    {
-        return FADED.computeIfAbsent(color, c -> new Color(c.getRed(), c.getGreen(), c.getBlue(), 110));
-    }
+    private static final Map<Color, Color> FADED = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
     public void paint(Graphics2D g, MapView.Projection projection)
@@ -1233,18 +1100,9 @@ final class SearchResults implements MapView.Overlay
         g.setFont(LABEL_FONT);
         FontMetrics metrics = g.getFontMetrics();
         double device = Math.max(1, Math.min(4, Math.abs(g.getTransform().getScaleX())));
-        if (sprites.size() > 3000)
-        {
-            sprites.clear();
-        }
-        if (groupBounds.size() > 5000)
-        {
-            groupBounds.clear();
-        }
-        if (tags.size() > 5000)
-        {
-            tags.clear();
-        }
+        cap(groupBounds, 5000);
+        cap(tags, device != tagsDevice ? -1 : 5000);
+        tagsDevice = device;
         for (NpcSpawns.Group group : shown.groups)
         {
             int[] b = bounds(group);
@@ -1267,8 +1125,8 @@ final class SearchResults implements MapView.Overlay
                 continue;
             }
             Color color = group.color != null ? group.color : DOT;
-            boolean otherFloor = moved.getPlane() != projection.plane();
-            Color fill = otherFloor ? faded(color) : color;
+            Color fill = moved.getPlane() != projection.plane()
+                ? FADED.computeIfAbsent(color, c -> new Color(c.getRed(), c.getGreen(), c.getBlue(), 110)) : color;
             BufferedImage arrow = arrowSprite(fill, r, device);
             double half = arrow.getWidth() / device / 2;
             double tall = arrow.getHeight() / device - 2;
@@ -1286,10 +1144,12 @@ final class SearchResults implements MapView.Overlay
             {
                 continue;
             }
-            WorldPoint c = center(group);
+            cap(centers, 5000);
+            WorldPoint c = centers.computeIfAbsent(group, NpcSpawns.Group::center);
             double x = projection.screenX(c.getX() + dx + 0.5);
             double y = projection.screenY(c.getY() + dy + 0.5) - r * 3 - 4;
-            BufferedImage tag = groupTag(group, color, metrics, device);
+            BufferedImage tag = tags.computeIfAbsent(group, k -> labelSprite((group.location.isEmpty() ? group.name
+                : group.location) + (group.levels.isEmpty() ? "" : " (" + group.levels + ")"), color, metrics, device));
             double width = tag.getWidth() / device;
             if (x + width / 2.0 < 0 || x - width / 2.0 > projection.width() || y < -20 || y > projection.height() + 20)
             {

@@ -130,7 +130,7 @@ final class MapPanel extends PluginPanel
         routeHeading.setVisible(section == null);
         if (section == null)
         {
-            routeHolder.add(text("No route. Right-click a place on the map, Path to here.", ColorScheme.LIGHT_GRAY_COLOR));
+            routeHolder.add(text("No route. Right-click a place on the map, Path to here."));
         }
         else
         {
@@ -138,8 +138,7 @@ final class MapPanel extends PluginPanel
             steps.setAlignmentX(Component.LEFT_ALIGNMENT);
             routeHolder.add(steps);
         }
-        routeHolder.revalidate();
-        routeHolder.repaint();
+        refresh(routeHolder);
     }
 
     void setTours(TourPanel.Actions actions)
@@ -166,8 +165,7 @@ final class MapPanel extends PluginPanel
     {
         openFriend = id;
         friendPage = page;
-        friendsShown = null;
-        refreshFriends();
+        rebuildFriends();
     }
 
     private void edit(Tour tour)
@@ -193,15 +191,14 @@ final class MapPanel extends PluginPanel
             JComponent section = editorSection.apply(TEXT_WIDTH - 40);
             section.setAlignmentX(Component.LEFT_ALIGNMENT);
             toursHolder.add(section);
-            toursHolder.revalidate();
-            toursHolder.repaint();
+            refresh(toursHolder);
             return;
         }
         List<Tour> saved = tours == null ? Collections.emptyList() : tours.tours();
         String running = tours == null ? null : tours.running();
         if (saved.isEmpty())
         {
-            toursHolder.add(text("None yet. Right-click the map, Add to custom route.", ColorScheme.LIGHT_GRAY_COLOR));
+            toursHolder.add(text("None yet. Right-click the map, Add to custom route."));
             JButton make = button("New route", () -> edit(new Tour(Tour.unique(saved, "My route"),
                 Collections.emptyList())), "Make a route; add its stops from the map");
             make.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -214,8 +211,7 @@ final class MapPanel extends PluginPanel
             toursHolder.add(entry(tour.name, runs ? "Running, " + what : what, runs ? new Color(120, 220, 140) : null,
                 "Open this route: its stops, their order, Run", () -> edit(tour)));
         }
-        toursHolder.revalidate();
-        toursHolder.repaint();
+        refresh(toursHolder);
     }
 
     void stop()
@@ -263,11 +259,11 @@ final class MapPanel extends PluginPanel
                 friendsHolder.add(Box.createVerticalStrut(4));
             }
             friendsHolder.add(text("Not in a party. In one (RuneLite's Party panel), your friends show here: where "
-                + "they are and what they carry.", ColorScheme.LIGHT_GRAY_COLOR));
+                + "they are and what they carry."));
         }
         else if (rows.isEmpty())
         {
-            friendsHolder.add(text("No one else in your party yet.", ColorScheme.LIGHT_GRAY_COLOR));
+            friendsHolder.add(text("No one else in your party yet."));
         }
         int me = friends.world();
         for (int i = 0; i < rows.size(); i++)
@@ -282,8 +278,19 @@ final class MapPanel extends PluginPanel
                 friendsHolder.add(details(row, me));
             }
         }
-        friendsHolder.revalidate();
-        friendsHolder.repaint();
+        refresh(friendsHolder);
+    }
+
+    private static void refresh(JComponent c)
+    {
+        c.revalidate();
+        c.repaint();
+    }
+
+    private void rebuildFriends()
+    {
+        friendsShown = null;
+        refreshFriends();
     }
 
     private JComponent friend(FriendsWidget.Row row, String where)
@@ -291,8 +298,7 @@ final class MapPanel extends PluginPanel
         return entry(row.name, where, row.color != null ? row.color : ColorScheme.MEDIUM_GRAY_COLOR,
             row.id == openFriend ? "Close" : "What " + row.name + " carries, wears and can do", () -> {
                 openFriend = openFriend == row.id ? -1 : row.id;
-                friendsShown = null;
-                refreshFriends();
+                rebuildFriends();
             });
     }
 
@@ -316,7 +322,7 @@ final class MapPanel extends PluginPanel
         PartyMapMembers.Gear shared = friends.gear(row.id);
         if (shared == null)
         {
-            box.add(text("Nothing shared yet. They share it with this plugin's setting.", ColorScheme.LIGHT_GRAY_COLOR));
+            box.add(text("Nothing shared yet. They share it with this plugin's setting."));
             return box;
         }
         int hp = Skill.HITPOINTS.ordinal();
@@ -335,8 +341,7 @@ final class MapPanel extends PluginPanel
             int page = k;
             JButton tab = button(PAGES[k], () -> {
                 friendPage = page;
-                friendsShown = null;
-                refreshFriends();
+                rebuildFriends();
             }, PAGES[k]);
             tab.setEnabled(k != friendPage);
             tab.setMargin(new Insets(2, 1, 2, 1));
@@ -510,8 +515,7 @@ final class MapPanel extends PluginPanel
         }
     }
 
-    private static JComponent card
-(JComponent heading, JComponent body)
+    private static JComponent card(JComponent heading, JComponent body)
     {
         JPanel card = column();
         card.setOpaque(true);
@@ -550,11 +554,11 @@ final class MapPanel extends PluginPanel
         return label;
     }
 
-    private static JLabel text(String text, Color color)
+    private static JLabel text(String text)
     {
         JLabel label = new JLabel("<html><div style='width:" + TEXT_WIDTH + "px'>" + InfoCard.escape(text)
             + "</div></html>");
-        label.setForeground(color);
+        label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
         return label;
     }

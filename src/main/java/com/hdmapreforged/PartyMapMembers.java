@@ -6,6 +6,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /** Last known location of each party member: written from network threads, read on Swing, so all synchronized. */
@@ -20,6 +22,7 @@ final class PartyMapMembers
     /** The core Party plugin's location messages are coarser; ours win while they keep coming. */
     static final long OWN_MESSAGE_PRIORITY_MILLIS = 60_000;
 
+    @RequiredArgsConstructor
     static final class Marker
     {
         final long id;
@@ -29,17 +32,6 @@ final class PartyMapMembers
         final BufferedImage avatar;
         final long ageMillis;
         final float alpha;
-
-        Marker(long id, String name, WorldPoint point, int world, BufferedImage avatar, long ageMillis, float alpha)
-        {
-            this.id = id;
-            this.name = name;
-            this.point = point;
-            this.world = world;
-            this.avatar = avatar;
-            this.ageMillis = ageMillis;
-            this.alpha = alpha;
-        }
 
         boolean stale()
         {
@@ -88,18 +80,12 @@ final class PartyMapMembers
         }
     }
 
+    @RequiredArgsConstructor
     static final class Drop
     {
         final int skill;
         final int amount;
         final long at;
-
-        Drop(int skill, int amount, long at)
-        {
-            this.skill = skill;
-            this.amount = amount;
-            this.at = at;
-        }
     }
 
     static final long DROP_MS = 2200;
@@ -129,20 +115,13 @@ final class PartyMapMembers
         }
     }
 
+    @RequiredArgsConstructor
     static final class Loot
     {
         final int item;
         final int quantity;
         final long value;
         final long at;
-
-        Loot(int item, int quantity, long value, long at)
-        {
-            this.item = item;
-            this.quantity = quantity;
-            this.value = value;
-            this.at = at;
-        }
     }
 
     static final long LOOT_MS = 3500;
@@ -152,7 +131,7 @@ final class PartyMapMembers
     {
         List<Loot> list = loot.computeIfAbsent(id, k -> new ArrayList<>());
         list.add(drop);
-            // A big pile shows its most valuable few.
+        // A big pile shows its most valuable few.
         if (list.size() > 4)
         {
             list.sort(java.util.Comparator.comparingLong((Loot l) -> -l.value));
@@ -162,12 +141,17 @@ final class PartyMapMembers
 
     synchronized List<Loot> loot(long id, long now)
     {
-        List<Loot> list = loot.get(id);
+        return recent(loot.get(id), l -> now - l.at > LOOT_MS);
+    }
+
+    /** A copy without the old ones, which go. */
+    private static <T> List<T> recent(List<T> list, Predicate<T> old)
+    {
         if (list == null)
         {
             return Collections.emptyList();
         }
-        list.removeIf(l -> now - l.at > LOOT_MS);
+        list.removeIf(old);
         return new ArrayList<>(list);
     }
 
@@ -187,13 +171,7 @@ final class PartyMapMembers
 
     synchronized List<Drop> drops(long id, long now)
     {
-        List<Drop> list = drops.get(id);
-        if (list == null)
-        {
-            return Collections.emptyList();
-        }
-        list.removeIf(d -> now - d.at > DROP_MS);
-        return new ArrayList<>(list);
+        return recent(drops.get(id), d -> now - d.at > DROP_MS);
     }
 
     synchronized Gear gear(long id)
@@ -249,18 +227,12 @@ final class PartyMapMembers
 
     synchronized void remove(long id)
     {
-        members.remove(id);
-        gear.remove(id);
-        drops.remove(id);
-        loot.remove(id);
+        List.of(members, gear, drops, loot).forEach(m -> m.remove(id));
     }
 
     synchronized void clear()
     {
-        members.clear();
-        gear.clear();
-        drops.clear();
-        loot.clear();
+        List.of(members, gear, drops, loot).forEach(Map::clear);
     }
 
     synchronized boolean isEmpty()

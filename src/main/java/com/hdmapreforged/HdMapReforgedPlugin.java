@@ -14,8 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -28,6 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
@@ -205,10 +207,6 @@ public class HdMapReforgedPlugin extends Plugin
         ItemNames itemNames = new ItemNames(clientThread, itemManager);
         screen = new MapScreen(tiles, config, wiki, itemNames, this::togglePopOut);
         fullScreen = new MapScreen(tiles, config, wiki, itemNames, () -> fullMap.close());
-        for (MapScreen s : new MapScreen[]{screen, fullScreen})
-        {
-            s.view().setLinesChoice(value -> configManager.setConfiguration(HdMapReforgedConfig.GROUP, "linesOff", value));
-        }
         fullMap = new FullMapWindow(client, fullScreen, config.fullMapBounds(),
             bounds -> configManager.setConfiguration(HdMapReforgedConfig.GROUP, "fullMapBounds", bounds),
             key -> config.openMapKey().matches(key), config::mapInGameWindow);
@@ -233,6 +231,7 @@ public class HdMapReforgedPlugin extends Plugin
         downloadControl = new MapDownloadControl(downloader, this::refresh);
         for (MapScreen on : new MapScreen[]{screen, fullScreen})
         {
+            on.view().setLinesChoice(value -> configManager.setConfiguration(HdMapReforgedConfig.GROUP, "linesOff", value));
             on.setRegionCheck(this::checkRegions);
             on.view().addOverlay(downloadControl);
         }
@@ -254,7 +253,7 @@ public class HdMapReforgedPlugin extends Plugin
                 return false;
             }
             after.run();
-            SwingUtilities.invokeLater(this::refresh);
+            refreshLater();
             return true;
         });
     }
@@ -460,12 +459,9 @@ public class HdMapReforgedPlugin extends Plugin
             return;
         }
         // The orb can list several map options; one entry of ours is enough.
-        for (MenuEntry entry : client.getMenu().getMenuEntries())
+        if (ownEntryIndex(client.getMenu().getMenuEntries()) >= 0)
         {
-            if (isOurEntry(entry))
-            {
-                return;
-            }
+            return;
         }
         client.getMenu().createMenuEntry(-1)
             .setOption(MENU_OPTION)
@@ -533,17 +529,9 @@ public class HdMapReforgedPlugin extends Plugin
     /** The last entry is the top of the menu, which is what a left click does. */
     static MenuEntry[] moveToTop(MenuEntry[] entries, int index)
     {
-        MenuEntry[] reordered = new MenuEntry[entries.length];
-        int j = 0;
-        for (int i = 0; i < entries.length; i++)
-        {
-            if (i != index)
-            {
-                reordered[j++] = entries[i];
-            }
-        }
-        reordered[j] = entries[index];
-        return reordered;
+        List<MenuEntry> reordered = new ArrayList<>(Arrays.asList(entries));
+        reordered.add(reordered.remove(index));
+        return reordered.toArray(new MenuEntry[0]);
     }
 
     @Subscribe
@@ -604,7 +592,7 @@ public class HdMapReforgedPlugin extends Plugin
             default:
                 break;
         }
-        SwingUtilities.invokeLater(this::refresh);
+        refreshLater();
     }
 
     private void configureTiles()
@@ -627,7 +615,7 @@ public class HdMapReforgedPlugin extends Plugin
         {
             downloader.stop();
             downloader.clearMessage();
-            SwingUtilities.invokeLater(this::refresh);
+            refreshLater();
             return;
         }
         ensureDiskLimit(downloadRoom(scope));
@@ -640,9 +628,7 @@ public class HdMapReforgedPlugin extends Plugin
         String version = tiles.version();
         if (version != null && (!downloader.isRunning() || downloader.scope() != scope || !version.equals(downloadingVersion)))
         {
-            downloadingVersion = version;
-            downloadingMaps = currentMaps;
-            downloader.start(scope, version, currentMaps);
+            download(scope, version, currentMaps);
         }
     }
 
@@ -653,10 +639,15 @@ public class HdMapReforgedPlugin extends Plugin
             && (!downloader.isRunning() || !version.equals(downloadingVersion) || maps != downloadingMaps))
         {
             ensureDiskLimit(downloadRoom(scope));
-            downloadingVersion = version;
-            downloadingMaps = maps;
-            downloader.start(scope, version, maps);
+            download(scope, version, maps);
         }
+    }
+
+    private void download(MapDownloader.Scope scope, String version, BaseMaps maps)
+    {
+        downloadingVersion = version;
+        downloadingMaps = maps;
+        downloader.start(scope, version, maps);
     }
 
     private volatile BaseMaps downloadingMaps;
@@ -679,6 +670,11 @@ public class HdMapReforgedPlugin extends Plugin
                 refresh();
             });
         }
+    }
+
+    private void refreshLater()
+    {
+        SwingUtilities.invokeLater(this::refresh);
     }
 
     private void refresh()
@@ -740,15 +736,10 @@ public class HdMapReforgedPlugin extends Plugin
         {
             tiles.setVersion(version, official);
             resumeDownload(version, currentMaps);
-            SwingUtilities.invokeLater(this::refresh);
+            refreshLater();
             return;
         }
-        if (BUNDLED_VERSION.equals(version))
-        {
-            switchVersion(version, official, bundledMaps, started);
-            return;
-        }
-        BaseMaps kept = readBaseMaps(version);
+        BaseMaps kept = BUNDLED_VERSION.equals(version) ? bundledMaps : readBaseMaps(version);
         if (kept != null)
         {
             switchVersion(version, official, kept, started);
@@ -757,7 +748,7 @@ public class HdMapReforgedPlugin extends Plugin
         if (tiles.version() == null)
         {
             tiles.setVersion(currentVersion, false);
-            SwingUtilities.invokeLater(this::refresh);
+            refreshLater();
         }
         wiki.baseMaps(version, (maps, json) -> {
             if (started != life.get() || !version.equals(wantedVersion))
@@ -797,7 +788,7 @@ public class HdMapReforgedPlugin extends Plugin
         regionsPending.clear();
         tiles.setVersion(version, official);
         refreshData(withRegions, version);
-        SwingUtilities.invokeLater(this::refresh);
+        refreshLater();
     }
 
     private File baseMapsFile(String version)
@@ -841,7 +832,7 @@ public class HdMapReforgedPlugin extends Plugin
             Path temp = Files.createTempFile(parent.toPath(), file.getName() + ".", ".part");
             try
             {
-                Files.write(temp, json.getBytes(StandardCharsets.UTF_8));
+                Files.writeString(temp, json);
                 Files.move(temp, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
             finally
@@ -902,29 +893,12 @@ public class HdMapReforgedPlugin extends Plugin
             {
                 return null;
             }
-            List<Needs> needs = new ArrayList<>();
-            for (Poi poi : Poi.flatten(data.pois))
-            {
-                for (Poi member : poi.members())
-                {
-                    needs.add(member.needs);
-                }
-                for (Poi.Link link : poi.links())
-                {
-                    needs.add(link.needs);
-                }
-            }
-            allNeeds = needs;
+            allNeeds = Poi.flatten(data.pois).stream().flatMap(poi -> Stream.concat(poi.members().stream().map(member -> member.needs),
+                poi.links().stream().map(link -> link.needs))).collect(Collectors.toList());
             route.setIconEntries(data.iconEntries);
             clientThread.invokeLater(() -> unlocksDirty = true);
-            Set<Integer> elements = new HashSet<>();
-            for (MapIconLoader.Icon icon : data.icons)
-            {
-                if (icon.element >= 0)
-                {
-                    elements.add(icon.element);
-                }
-            }
+            Set<Integer> elements = data.icons.stream().filter(icon -> icon.element >= 0).map(icon -> icon.element)
+                .collect(Collectors.toSet());
             whenGameLoaded(started, () -> GameIconSprites.loadElements(client, elements), () -> { });
             SwingUtilities.invokeLater(() -> {
                 if (screen != null && generation == dataGeneration.get())

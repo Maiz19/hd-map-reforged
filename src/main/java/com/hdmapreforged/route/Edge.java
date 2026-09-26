@@ -1,6 +1,10 @@
 package com.hdmapreforged.route;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+
 /** A non-walking jump in the route graph; costs in half game ticks. */
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Edge
 {
     public enum Kind
@@ -34,32 +38,13 @@ public final class Edge
 
     public Edge(int from, int to, Kind kind, String name, String detail, int cost, String category)
     {
-        this.category = category;
-        this.from = from;
-        this.to = to;
-        this.kind = kind;
-        this.name = name;
-        this.detail = detail;
-        this.cost = Math.max(1, cost);
-        this.time = this.cost;
-    }
-
-    private Edge(Edge edge, int extra)
-    {
-        this.category = edge.category;
-        this.from = edge.from;
-        this.to = edge.to;
-        this.kind = edge.kind;
-        this.name = edge.name;
-        this.detail = edge.detail;
-        this.cost = edge.cost + Math.max(0, extra);
-        this.time = edge.time;
+        this(from, to, kind, name, detail, Math.max(1, cost), Math.max(1, cost), category);
     }
 
     /** Heavier in the search only ("only use a teleport when it saves at least 10 tiles"). */
     public Edge weighed(int extra)
     {
-        return extra <= 0 ? this : new Edge(this, extra);
+        return extra <= 0 ? this : new Edge(from, to, kind, name, detail, cost + extra, time, category);
     }
 
     @Override

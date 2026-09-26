@@ -1,5 +1,7 @@
 package com.hdmapreforged;
 
+import java.util.Arrays;
+import java.util.function.IntUnaryOperator;
 import net.runelite.client.party.messages.PartyMemberMessage;
 
 /**
@@ -49,16 +51,7 @@ public class HdMapPartyGear extends PartyMemberMessage
     /** Null when not shared. */
     int[] experience()
     {
-        if (x == null)
-        {
-            return null;
-        }
-        int[] out = new int[SKILLS];
-        for (int k = 0; k < Math.min(x.length, SKILLS); k++)
-        {
-            out[k] = Math.max(0, Math.min(200_000_000, x[k]));
-        }
-        return out;
+        return x == null ? null : copy(x, SKILLS, 0, v -> Math.max(0, Math.min(200_000_000, v)));
     }
 
     /** 0 to 100, or -1 when not shared. */
@@ -80,12 +73,7 @@ public class HdMapPartyGear extends PartyMemberMessage
 
     int[] quantities()
     {
-        int[] out = new int[INVENTORY];
-        for (int k = 0; q != null && k < Math.min(q.length, INVENTORY); k++)
-        {
-            out[k] = Math.max(0, q[k]);
-        }
-        return out;
+        return copy(q, INVENTORY, 0, v -> Math.max(0, v));
     }
 
     int[] equipment()
@@ -105,21 +93,22 @@ public class HdMapPartyGear extends PartyMemberMessage
 
     private static int[] items(int[] ids, int size)
     {
-        int[] out = new int[size];
-        java.util.Arrays.fill(out, -1);
-        for (int k = 0; ids != null && k < Math.min(ids.length, size); k++)
-        {
-            out[k] = ids[k] >= 0 && ids[k] < MAX_ITEM ? ids[k] : -1;
-        }
-        return out;
+        return copy(ids, size, -1, id -> id >= 0 && id < MAX_ITEM ? id : -1);
     }
 
     private static int[] levels(int[] values)
     {
-        int[] out = new int[SKILLS];
-        for (int k = 0; values != null && k < Math.min(values.length, SKILLS); k++)
+        return copy(values, SKILLS, 0, v -> Math.max(0, Math.min(255, v)));
+    }
+
+    /** The first {@code size} values checked, {@code empty} where none came. */
+    private static int[] copy(int[] values, int size, int empty, IntUnaryOperator check)
+    {
+        int[] out = new int[size];
+        Arrays.fill(out, empty);
+        for (int k = 0; values != null && k < Math.min(values.length, size); k++)
         {
-            out[k] = Math.max(0, Math.min(255, values[k]));
+            out[k] = check.applyAsInt(values[k]);
         }
         return out;
     }

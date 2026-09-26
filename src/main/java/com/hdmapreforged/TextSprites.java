@@ -8,8 +8,8 @@ import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /** Outlined map text, rendered once then copied (each label is nine antialiased strings). Swing thread only. */
 final class TextSprites
@@ -17,43 +17,11 @@ final class TextSprites
     private static final int LIMIT = 1500;
     private static final Color OUTLINE = new Color(0, 0, 0, 200);
 
-    private static final class Key
-    {
-        final String text;
-        final Font font;
-        final int rgb;
-        final int deviceTenths;
-
-        Key(String text, Font font, Color color, int deviceTenths)
-        {
-            this.text = text;
-            this.font = font;
-            this.rgb = color.getRGB();
-            this.deviceTenths = deviceTenths;
-        }
-
-        @Override
-        public boolean equals(Object o)
-        {
-            if (!(o instanceof Key))
-            {
-                return false;
-            }
-            Key k = (Key) o;
-            return rgb == k.rgb && deviceTenths == k.deviceTenths && text.equals(k.text) && font.equals(k.font);
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return Objects.hash(text, font, rgb, deviceTenths);
-        }
-    }
-
-    private final Map<Key, BufferedImage> cache = new LinkedHashMap<Key, BufferedImage>(256, 0.75f, true)
+    /** By text, font, colour and device scale (in tenths). */
+    private final Map<List<Object>, BufferedImage> cache = new LinkedHashMap<List<Object>, BufferedImage>(256, 0.75f, true)
     {
         @Override
-        protected boolean removeEldestEntry(Map.Entry<Key, BufferedImage> eldest)
+        protected boolean removeEldestEntry(Map.Entry<List<Object>, BufferedImage> eldest)
         {
             return size() > LIMIT;
         }
@@ -64,7 +32,7 @@ final class TextSprites
     {
         AffineTransform transform = g.getTransform();
         double device = Math.max(1, Math.min(4, Math.abs(transform.getScaleX())));
-        Key key = new Key(text, font, color, (int) Math.round(device * 10));
+        List<Object> key = List.of(text, font, color.getRGB(), (int) Math.round(device * 10));
         g.setFont(font);
         FontMetrics metrics = g.getFontMetrics();
         int ascent = metrics.getAscent();

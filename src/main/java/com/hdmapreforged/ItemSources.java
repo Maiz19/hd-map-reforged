@@ -6,12 +6,14 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.DoubleSummaryStatistics;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import net.runelite.api.coords.WorldPoint;
 
 /** Where an item can be had (spawns, shops with stock, drops), parsed from wiki answers; {@link WikiClient#item} asks. */
@@ -95,20 +97,8 @@ final class ItemSources
 
     static String mapQuery(List<String> pages)
     {
-        StringBuilder where = new StringBuilder();
-        if (pages.size() == 1)
-        {
-            where.append("'page_name',").append(quote(pages.get(0)));
-        }
-        else
-        {
-            where.append("bucket.Or(");
-            for (int i = 0; i < pages.size(); i++)
-            {
-                where.append(i == 0 ? "" : ",").append("{'page_name',").append(quote(pages.get(i))).append('}');
-            }
-            where.append(')');
-        }
+        String where = pages.size() == 1 ? "'page_name'," + quote(pages.get(0))
+            : pages.stream().map(page -> "{'page_name'," + quote(page) + "}").collect(Collectors.joining(",", "bucket.Or(", ")"));
         return "bucket('map').select('page_name','features','options').where(" + where + ").limit(" + LIMIT + ").run()";
     }
 
@@ -116,13 +106,8 @@ final class ItemSources
     {
         try
         {
-            JsonElement root = new JsonParser().parse(body);
-            if (!root.isJsonObject() || !root.getAsJsonObject().has("bucket")
-                || !root.getAsJsonObject().get("bucket").isJsonArray())
-            {
-                return null;
-            }
-            return root.getAsJsonObject().getAsJsonArray("bucket");
+            JsonElement bucket = new JsonParser().parse(body).getAsJsonObject().get("bucket");
+            return bucket != null && bucket.isJsonArray() ? bucket.getAsJsonArray() : null;
         }
         catch (RuntimeException e)
         {
@@ -133,21 +118,15 @@ final class ItemSources
     static List<Store> stores(JsonArray rows)
     {
         Map<String, Store> shops = new LinkedHashMap<>();
-        for (JsonElement element : rows)
+        for (JsonObject row : objects(rows))
         {
-            if (!element.isJsonObject())
-            {
-                continue;
-            }
-            JsonObject row = element.getAsJsonObject();
             String shop = string(row, "sold_by");
             String stock = string(row, "store_stock");
             if (shop.isEmpty() || !inStock(stock) || shops.containsKey(shop))
             {
                 continue;
             }
-            shops.put(shop, new Store(shop, stock.trim(), price(string(row, "store_sell_price"),
-                string(row, "store_currency"))));
+            shops.put(shop, new Store(shop, stock.trim(), price(row)));
         }
         return new ArrayList<>(shops.values());
     }
@@ -178,18 +157,13 @@ final class ItemSources
     static List<Ware> wares(JsonArray rows)
     {
         Map<String, Ware> wares = new LinkedHashMap<>();
-        for (JsonElement element : rows)
+        for (JsonObject row : objects(rows))
         {
-            if (!element.isJsonObject())
-            {
-                continue;
-            }
-            JsonObject row = element.getAsJsonObject();
             String item = string(row, "sold_item").trim();
             if (!item.isEmpty() && !wares.containsKey(item))
             {
-                wares.put(item, new Ware(item, string(row, "store_stock").trim(), price(string(row, "store_sell_price"),
-                    string(row, "store_currency")), imageFile(string(row, "sold_item_image"))));
+                wares.put(item, new Ware(item, string(row, "store_stock").trim(), price(row),
+                    imageFile(string(row, "sold_item_image"))));
             }
         }
         return new ArrayList<>(wares.values());
@@ -255,15 +229,17 @@ final class ItemSources
         return String.format(Locale.ROOT, "%,d", value) + " " + unit;
     }
 
+    private static String price(JsonObject row)
+    {
+        return price(string(row, "store_sell_price"), string(row, "store_currency"));
+    }
+
     static void place(List<Store> stores, JsonArray mapRows)
     {
         Map<String, JsonObject> first = new LinkedHashMap<>();
-        for (JsonElement element : mapRows)
+        for (JsonObject row : objects(mapRows))
         {
-            if (element.isJsonObject())
-            {
-                first.putIfAbsent(string(element.getAsJsonObject(), "page_name"), element.getAsJsonObject());
-            }
+            first.putIfAbsent(string(row, "page_name"), row);
         }
         for (Store store : stores)
         {
@@ -334,18 +310,10 @@ final class ItemSources
         {
             return null;
         }
-        double minX = Double.MAX_VALUE;
-        double minY = Double.MAX_VALUE;
-        double maxX = -Double.MAX_VALUE;
-        double maxY = -Double.MAX_VALUE;
-        for (double[] p : pairs)
-        {
-            minX = Math.min(minX, p[0]);
-            maxX = Math.max(maxX, p[0]);
-            minY = Math.min(minY, p[1]);
-            maxY = Math.max(maxY, p[1]);
-        }
-        return valid((minX + maxX) / 2, (minY + maxY) / 2, number(properties, "plane", 0), number(properties, "mapID", -1));
+        DoubleSummaryStatistics xs = pairs.stream().mapToDouble(p -> p[0]).summaryStatistics();
+        DoubleSummaryStatistics ys = pairs.stream().mapToDouble(p -> p[1]).summaryStatistics();
+        return valid((xs.getMin() + xs.getMax()) / 2, (ys.getMin() + ys.getMax()) / 2, number(properties, "plane", 0),
+            number(properties, "mapID", -1));
     }
 
     private static void pairs(JsonElement element, List<double[]> out, int depth)
@@ -378,13 +346,8 @@ final class ItemSources
     static List<Drop> drops(JsonArray rows)
     {
         Map<String, Drop> byMonster = new LinkedHashMap<>();
-        for (JsonElement element : rows)
+        for (JsonObject row : objects(rows))
         {
-            if (!element.isJsonObject())
-            {
-                continue;
-            }
-            JsonObject row = element.getAsJsonObject();
             String monster = string(row, "page_name");
             JsonObject drop;
             try
@@ -475,23 +438,27 @@ final class ItemSources
         return 0;
     }
 
+    private static List<JsonObject> objects(JsonArray rows)
+    {
+        List<JsonObject> objects = new ArrayList<>();
+        rows.forEach(row -> {
+            if (row.isJsonObject())
+            {
+                objects.add(row.getAsJsonObject());
+            }
+        });
+        return objects;
+    }
+
     private static String string(JsonObject o, String key)
     {
         JsonElement e = o.get(key);
-        if (e == null || e.isJsonNull())
-        {
-            return "";
-        }
-        if (e.isJsonPrimitive())
-        {
-            return e.getAsString();
-        }
         // A repeated field comes as a list: its first value.
-        if (e.isJsonArray() && e.getAsJsonArray().size() > 0 && e.getAsJsonArray().get(0).isJsonPrimitive())
+        if (e != null && e.isJsonArray() && e.getAsJsonArray().size() > 0)
         {
-            return e.getAsJsonArray().get(0).getAsString();
+            e = e.getAsJsonArray().get(0);
         }
-        return "";
+        return e != null && e.isJsonPrimitive() ? e.getAsString() : "";
     }
 
     private static int number(JsonObject o, String key, int fallback)

@@ -1,6 +1,7 @@
 package com.hdmapreforged;
 
 import java.awt.Color;
+import lombok.RequiredArgsConstructor;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -38,22 +39,16 @@ public interface HdMapReforgedConfig extends Config
 
     enum JewelleryBox
     {
-        NONE("None"),
-        BASIC("Basic"),
-        FANCY("Fancy"),
-        ORNATE("Ornate");
+        NONE,
+        BASIC,
+        FANCY,
+        ORNATE;
 
-        private final String name;
-
-        JewelleryBox(String name)
-        {
-            this.name = name;
-        }
-
+        /** "Ornate". */
         @Override
         public String toString()
         {
-            return name;
+            return name().charAt(0) + name().substring(1).toLowerCase(java.util.Locale.ROOT);
         }
     }
 
@@ -187,7 +182,7 @@ public interface HdMapReforgedConfig extends Config
         return false;
     }
 
-    @ConfigItem(keyName = "openMapKey", name = "Open map hotkey", position = -1,
+    @ConfigItem(keyName = "openMapKey", name = "Open map hotkey",
         description = "A key that opens and closes the map over the game view. Escape also closes it")
     default Keybind openMapKey()
     {
@@ -243,6 +238,7 @@ public interface HdMapReforgedConfig extends Config
         return 256;
     }
 
+    @RequiredArgsConstructor
     enum WholeMap
     {
         OFF("Off", null),
@@ -251,12 +247,6 @@ public interface HdMapReforgedConfig extends Config
 
         private final String name;
         final MapDownloader.Scope scope;
-
-        WholeMap(String name, MapDownloader.Scope scope)
-        {
-            this.name = name;
-            this.scope = scope;
-        }
 
         @Override
         public String toString()
@@ -291,6 +281,7 @@ public interface HdMapReforgedConfig extends Config
         return 1000;
     }
 
+    @RequiredArgsConstructor
     enum UpdateCheck
     {
         EVERY_START("Every start", 0),
@@ -300,12 +291,6 @@ public interface HdMapReforgedConfig extends Config
 
         private final String name;
         final int days;
-
-        UpdateCheck(String name, int days)
-        {
-            this.name = name;
-            this.days = days;
-        }
 
         @Override
         public String toString()
@@ -400,17 +385,13 @@ public interface HdMapReforgedConfig extends Config
         return false;
     }
 
+    @RequiredArgsConstructor
     enum RoutePlanner
     {
         OWN("HD Map Reforged"),
         SHORTEST_PATH("Shortest Path plugin");
 
         private final String name;
-
-        RoutePlanner(String name)
-        {
-            this.name = name;
-        }
 
         @Override
         public String toString()
@@ -427,7 +408,7 @@ public interface HdMapReforgedConfig extends Config
         return RoutePlanner.OWN;
     }
 
-    @ConfigItem(keyName = "routeFollowPlugins", name = "Follow other plugins' directions", position = -1, section = route,
+    @ConfigItem(keyName = "routeFollowPlugins", name = "Follow other plugins' directions", section = route,
         description = "Plugins such as Quest Helper send directions to Shortest Path; with this on, this map plans a "
             + "route to them too (when this plugin is the route planner)")
     default boolean routeFollowPlugins()
@@ -529,6 +510,7 @@ public interface HdMapReforgedConfig extends Config
         return true;
     }
 
+    @RequiredArgsConstructor
     enum BoatFocus
     {
         NONE("None"),
@@ -536,11 +518,6 @@ public interface HdMapReforgedConfig extends Config
         GREATER("Greater teleport focus");
 
         private final String name;
-
-        BoatFocus(String name)
-        {
-            this.name = name;
-        }
 
         @Override
         public String toString()

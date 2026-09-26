@@ -37,12 +37,9 @@ public final class Ports
                     continue;
                 }
                 String[] c = line.split("\t");
-                if (c.length < 3)
-                {
-                    continue;
-                }
                 try
                 {
+                    // Short rows fail here too.
                     String[] p = c[2].trim().split("\\s+");
                     ports.put(Integer.parseInt(c[0].trim()), Tiles.pack(Integer.parseInt(p[0]), Integer.parseInt(p[1]), 0));
                 }

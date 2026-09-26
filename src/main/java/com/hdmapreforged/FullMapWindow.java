@@ -13,6 +13,7 @@ import java.awt.KeyboardFocusManager;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Toolkit;
 import java.awt.Window;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -22,14 +23,17 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Rectangle2D;
 import java.util.Locale;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import javax.swing.BorderFactory;
 import javax.swing.JComponent;
+import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JWindow;
 import javax.swing.SwingUtilities;
 import javax.swing.text.JTextComponent;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.Client;
 
 /**
@@ -37,7 +41,7 @@ import net.runelite.api.Client;
  * game because Stretched Mode would blur it. Takes the keyboard only while its search is typed in; never moves,
  * resizes or focuses the client window. Swing thread only.
  */
-final class FullMapWindow
+final class FullMapWindow implements MapView.WindowControls
 {
     static final int GRIP_HEIGHT = 10;
     private static final Color GRIP_DOTS = new Color(255, 255, 255, 90);
@@ -50,6 +54,10 @@ final class FullMapWindow
     private static final int MIN_HEIGHT = 240;
     private static final Color FRAME = new Color(30, 32, 37);
     private static final Color FRAME_EDGE = new Color(255, 255, 255, 40);
+    /** By the edges a point is on (see edgesAt). */
+    private static final int[] CURSORS = {Cursor.DEFAULT_CURSOR, Cursor.W_RESIZE_CURSOR, Cursor.E_RESIZE_CURSOR,
+        Cursor.DEFAULT_CURSOR, Cursor.N_RESIZE_CURSOR, Cursor.NW_RESIZE_CURSOR, Cursor.NE_RESIZE_CURSOR,
+        Cursor.DEFAULT_CURSOR, Cursor.S_RESIZE_CURSOR, Cursor.SW_RESIZE_CURSOR, Cursor.SE_RESIZE_CURSOR};
 
     private final Client client;
     private final MapScreen screen;
@@ -60,7 +68,7 @@ final class FullMapWindow
     /** While dragging over the game: the outline's edges, and where the map goes once let go. */
     private JComponent[] outline;
     private Rectangle pending;
-    private final java.util.function.BooleanSupplier inGameWindow;
+    private final BooleanSupplier inGameWindow;
     private Canvas watchedCanvas;
     private Window watchedFrame;
     /** Fractions of the game view, or null for the default. */
@@ -89,33 +97,14 @@ final class FullMapWindow
     };
 
     FullMapWindow(Client client, MapScreen screen, String savedBounds, Consumer<String> saveBounds,
-        Predicate<KeyEvent> isMapKey, java.util.function.BooleanSupplier inGameWindow)
+        Predicate<KeyEvent> isMapKey, BooleanSupplier inGameWindow)
     {
         this.inGameWindow = inGameWindow;
         this.client = client;
         this.screen = screen;
         this.saveBounds = saveBounds;
         this.isMapKey = isMapKey;
-        screen.setWindowControls(new MapView.WindowControls()
-        {
-            @Override
-            public void close()
-            {
-                FullMapWindow.this.close();
-            }
-
-            @Override
-            public void toggleMaximised()
-            {
-                FullMapWindow.this.toggleMaximised();
-            }
-
-            @Override
-            public boolean isMaximised()
-            {
-                return maximised;
-            }
-        });
+        screen.setWindowControls(this);
         Object[] decoded = decode(savedBounds);
         if (decoded != null)
         {
@@ -125,6 +114,12 @@ final class FullMapWindow
         screen.setScreenLayout(MapScreen.Layout.FULL);
     }
 
+    @Override
+    public boolean isMaximised()
+    {
+        return maximised;
+    }
+
     boolean isOpen()
     {
         return panel != null ? panel.isVisible() : window != null && window.isVisible();
@@ -132,15 +127,7 @@ final class FullMapWindow
 
     private Rectangle hostBounds()
     {
-        if (panel != null)
-        {
-            if (!panel.isShowing())
-            {
-                return panel.getBounds();
-            }
-            return new Rectangle(panel.getLocationOnScreen(), panel.getSize());
-        }
-        return window.getBounds();
+        return panel == null ? window.getBounds() : panel.isShowing() ? onScreen(panel) : panel.getBounds();
     }
 
     private void setHostBounds(Rectangle screenBounds)
@@ -153,7 +140,7 @@ final class FullMapWindow
             // The game is a native surface with a hole cut where the map is; moving does not refill the old hole but
             // hiding does, so hide, move, show.
             boolean shown = panel.isVisible();
-            Component typing = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+            Component typing = focusOwner();
             panel.setVisible(false);
             panel.setBounds(at.x, at.y, screenBounds.width, screenBounds.height);
             panel.setVisible(shown);
@@ -178,12 +165,24 @@ final class FullMapWindow
 
     private boolean hasKeys()
     {
-        if (panel != null)
-        {
-            Component owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-            return owner != null && SwingUtilities.isDescendingFrom(owner, panel);
-        }
-        return window != null && window.isFocused();
+        Component owner = focusOwner();
+        return panel != null ? owner != null && SwingUtilities.isDescendingFrom(owner, panel)
+            : window != null && window.isFocused();
+    }
+
+    private static Component focusOwner()
+    {
+        return KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+    }
+
+    private static boolean menuOpen()
+    {
+        return javax.swing.MenuSelectionManager.defaultManager().getSelectedPath().length > 0;
+    }
+
+    private static Rectangle onScreen(Component c)
+    {
+        return new Rectangle(c.getLocationOnScreen(), c.getSize());
     }
 
     /** A panel in the game window's layered pane, so the desktop sees one window. */
@@ -209,7 +208,7 @@ final class FullMapWindow
         }
         if (panel.getParent() != root.getLayeredPane())
         {
-            root.getLayeredPane().add(panel, javax.swing.JLayeredPane.PALETTE_LAYER);
+            root.getLayeredPane().add(panel, JLayeredPane.PALETTE_LAYER);
         }
         watch(canvas);
         place();
@@ -245,14 +244,11 @@ final class FullMapWindow
             openInGameWindow(canvas);
             return;
         }
-        if (panel != null)
+        if (panel != null && panel.getParent() != null)
         {
-            if (panel.getParent() != null)
-            {
-                panel.getParent().remove(panel);
-            }
-            panel = null;
+            panel.getParent().remove(panel);
         }
+        panel = null;
         if (window == null)
         {
             window = new JWindow(SwingUtilities.getWindowAncestor(canvas));
@@ -284,7 +280,8 @@ final class FullMapWindow
         }
     }
 
-    void close()
+    @Override
+    public void close()
     {
         boolean hadKeys;
         if (panel != null && panel.isVisible())
@@ -314,7 +311,8 @@ final class FullMapWindow
         }
     }
 
-    void toggleMaximised()
+    @Override
+    public void toggleMaximised()
     {
         maximised = !maximised;
         save();
@@ -331,7 +329,7 @@ final class FullMapWindow
         }
         keysWatched = true;
         KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(keys);
-        java.awt.Toolkit.getDefaultToolkit().addAWTEventListener(clicks, java.awt.AWTEvent.MOUSE_EVENT_MASK);
+        Toolkit.getDefaultToolkit().addAWTEventListener(clicks, java.awt.AWTEvent.MOUSE_EVENT_MASK);
     }
 
     private final java.awt.KeyEventDispatcher keys = e -> {
@@ -339,11 +337,9 @@ final class FullMapWindow
         {
             return false;
         }
-        Component owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-        boolean typing = owner instanceof JTextComponent;
-        boolean menu = javax.swing.MenuSelectionManager.defaultManager().getSelectedPath().length > 0;
+        Component owner = focusOwner();
         // While typing or in a menu, keys are theirs: Escape closes the menu, letters type.
-        if (menu || typing && (e.getKeyCode() != KeyEvent.VK_ESCAPE
+        if (menuOpen() || owner instanceof JTextComponent && (e.getKeyCode() != KeyEvent.VK_ESCAPE
             || !((JTextComponent) owner).getText().isEmpty()))
         {
             return false;
@@ -358,24 +354,20 @@ final class FullMapWindow
 
     /** After a click on the map outside a text field or menu, the keyboard goes back to the game. */
     private final java.awt.event.AWTEventListener clicks = event -> {
-        if (event instanceof MouseEvent && event.getID() == MouseEvent.MOUSE_PRESSED && isOpen()
-            && event.getSource() instanceof JTextComponent
-            && inside((Component) event.getSource()))
-        {
-            typeHere((JTextComponent) event.getSource());
-            return;
-        }
-        if (!(event instanceof MouseEvent) || event.getID() != MouseEvent.MOUSE_RELEASED || !isOpen() || !hasKeys())
+        if (!(event instanceof MouseEvent) || !(event.getSource() instanceof Component) || !isOpen())
         {
             return;
         }
-        Object source = event.getSource();
-        if (!(source instanceof Component) || !inside((Component) source)
-            || source instanceof JTextComponent)
+        Component source = (Component) event.getSource();
+        boolean field = source instanceof JTextComponent;
+        if (event.getID() == MouseEvent.MOUSE_PRESSED && field && inside(source))
         {
-            return;
+            typeHere((JTextComponent) source);
         }
-        SwingUtilities.invokeLater(this::giveKeysBack);
+        else if (event.getID() == MouseEvent.MOUSE_RELEASED && hasKeys() && !field && inside(source))
+        {
+            SwingUtilities.invokeLater(this::giveKeysBack);
+        }
     };
 
     /** A click in a text field: the window takes the keyboard for typing there. */
@@ -391,8 +383,7 @@ final class FullMapWindow
     private void giveKeysBack()
     {
         Canvas canvas = watchedCanvas;
-        if (isOpen() && hasKeys() && canvas != null && canvas.isShowing()
-            && javax.swing.MenuSelectionManager.defaultManager().getSelectedPath().length == 0)
+        if (isOpen() && hasKeys() && canvas != null && canvas.isShowing() && !menuOpen())
         {
             canvas.requestFocus();
             if (window != null)
@@ -448,7 +439,7 @@ final class FullMapWindow
             close();
             return;
         }
-        Rectangle view = new Rectangle(canvas.getLocationOnScreen(), canvas.getSize());
+        Rectangle view = onScreen(canvas);
         Rectangle bounds = maximised ? view : fit(relative, view);
         if (!hostBounds().equals(bounds))
         {
@@ -495,7 +486,7 @@ final class FullMapWindow
                 JPanel edge = new JPanel();
                 edge.setBackground(OUTLINE);
                 outline[i] = edge;
-                parent.add(edge, javax.swing.JLayeredPane.DRAG_LAYER);
+                parent.add(edge, JLayeredPane.DRAG_LAYER);
             }
         }
         Point at = bounds.getLocation();
@@ -550,17 +541,21 @@ final class FullMapWindow
         {
             return;
         }
-        Rectangle view = new Rectangle(canvas.getLocationOnScreen(), canvas.getSize());
-        Rectangle fitted = fit(new Rectangle2D.Double((bounds.x - view.x) / (double) view.width,
-            (bounds.y - view.y) / (double) view.height, bounds.width / (double) view.width,
-            bounds.height / (double) view.height), view);
-        relative = new Rectangle2D.Double((fitted.x - view.x) / (double) view.width, (fitted.y - view.y) / (double) view.height,
-            fitted.width / (double) view.width, fitted.height / (double) view.height);
+        Rectangle view = onScreen(canvas);
+        Rectangle fitted = fit(fraction(bounds, view), view);
+        relative = fraction(fitted, view);
         maximised = false;
         if (!hostBounds().equals(fitted))
         {
             setHostBounds(fitted);
         }
+    }
+
+    /** Screen bounds as fractions of the game view. */
+    private static Rectangle2D fraction(Rectangle r, Rectangle view)
+    {
+        return new Rectangle2D.Double((r.x - view.x) / (double) view.width, (r.y - view.y) / (double) view.height,
+            r.width / (double) view.width, r.height / (double) view.height);
     }
 
     private void save()
@@ -648,7 +643,7 @@ final class FullMapWindow
         {
             keysWatched = false;
             KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(keys);
-            java.awt.Toolkit.getDefaultToolkit().removeAWTEventListener(clicks);
+            Toolkit.getDefaultToolkit().removeAWTEventListener(clicks);
         }
         close();
         unwatch();
@@ -666,25 +661,45 @@ final class FullMapWindow
         panel = null;
     }
 
+    /** A mouse drag that moves or resizes the map; saved once let go. */
+    private abstract class Drag extends MouseAdapter
+    {
+        Point grab;
+        Rectangle start;
+
+        void grab(MouseEvent e)
+        {
+            grab = e.getLocationOnScreen();
+            start = hostBounds();
+        }
+
+        @Override
+        public void mouseReleased(MouseEvent e)
+        {
+            if (grab != null)
+            {
+                grab = null;
+                dragDone();
+                save();
+            }
+        }
+    }
+
     private final class Grip extends JComponent
     {
-        private Point grab;
-        private Rectangle start;
-
         Grip()
         {
             setPreferredSize(new Dimension(100, GRIP_HEIGHT));
             setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
             setToolTipText("Drag to move; double-click to fill the game view");
-            MouseAdapter mouse = new MouseAdapter()
+            Drag mouse = new Drag()
             {
                 @Override
                 public void mousePressed(MouseEvent e)
                 {
                     if (SwingUtilities.isLeftMouseButton(e))
                     {
-                        grab = e.getLocationOnScreen();
-                        start = hostBounds();
+                        grab(e);
                     }
                 }
 
@@ -703,24 +718,13 @@ final class FullMapWindow
                             return;
                         }
                         // Dragging a maximised window restores it under the mouse.
-                        Rectangle restored = fit(relative, new Rectangle(canvas.getLocationOnScreen(), canvas.getSize()));
+                        Rectangle restored = fit(relative, onScreen(canvas));
                         double along = (grab.x - start.x) / (double) Math.max(1, start.width);
                         start = new Rectangle(grab.x - (int) (restored.width * along), start.y, restored.width, restored.height);
                         maximised = false;
                     }
                     Point now = e.getLocationOnScreen();
                     dragTo(new Rectangle(start.x + now.x - grab.x, start.y + now.y - grab.y, start.width, start.height));
-                }
-
-                @Override
-                public void mouseReleased(MouseEvent e)
-                {
-                    if (grab != null)
-                    {
-                        grab = null;
-                        dragDone();
-                        save();
-                    }
                 }
 
                 @Override
@@ -754,17 +758,11 @@ final class FullMapWindow
         }
     }
 
-    private final class Resizer extends MouseAdapter
+    @RequiredArgsConstructor
+    private final class Resizer extends Drag
     {
         private final JComponent root;
         private int edges;
-        private Point grab;
-        private Rectangle start;
-
-        Resizer(JComponent root)
-        {
-            this.root = root;
-        }
 
         /** Bits: 1 left, 2 right, 4 top, 8 bottom. */
         private int edgesAt(Point p)
@@ -772,30 +770,17 @@ final class FullMapWindow
             int corner = EDGE * 4;
             int w = root.getWidth();
             int h = root.getHeight();
-            int found = 0;
-            if (p.x < EDGE || p.x < corner && p.y >= h - corner)
-            {
-                found |= 1;
-            }
-            if (p.x >= w - EDGE || p.x >= w - corner && p.y >= h - corner)
-            {
-                found |= 2;
-            }
-            if (p.y < 3)
-            {
-                found |= 4;
-            }
-            if (p.y >= h - BOTTOM || p.y >= h - corner && (p.x < corner || p.x >= w - corner))
-            {
-                found |= 8;
-            }
-            return found;
+            return (p.x < EDGE || p.x < corner && p.y >= h - corner ? 1 : 0)
+                | (p.x >= w - EDGE || p.x >= w - corner && p.y >= h - corner ? 2 : 0)
+                | (p.y < 3 ? 4 : 0)
+                | (p.y >= h - BOTTOM || p.y >= h - corner && (p.x < corner || p.x >= w - corner) ? 8 : 0);
         }
 
         @Override
         public void mouseMoved(MouseEvent e)
         {
-            root.setCursor(Cursor.getPredefinedCursor(cursor(edgesAt(e.getPoint()))));
+            int at = edgesAt(e.getPoint());
+            root.setCursor(Cursor.getPredefinedCursor(at < CURSORS.length ? CURSORS[at] : Cursor.DEFAULT_CURSOR));
         }
 
         @Override
@@ -813,8 +798,7 @@ final class FullMapWindow
             edges = edgesAt(e.getPoint());
             if (edges != 0 && SwingUtilities.isLeftMouseButton(e))
             {
-                grab = e.getLocationOnScreen();
-                start = hostBounds();
+                grab(e);
             }
         }
 
@@ -850,42 +834,6 @@ final class FullMapWindow
                 r.height = Math.max(MIN_HEIGHT, start.height + dy);
             }
             dragTo(r);
-        }
-
-        @Override
-        public void mouseReleased(MouseEvent e)
-        {
-            if (grab != null)
-            {
-                grab = null;
-                dragDone();
-                save();
-            }
-        }
-
-        private int cursor(int edges)
-        {
-            switch (edges)
-            {
-                case 1:
-                    return Cursor.W_RESIZE_CURSOR;
-                case 2:
-                    return Cursor.E_RESIZE_CURSOR;
-                case 4:
-                    return Cursor.N_RESIZE_CURSOR;
-                case 8:
-                    return Cursor.S_RESIZE_CURSOR;
-                case 5:
-                    return Cursor.NW_RESIZE_CURSOR;
-                case 6:
-                    return Cursor.NE_RESIZE_CURSOR;
-                case 9:
-                    return Cursor.SW_RESIZE_CURSOR;
-                case 10:
-                    return Cursor.SE_RESIZE_CURSOR;
-                default:
-                    return Cursor.DEFAULT_CURSOR;
-            }
         }
     }
 }

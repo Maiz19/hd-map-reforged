@@ -4,9 +4,9 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -14,9 +14,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 import net.runelite.api.coords.WorldPoint;
 
 /** Builds map icons from the bundled travel tables, game map icons and RuneLite lists; same-place rows merge. */
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 final class PoiLoader
 {
     interface Source
@@ -29,21 +32,16 @@ final class PoiLoader
     static final String ROUTES = "transport_routes.tsv";
     static final String SHORTCUTS = "shortcuts.tsv";
 
+    @RequiredArgsConstructor
     static final class Place
     {
         final WorldPoint point;
         final String name;
         /** "region", "island" or "settlement" for map labels; null for places only used for naming. */
         final String kind;
-
-        Place(WorldPoint point, String name, String kind)
-        {
-            this.point = point;
-            this.name = name;
-            this.kind = kind;
-        }
     }
 
+    @RequiredArgsConstructor
     private static final class Cluster
     {
         final String key;
@@ -54,71 +52,26 @@ final class PoiLoader
         Tsv.Row first;
         String shown;
 
-        Cluster(String key, String name)
-        {
-            this.key = key;
-            this.name = name;
-        }
-
         boolean near(WorldPoint p, int radius)
         {
-            for (WorldPoint q : points)
-            {
-                if (q.getPlane() == p.getPlane() && chebyshev(q, p) <= radius)
-                {
-                    return true;
-                }
-            }
-            return false;
+            return points.stream().anyMatch(q -> PoiLoader.near(q, p, radius));
         }
 
         /** Nearest the middle, so the icon sits on a real tile. */
         WorldPoint center()
         {
-            double x = 0;
-            double y = 0;
-            for (WorldPoint p : points)
-            {
-                x += p.getX();
-                y += p.getY();
-            }
-            x /= points.size();
-            y /= points.size();
-            WorldPoint best = points.get(0);
-            double bestDistance = Double.MAX_VALUE;
-            for (WorldPoint p : points)
-            {
-                double d = (p.getX() - x) * (p.getX() - x) + (p.getY() - y) * (p.getY() - y);
-                if (d < bestDistance)
-                {
-                    best = p;
-                    bestDistance = d;
-                }
-            }
-            return best;
+            double x = points.stream().mapToInt(WorldPoint::getX).average().orElse(0);
+            double y = points.stream().mapToInt(WorldPoint::getY).average().orElse(0);
+            return Collections.min(points, Comparator.comparingDouble(
+                p -> (p.getX() - x) * (p.getX() - x) + (p.getY() - y) * (p.getY() - y)));
         }
     }
 
-    private static final Map<String, PoiType> NETWORK_TYPES = new HashMap<>();
-    private static final Map<String, PoiType> ROUTE_TYPES = new HashMap<>();
-
-    static
-    {
-        NETWORK_TYPES.put("fairy_ring", PoiType.FAIRY_RING);
-        NETWORK_TYPES.put("spirit_tree", PoiType.SPIRIT_TREE);
-        NETWORK_TYPES.put("gnome_glider", PoiType.GNOME_GLIDER);
-        NETWORK_TYPES.put("balloon", PoiType.BALLOON);
-        NETWORK_TYPES.put("quetzal", PoiType.QUETZAL);
-        NETWORK_TYPES.put("mushtree", PoiType.MUSHTREE);
-        NETWORK_TYPES.put("obelisk", PoiType.OBELISK);
-        ROUTE_TYPES.put("boat", PoiType.BOAT);
-        ROUTE_TYPES.put("charter", PoiType.CHARTER);
-        ROUTE_TYPES.put("canoe", PoiType.CANOE);
-        ROUTE_TYPES.put("carpet", PoiType.CARPET);
-        ROUTE_TYPES.put("minecart", PoiType.MINECART);
-        ROUTE_TYPES.put("portal", PoiType.PORTAL);
-        ROUTE_TYPES.put("lever", PoiType.LEVER);
-    }
+    /** Named as their {@link PoiType}, in lower case. */
+    private static final List<String> NETWORK_TYPES = List.of("fairy_ring", "spirit_tree", "gnome_glider", "balloon",
+        "quetzal", "mushtree", "obelisk");
+    private static final List<String> ROUTE_TYPES = List.of("boat", "charter", "canoe", "carpet", "minecart", "portal",
+        "lever");
 
     private static final int PLACE_RADIUS = 60;
 
@@ -126,14 +79,8 @@ final class PoiLoader
     private final Source source;
     private final List<Poi> pois = new ArrayList<>();
     private final List<Place> places = new ArrayList<>();
-    private List<Tsv.Row> dungeonRows;
+    private final List<Tsv.Row> dungeonRows;
     private static final Pattern LEVEL = Pattern.compile("\\d{1,3}");
-
-    private PoiLoader(BaseMaps maps, Source source)
-    {
-        this.maps = maps;
-        this.source = source;
-    }
 
     static List<Poi> load(BaseMaps maps, Source source) throws IOException
     {
@@ -149,29 +96,32 @@ final class PoiLoader
     static List<Poi> load(BaseMaps maps, Source source, List<Place> labels, List<MapIconLoader.Entry> icons,
         List<Tsv.Row> dungeons) throws IOException
     {
-        PoiLoader loader = new PoiLoader(maps, source);
-        loader.dungeonRows = dungeons;
-        loader.places.addAll(labels);
-        loader.teleports();
-        loader.services(icons, "Bank", PoiType.BANK);
-        loader.services(icons, "Altar", PoiType.ALTAR);
-        loader.services(icons, "Anvil", PoiType.ANVIL);
-        loader.networks();
-        loader.routes();
-        loader.passages(icons);
-        loader.runeliteDungeons();
-        loader.runeliteTransports();
-        linkRowboats(loader.pois);
-        loader.runeliteList("runelite_moorings.tsv", PoiType.MOORING, "Sailing");
-        loader.runeliteList("runelite_salvage.tsv", PoiType.SALVAGE, "Sailing");
-        loader.runeliteList("runelite_runecraft_altars.tsv", PoiType.RUNECRAFT_ALTAR, "Runecraft");
-        loader.runeliteList("runelite_agility_courses.tsv", PoiType.AGILITY_COURSE, null);
-        loader.runeliteList("runelite_farming_patches.tsv", PoiType.FARMING_PATCH, null);
-        loader.runeliteList("runelite_minigames.tsv", PoiType.MINIGAME, null);
-        loader.shortcuts();
-        loader.nameDuplicateTeleports();
-        loader.stackTeleports();
-        return loader.pois;
+        return new PoiLoader(maps, source, dungeons).build(labels, icons);
+    }
+
+    private List<Poi> build(List<Place> labels, List<MapIconLoader.Entry> icons) throws IOException
+    {
+        places.addAll(labels);
+        teleports();
+        services(icons, "Bank", PoiType.BANK);
+        services(icons, "Altar", PoiType.ALTAR);
+        services(icons, "Anvil", PoiType.ANVIL);
+        networks();
+        routes();
+        passages(icons);
+        runeliteDungeons();
+        runeliteTransports();
+        linkRowboats(pois);
+        runeliteList("runelite_moorings.tsv", PoiType.MOORING, "Sailing");
+        runeliteList("runelite_salvage.tsv", PoiType.SALVAGE, "Sailing");
+        runeliteList("runelite_runecraft_altars.tsv", PoiType.RUNECRAFT_ALTAR, "Runecraft");
+        runeliteList("runelite_agility_courses.tsv", PoiType.AGILITY_COURSE, null);
+        runeliteList("runelite_farming_patches.tsv", PoiType.FARMING_PATCH, null);
+        runeliteList("runelite_minigames.tsv", PoiType.MINIGAME, null);
+        shortcuts();
+        nameDuplicateTeleports();
+        stackTeleports();
+        return pois;
     }
 
     private static final int ROWBOAT_REACH = 500;
@@ -183,26 +133,17 @@ final class PoiLoader
      */
     static void linkRowboats(List<Poi> pois)
     {
-        List<Poi> boats = new ArrayList<>();
-        Map<Poi, List<String>> names = new IdentityHashMap<>();
+        // Poi keeps identity equality.
+        Map<Poi, List<String>> names = new LinkedHashMap<>();
         for (Poi poi : pois)
         {
             if (poi.type == PoiType.BOAT && poi.name.startsWith("Rowboat to "))
             {
-                List<String> stops = new ArrayList<>();
-                for (String stop : poi.name.substring("Rowboat to ".length()).split("/"))
-                {
-                    if (!stop.trim().isEmpty())
-                    {
-                        stops.add(stop.trim());
-                    }
-                }
-                boats.add(poi);
-                names.put(poi, stops);
+                names.put(poi, split(poi.name.substring("Rowboat to ".length()), "/"));
             }
         }
         List<List<Poi>> networks = new ArrayList<>();
-        for (Poi boat : boats)
+        for (Poi boat : names.keySet())
         {
             List<Poi> joined = null;
             for (List<Poi> network : networks)
@@ -229,7 +170,7 @@ final class PoiLoader
             }
             if (joined == null)
             {
-                networks.add(new ArrayList<>(Collections.singletonList(boat)));
+                networks.add(new ArrayList<>(List.of(boat)));
             }
         }
         for (List<Poi> network : networks)
@@ -323,14 +264,12 @@ final class PoiLoader
             {
                 continue;
             }
-            String group = row.get("Group");
             if (name.contains(": "))
             {
                 addPlace(destination, name.substring(name.indexOf(": ") + 2));
             }
-            String wiki = row.get("Wiki");
-            pois.add(new Poi(PoiType.TELEPORT, name, destination, map(destination), group.isEmpty() ? null : group,
-                Needs.of(row), wiki.isEmpty() ? name : wiki, null, null));
+            pois.add(new Poi(PoiType.TELEPORT, name, destination, map(destination), row.or("Group", null), Needs.of(row),
+                row.or("Wiki", name), null, null));
         }
     }
 
@@ -339,30 +278,24 @@ final class PoiLoader
         Map<String, List<Tsv.Row>> byNetwork = new LinkedHashMap<>();
         for (Tsv.Row row : read(NETWORKS))
         {
-            if (NETWORK_TYPES.containsKey(row.get("Network")) && row.point("Arrival") != null)
+            if (NETWORK_TYPES.contains(row.get("Network")) && row.point("Arrival") != null)
             {
                 byNetwork.computeIfAbsent(row.get("Network"), k -> new ArrayList<>()).add(row);
             }
         }
-        for (Map.Entry<String, List<Tsv.Row>> network : byNetwork.entrySet())
-        {
-            PoiType type = NETWORK_TYPES.get(network.getKey());
-            for (Tsv.Row stop : network.getValue())
+        byNetwork.forEach((key, network) -> {
+            PoiType type = PoiType.valueOf(key.toUpperCase(Locale.ROOT));
+            for (Tsv.Row stop : network)
             {
                 WorldPoint location = stop.point("Location");
                 WorldPoint at = location != null ? location : stop.point("Arrival");
-                String name = stop.get("Stop").isEmpty() ? type.displayName : stop.get("Stop");
+                String name = stop.or("Stop", type.displayName);
                 addPlace(at, name.substring(name.lastIndexOf(':') + 1).replaceFirst("^.*– ", ""));
-                String note = stop.get("Note");
-                if (location == null && note.isEmpty())
-                {
-                    note = "You can only arrive here";
-                }
                 Poi poi = new Poi(type, name, at, map(at), type.name(), Needs.of(stop), type.wikiPage, null,
-                    note.isEmpty() ? null : note);
+                    stop.or("Note", location == null ? "You can only arrive here" : null));
                 if (location != null)
                 {
-                    for (Tsv.Row other : network.getValue())
+                    for (Tsv.Row other : network)
                     {
                         WorldPoint arrival = other.point("Arrival");
                         if (other != stop && arrival.distanceTo2D(at) > 3)
@@ -374,7 +307,7 @@ final class PoiLoader
                 }
                 pois.add(poi);
             }
-        }
+        });
     }
 
     private void routes() throws IOException
@@ -382,30 +315,24 @@ final class PoiLoader
         Map<PoiType, List<Cluster>> byType = new LinkedHashMap<>();
         for (Tsv.Row row : read(ROUTES))
         {
-            PoiType type = ROUTE_TYPES.get(row.get("Type"));
+            String kind = row.get("Type");
             WorldPoint origin = row.point("Origin");
             WorldPoint destination = row.point("Destination");
-            if (type == null || origin == null || destination == null)
+            if (!ROUTE_TYPES.contains(kind) || origin == null || destination == null)
             {
                 continue;
             }
-            List<Cluster> clusters = byType.computeIfAbsent(type, k -> new ArrayList<>());
+            List<Cluster> clusters = byType.computeIfAbsent(PoiType.valueOf(kind.toUpperCase(Locale.ROOT)),
+                k -> new ArrayList<>());
             Cluster cluster = add(clusters, row.get("From"), row.get("From"), origin, row, 8);
             cluster.trips.add(Needs.of(row));
-            boolean known = false;
-            for (Poi.Link link : cluster.links)
-            {
-                known |= link.point.getPlane() == destination.getPlane() && link.point.distanceTo2D(destination) <= 3;
-            }
-            if (!known)
+            if (cluster.links.stream().noneMatch(link -> link.point.getPlane() == destination.getPlane()
+                && link.point.distanceTo2D(destination) <= 3))
             {
                 cluster.links.add(new Poi.Link(row.get("To"), destination, map(destination), Needs.of(row)));
             }
         }
-        for (Map.Entry<PoiType, List<Cluster>> entry : byType.entrySet())
-        {
-            PoiType type = entry.getKey();
-            List<Cluster> clusters = entry.getValue();
+        byType.forEach((type, clusters) -> {
             for (Cluster cluster : clusters)
             {
                 cluster.shown = cluster.name.isEmpty() ? type.displayName + " – " + nameNear(cluster.center()) : cluster.name;
@@ -415,9 +342,8 @@ final class PoiLoader
             {
                 WorldPoint at = cluster.center();
                 String wikiQuery = type.wikiPage != null && type != PoiType.LEVER ? type.wikiPage : cluster.shown;
-                String note = cluster.first.get("Note");
                 Poi poi = new Poi(type, cluster.shown, at, map(at), null, sharedQuests(cluster.trips), wikiQuery, null,
-                    note.isEmpty() ? null : note);
+                    cluster.first.or("Note", null));
                 for (Poi.Link link : cluster.links)
                 {
                     String label = link.label.isEmpty() ? nameNear(link.point) : link.label;
@@ -425,7 +351,7 @@ final class PoiLoader
                 }
                 pois.add(poi);
             }
-        }
+        });
     }
 
     private static Needs sharedQuests(List<Needs> trips)
@@ -433,14 +359,7 @@ final class PoiLoader
         List<String> shared = null;
         for (Needs trip : trips)
         {
-            List<String> quests = new ArrayList<>();
-            for (String quest : trip.quests.split(";"))
-            {
-                if (!quest.trim().isEmpty())
-                {
-                    quests.add(quest.trim());
-                }
-            }
+            List<String> quests = split(trip.quests, ";");
             if (shared == null)
             {
                 shared = quests;
@@ -451,6 +370,20 @@ final class PoiLoader
             }
         }
         return shared == null || shared.isEmpty() ? Needs.NONE : new Needs("", "", String.join(";", shared), "");
+    }
+
+    /** Trimmed, without empty parts. */
+    private static List<String> split(String text, String separator)
+    {
+        List<String> parts = new ArrayList<>();
+        for (String part : text.split(separator))
+        {
+            if (!part.trim().isEmpty())
+            {
+                parts.add(part.trim());
+            }
+        }
+        return parts;
     }
 
     /** Stops that still share a name get the nearest named place added, so routes don't lead to themselves. */
@@ -539,10 +472,8 @@ final class PoiLoader
             {
                 continue;
             }
-            String name = row.get("Name").isEmpty() ? PoiType.AGILITY_SHORTCUT.displayName : row.get("Name");
-            String wiki = row.get("Wiki");
-            Poi poi = new Poi(PoiType.AGILITY_SHORTCUT, name, origin, map(origin), null, Needs.of(row),
-                wiki.isEmpty() ? PoiType.AGILITY_SHORTCUT.wikiPage : wiki, null, null);
+            Poi poi = new Poi(PoiType.AGILITY_SHORTCUT, row.or("Name", PoiType.AGILITY_SHORTCUT.displayName), origin,
+                map(origin), null, Needs.of(row), row.or("Wiki", PoiType.AGILITY_SHORTCUT.wikiPage), null, null);
             WorldPoint destination = row.point("Destination");
             if (destination != null)
             {
@@ -574,16 +505,16 @@ final class PoiLoader
             }
             String name = place == null ? type.displayName : type.displayName + " – " + place;
             String wikiQuery = type == PoiType.BANK && place != null ? place + " bank" : type.wikiPage;
-            pois.add(new Poi(type, name, at, map, null, Needs.NONE, wikiQuery, null, null));
+            pois.add(poi(type, name, at, wikiQuery));
         }
     }
 
     /** Passages near a RuneLite dungeon take its name; the others get an icon of their own. */
     private void runeliteDungeons() throws IOException
     {
-        for (Tsv.Row row : dungeonRows != null ? dungeonRows : read("runelite_dungeons.tsv"))
+        for (Tsv.Row row : dungeonRows)
         {
-            WorldPoint at = row.isComment() ? null : row.point("Location");
+            WorldPoint at = row.point("Location");
             if (at == null)
             {
                 continue;
@@ -593,23 +524,22 @@ final class PoiLoader
             for (int i = 0; i < pois.size(); i++)
             {
                 Poi poi = pois.get(i);
-                if ((poi.type == PoiType.DUNGEON_ENTRANCE || poi.type == PoiType.MAP_EXIT)
-                    && poi.location.getPlane() == at.getPlane() && chebyshev(poi.location, at) <= 6)
+                if ((poi.type == PoiType.DUNGEON_ENTRANCE || poi.type == PoiType.MAP_EXIT) && near(poi.location, at, 6))
                 {
                     named = true;
-                    pois.set(i, renamed(poi, name));
+                    pois.set(i, renamed(poi, name, name));
                 }
             }
             if (!named)
             {
-                pois.add(new Poi(PoiType.DUNGEON_ENTRANCE, name, at, map(at), null, Needs.NONE, name, null, null));
+                pois.add(poi(PoiType.DUNGEON_ENTRANCE, name, at, name));
             }
         }
     }
 
-    private static Poi renamed(Poi poi, String name)
+    static Poi renamed(Poi poi, String name, String wikiQuery)
     {
-        Poi copy = new Poi(poi.type, name, poi.location, poi.map, poi.group, poi.needs, name, poi.target, poi.note);
+        Poi copy = new Poi(poi.type, name, poi.location, poi.map, poi.group, poi.needs, wikiQuery, poi.target, poi.note);
         for (Poi.Link link : poi.links())
         {
             copy.addLink(link);
@@ -621,14 +551,13 @@ final class PoiLoader
     {
         for (Tsv.Row row : read("runelite_transports.tsv"))
         {
-            WorldPoint at = row.isComment() ? null : row.point("Location");
+            WorldPoint at = row.point("Location");
             if (at == null || covered(at, Layer.TRANSPORTS, 8))
             {
                 continue;
             }
             String name = row.get("Name");
-            PoiType type = transportType(name);
-            Poi poi = new Poi(type, name, at, map(at), null, Needs.NONE, name, null, null);
+            Poi poi = poi(transportType(name), name, at, name);
             WorldPoint destination = row.point("Destination");
             if (destination != null)
             {
@@ -641,38 +570,28 @@ final class PoiLoader
     static PoiType transportType(String name)
     {
         String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.contains("cart"))
+        for (int i = 0; i < TRANSPORT_WORDS.length; i++)
         {
-            return PoiType.MINECART;
-        }
-        if (lower.contains("ship") || lower.contains("boat") || lower.contains("ferry"))
-        {
-            return PoiType.BOAT;
-        }
-        if (lower.contains("canoe"))
-        {
-            return PoiType.CANOE;
-        }
-        if (lower.contains("carpet"))
-        {
-            return PoiType.CARPET;
-        }
-        if (lower.contains("glider"))
-        {
-            return PoiType.GNOME_GLIDER;
-        }
-        if (lower.contains("portal") || lower.contains("teleport"))
-        {
-            return PoiType.PORTAL;
+            for (String word : TRANSPORT_WORDS[i].split(" "))
+            {
+                if (lower.contains(word))
+                {
+                    return TRANSPORT_TYPES[i];
+                }
+            }
         }
         return PoiType.TRANSPORT;
     }
+
+    private static final String[] TRANSPORT_WORDS = {"cart", "ship boat ferry", "canoe", "carpet", "glider", "portal teleport"};
+    private static final PoiType[] TRANSPORT_TYPES = {PoiType.MINECART, PoiType.BOAT, PoiType.CANOE, PoiType.CARPET,
+        PoiType.GNOME_GLIDER, PoiType.PORTAL};
 
     private void runeliteList(String file, PoiType type, String levelSkill) throws IOException
     {
         for (Tsv.Row row : read(file))
         {
-            WorldPoint at = row.isComment() ? null : row.point("Location");
+            WorldPoint at = row.point("Location");
             if (at == null)
             {
                 continue;
@@ -711,8 +630,7 @@ final class PoiLoader
                 String place = nearest(places, poi.location, 120);
                 if (place != null && !poi.name.contains(place))
                 {
-                    pois.set(i, new Poi(poi.type, poi.name + " – " + place, poi.location, poi.map, poi.group, poi.needs,
-                        poi.wikiQuery, poi.target, poi.note));
+                    pois.set(i, renamed(poi, poi.name + " – " + place, poi.wikiQuery));
                 }
             }
         }
@@ -733,8 +651,7 @@ final class PoiLoader
             List<Poi> joined = null;
             for (List<Poi> stack : stacks)
             {
-                Poi first = stack.get(0);
-                if (first.location.getPlane() == poi.location.getPlane() && chebyshev(first.location, poi.location) <= STACK_RADIUS)
+                if (near(stack.get(0).location, poi.location, STACK_RADIUS))
                 {
                     joined = stack;
                     break;
@@ -800,27 +717,12 @@ final class PoiLoader
     private static String teleportForm(String name)
     {
         String lower = DASH_NOTE.matcher(name.toLowerCase(Locale.ROOT)).replaceFirst("").trim();
-        if (lower.endsWith(" scroll"))
-        {
-            return "scroll";
-        }
-        if (lower.endsWith(" tablet"))
-        {
-            return "tablet";
-        }
-        return null;
+        return lower.endsWith(" scroll") ? "scroll" : lower.endsWith(" tablet") ? "tablet" : null;
     }
 
     private boolean covered(WorldPoint at, Layer layer, int radius)
     {
-        for (Poi poi : pois)
-        {
-            if (poi.type.layer == layer && poi.location.getPlane() == at.getPlane() && chebyshev(poi.location, at) <= radius)
-            {
-                return true;
-            }
-        }
-        return false;
+        return pois.stream().anyMatch(poi -> poi.type.layer == layer && near(poi.location, at, radius));
     }
 
     private void addPlace(WorldPoint at, String name)
@@ -828,8 +730,7 @@ final class PoiLoader
         String clean = NUMBERING.matcher(name.trim()).replaceFirst("");
         String lower = clean.toLowerCase(Locale.ROOT);
         if (clean.isEmpty() || clean.length() > 32 || clean.contains("(") || lower.contains("teleport") || lower.contains("poh")
-            || lower.contains("player owned") || lower.equals("home") || lower.equals("house") || lower.equals("outside")
-            || lower.equals("inside"))
+            || lower.contains("player owned") || Set.of("home", "house", "outside", "inside").contains(lower))
         {
             return;
         }
@@ -872,6 +773,16 @@ final class PoiLoader
     static int chebyshev(WorldPoint a, WorldPoint b)
     {
         return Math.max(Math.abs(a.getX() - b.getX()), Math.abs(a.getY() - b.getY()));
+    }
+
+    static boolean near(WorldPoint a, WorldPoint b, int radius)
+    {
+        return a.getPlane() == b.getPlane() && chebyshev(a, b) <= radius;
+    }
+
+    private Poi poi(PoiType type, String name, WorldPoint at, String wikiQuery)
+    {
+        return new Poi(type, name, at, map(at), null, Needs.NONE, wikiQuery, null, null);
     }
 
     private BaseMap map(WorldPoint point)

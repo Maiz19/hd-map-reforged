@@ -3,8 +3,8 @@ package com.hdmapreforged;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
@@ -24,6 +25,8 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import javax.imageio.ImageIO;
+import lombok.EqualsAndHashCode;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -37,6 +40,7 @@ import okhttp3.ResponseBody;
  * and loads at frame end, so the middle loads first; tiles scrolled away before their turn are dropped.
  */
 @Slf4j
+@RequiredArgsConstructor
 final class TileCache
 {
     static final int TILE_SIZE = 256;
@@ -55,6 +59,8 @@ final class TileCache
     private static final long MB = 1024 * 1024;
     private static final long DAY_MS = 24L * 60 * 60 * 1000;
 
+    @RequiredArgsConstructor
+    @EqualsAndHashCode
     static final class Key
     {
         final int map;
@@ -63,35 +69,9 @@ final class TileCache
         final int x;
         final int y;
 
-        Key(int map, int zoom, int plane, int x, int y)
-        {
-            this.map = map;
-            this.zoom = zoom;
-            this.plane = plane;
-            this.x = x;
-            this.y = y;
-        }
-
         String path()
         {
             return map + "/" + zoom + "/" + plane + "_" + x + "_" + y + ".png";
-        }
-
-        @Override
-        public boolean equals(Object o)
-        {
-            if (!(o instanceof Key))
-            {
-                return false;
-            }
-            Key k = (Key) o;
-            return map == k.map && zoom == k.zoom && plane == k.plane && x == k.x && y == k.y;
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return (((map * 31 + zoom) * 31 + plane) * 31 + x) * 31 + y;
         }
     }
 
@@ -121,14 +101,6 @@ final class TileCache
     private boolean cleanupPending;
     /** Previous version on disk, shown while the new one downloads; each old tile is removed once replaced. */
     private volatile String fallbackVersion;
-
-    TileCache(OkHttpClient http, ExecutorService io, File cacheRoot, Runnable onLoaded)
-    {
-        this.http = http;
-        this.io = io;
-        this.cacheRoot = cacheRoot;
-        this.onLoaded = onLoaded;
-    }
 
     static String tileUrl(String version, Key key)
     {
@@ -187,14 +159,9 @@ final class TileCache
                 return;
             }
             this.version = version;
-            generation++;
-            memory.clear();
+            clear();
             missing.clear();
             failed.clear();
-            stale.clear();
-            queue.clear();
-            queued.clear();
-            loading.clear();
             cleanupPending = official;
             fallbackVersion = fallback;
         }
@@ -246,18 +213,13 @@ final class TileCache
     synchronized BufferedImage get(Key key)
     {
         BufferedImage image = memory.get(key);
-        if (image != null && !stale.contains(key) || version == null || missing.contains(key) || loading.contains(key)
-            || queued.contains(key))
-        {
-            return image;
-        }
         Long failedAt = failed.get(key);
-        if (failedAt != null && System.currentTimeMillis() - failedAt < RETRY_AFTER_MS)
+        if (!(image != null && !stale.contains(key) || version == null || missing.contains(key) || loading.contains(key)
+            || queued.contains(key) || failedAt != null && System.currentTimeMillis() - failedAt < RETRY_AFTER_MS))
         {
-            return image;
+            queue.addFirst(key);
+            queued.add(key);
         }
-        queue.addFirst(key);
-        queued.add(key);
         return image;
     }
 
@@ -266,13 +228,10 @@ final class TileCache
     {
         synchronized (this)
         {
-            if (tileVersion.equals(version))
+            BufferedImage image = tileVersion.equals(version) ? memory.get(key) : null;
+            if (image != null)
             {
-                BufferedImage image = memory.get(key);
-                if (image != null)
-                {
-                    return image;
-                }
+                return image;
             }
         }
         File file = file(tileVersion, key);
@@ -282,10 +241,12 @@ final class TileCache
             return cached;
         }
         byte[] bytes = download(tileVersion, key);
-        if (bytes == null)
-        {
-            return null;
-        }
+        return bytes == null ? null : keep(file, bytes);
+    }
+
+    /** Decoded, and on disk when that is on. */
+    private BufferedImage keep(File file, byte[] bytes) throws IOException
+    {
         BufferedImage image = decode(bytes);
         if (image != null && diskCache)
         {
@@ -297,19 +258,29 @@ final class TileCache
     /** Blocking; null on 404. */
     private byte[] download(String tileVersion, Key key) throws IOException
     {
-        Request request = new Request.Builder().url(tileUrl(tileVersion, key)).build();
-        try (Response response = http.newCall(request).execute(); ResponseBody body = response.body())
+        try (Response response = call(tileVersion, key).execute(); ResponseBody body = response.body())
         {
-            if (response.code() == 404)
-            {
-                return null;
-            }
-            if (!response.isSuccessful() || body == null)
-            {
-                throw new IOException("HTTP " + response.code());
-            }
-            return readBody(body, MAX_TILE_BYTES);
+            return bytes(response, body);
         }
+    }
+
+    private Call call(String tileVersion, Key key)
+    {
+        return http.newCall(new Request.Builder().url(tileUrl(tileVersion, key)).build());
+    }
+
+    /** Null on 404. */
+    private static byte[] bytes(Response response, ResponseBody body) throws IOException
+    {
+        if (response.code() == 404)
+        {
+            return null;
+        }
+        if (!response.isSuccessful() || body == null)
+        {
+            throw new IOException("HTTP " + response.code());
+        }
+        return readBody(body, MAX_TILE_BYTES);
     }
 
     synchronized void clear()
@@ -355,13 +326,13 @@ final class TileCache
 
     private File file(String tileVersion, Key key)
     {
-        return new File(new File(cacheRoot, tileVersion), key.path());
+        return new File(versionFolder(tileVersion), key.path());
     }
 
     /** An empty file saying the wiki has no such tile (empty sea or rock). */
     private File noneMarker(String tileVersion, Key key)
     {
-        return new File(new File(cacheRoot, tileVersion), key.path() + NONE_SUFFIX);
+        return new File(versionFolder(tileVersion), key.path() + NONE_SUFFIX);
     }
 
     static final String NONE_SUFFIX = ".none";
@@ -380,12 +351,8 @@ final class TileCache
     Fetch fetchToDisk(String tileVersion, Key key) throws IOException
     {
         File file = file(tileVersion, key);
-        if (file.isFile())
-        {
-            return Fetch.HAD;
-        }
         File none = noneMarker(tileVersion, key);
-        if (isFreshMarker(none))
+        if (file.isFile() || isFreshMarker(none))
         {
             return Fetch.HAD;
         }
@@ -406,17 +373,13 @@ final class TileCache
     /** An expired marker is removed, so the tile is asked for again. */
     private static boolean isFreshMarker(File marker)
     {
-        if (!marker.isFile())
-        {
-            return false;
-        }
-        if (System.currentTimeMillis() - marker.lastModified() < NONE_EXPIRES_MS)
+        if (marker.isFile() && System.currentTimeMillis() - marker.lastModified() < NONE_EXPIRES_MS)
         {
             return true;
         }
-        if (!marker.delete())
+        if (marker.isFile())
         {
-            log.debug("Could not remove expired marker {}", marker);
+            delete(marker);
         }
         return false;
     }
@@ -431,37 +394,19 @@ final class TileCache
         }
         try (InputStream in = body.byteStream())
         {
-            ByteArrayOutputStream out = new ByteArrayOutputStream(declared > 0 ? (int) declared : 16384);
-            byte[] buffer = new byte[16384];
-            int total = 0;
-            int n;
-            while ((n = in.read(buffer)) != -1)
+            byte[] bytes = in.readNBytes(max + 1);
+            if (bytes.length > max)
             {
-                total += n;
-                if (total > max)
-                {
-                    throw new IOException("Too large: over " + max + " bytes");
-                }
-                out.write(buffer, 0, n);
+                throw new IOException("Too large: over " + max + " bytes");
             }
-            return out.toByteArray();
+            return bytes;
         }
     }
 
     static boolean isPng(byte[] bytes)
     {
-        if (bytes.length < PNG_SIGNATURE.length)
-        {
-            return false;
-        }
-        for (int i = 0; i < PNG_SIGNATURE.length; i++)
-        {
-            if (bytes[i] != PNG_SIGNATURE[i])
-            {
-                return false;
-            }
-        }
-        return true;
+        int n = PNG_SIGNATURE.length;
+        return bytes.length >= n && Arrays.equals(bytes, 0, n, PNG_SIGNATURE, 0, n);
     }
 
     File versionFolder(String tileVersion)
@@ -513,10 +458,7 @@ final class TileCache
         {
             log.debug("Unreadable cached tile {}", file, e);
         }
-        if (!file.delete())
-        {
-            log.debug("Could not remove unreadable tile {}", file);
-        }
+        delete(file);
         return null;
     }
 
@@ -542,8 +484,7 @@ final class TileCache
             {
                 showStale(key, started, stale);
             }
-            Request request = new Request.Builder().url(tileUrl(tileVersion, key)).build();
-            http.newCall(request).enqueue(new Callback()
+            call(tileVersion, key).enqueue(new Callback()
             {
                 @Override
                 public void onFailure(Call call, IOException e)
@@ -557,27 +498,18 @@ final class TileCache
                 {
                     try (ResponseBody body = response.body())
                     {
-                        if (response.code() == 404)
+                        byte[] bytes = bytes(response, body);
+                        if (bytes == null)
                         {
                             // Gone in this version: the stale copy must not linger.
                             forget(key, started);
                             finish(key, started, null, true, false);
                             return;
                         }
-                        if (!response.isSuccessful() || body == null)
+                        BufferedImage image = keep(file(tileVersion, key), bytes);
+                        if (image != null && old != null && old.isFile())
                         {
-                            finish(key, started, null, false, false);
-                            return;
-                        }
-                        byte[] bytes = readBody(body, MAX_TILE_BYTES);
-                        BufferedImage image = decode(bytes);
-                        if (image != null && diskCache)
-                        {
-                            write(file(tileVersion, key), bytes);
-                        }
-                        if (image != null && old != null && old.isFile() && !old.delete())
-                        {
-                            log.debug("Could not remove replaced tile {}", old);
+                            delete(old);
                         }
                         finish(key, started, image, image == null, image != null);
                     }
@@ -771,14 +703,7 @@ final class TileCache
     boolean fallbackComplete(String marker)
     {
         String current = version;
-        for (File dir : versionDirs())
-        {
-            if (!dir.getName().equals(current) && new File(dir, marker).isFile())
-            {
-                return true;
-            }
-        }
-        return false;
+        return Arrays.stream(versionDirs()).anyMatch(dir -> !dir.getName().equals(current) && new File(dir, marker).isFile());
     }
 
     private void removeOtherVersions(String keep, String fallback)
@@ -824,10 +749,7 @@ final class TileCache
             Entry entry = new Entry(file);
             if (file.getName().endsWith(PART_SUFFIX) && now - entry.modified > PART_STALE_MS)
             {
-                if (!file.delete())
-                {
-                    log.debug("Could not remove {}", file);
-                }
+                delete(file);
                 continue;
             }
             entries.add(entry);
@@ -846,11 +768,7 @@ final class TileCache
             {
                 break;
             }
-            if (entry.file.getName().startsWith("complete-"))
-            {
-                continue;
-            }
-            if (entry.file.delete())
+            if (!entry.file.getName().startsWith("complete-") && entry.file.delete())
             {
                 total -= entry.size;
                 removed = true;
@@ -861,13 +779,9 @@ final class TileCache
             // A downloaded whole map now has gaps: let the download check again.
             for (File dir : versionDirs())
             {
-                File[] markers = dir.listFiles((d, name) -> name.startsWith("complete-"));
-                for (File marker : markers == null ? new File[0] : markers)
+                for (File marker : list(dir, file -> file.getName().startsWith("complete-")))
                 {
-                    if (!marker.delete())
-                    {
-                        log.debug("Could not remove {}", marker);
-                    }
+                    delete(marker);
                 }
             }
         }
@@ -875,18 +789,18 @@ final class TileCache
 
     private File[] versionDirs()
     {
-        File[] versions = cacheRoot.listFiles(File::isDirectory);
-        return versions == null ? new File[0] : versions;
+        return list(cacheRoot, File::isDirectory);
+    }
+
+    private static File[] list(File dir, FileFilter filter)
+    {
+        File[] files = dir.listFiles(filter);
+        return files == null ? new File[0] : files;
     }
 
     private static void collect(File dir, List<File> into)
     {
-        File[] children = dir.listFiles();
-        if (children == null)
-        {
-            return;
-        }
-        for (File child : children)
+        for (File child : list(dir, null))
         {
             if (Files.isSymbolicLink(child.toPath()))
             {
@@ -906,20 +820,18 @@ final class TileCache
     /** Never follows symbolic links. */
     private static void deleteTree(File file)
     {
-        if (!Files.isSymbolicLink(file.toPath()))
+        for (File child : Files.isSymbolicLink(file.toPath()) ? new File[0] : list(file, null))
         {
-            File[] children = file.listFiles();
-            if (children != null)
-            {
-                for (File child : children)
-                {
-                    deleteTree(child);
-                }
-            }
+            deleteTree(child);
         }
+        delete(file);
+    }
+
+    private static void delete(File file)
+    {
         if (!file.delete())
         {
-            log.debug("Could not delete old tile cache entry {}", file);
+            log.debug("Could not remove {}", file);
         }
     }
 }

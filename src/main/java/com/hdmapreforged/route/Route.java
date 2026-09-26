@@ -4,6 +4,8 @@ import java.util.Collections;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import lombok.AllArgsConstructor;
 
 /** The result of a search: the steps, and how the target was reached (or why not). */
 public final class Route
@@ -16,18 +18,14 @@ public final class Route
         CANCELLED
     }
 
+    @AllArgsConstructor
     public static final class Obstacle
     {
         public final int at;
         public final String text;
-
-        public Obstacle(int at, String text)
-        {
-            this.at = at;
-            this.text = text;
-        }
     }
 
+    @AllArgsConstructor
     public static final class Step
     {
         public enum Kind
@@ -48,25 +46,7 @@ public final class Route
 
         public Step(Kind kind, int[] points, String name, String detail, int cost, int doors)
         {
-            this(kind, points, name, detail, cost, doors, Collections.emptyList());
-        }
-
-        public Step(Kind kind, int[] points, String name, String detail, int cost, int doors, List<Obstacle> obstacles)
-        {
-            this(kind, points, name, detail, cost, doors, obstacles, null);
-        }
-
-        public Step(Kind kind, int[] points, String name, String detail, int cost, int doors, List<Obstacle> obstacles,
-            String category)
-        {
-            this.category = category;
-            this.kind = kind;
-            this.points = points;
-            this.name = name;
-            this.detail = detail;
-            this.cost = cost;
-            this.doors = doors;
-            this.obstacles = obstacles;
+            this(kind, points, name, detail, cost, doors, Collections.emptyList(), null);
         }
 
         public int first()
@@ -98,12 +78,7 @@ public final class Route
     /** Without the extra weight of teleports kept for longer trips. */
     public int time()
     {
-        int t = 0;
-        for (Step step : steps)
-        {
-            t += step.cost;
-        }
-        return t;
+        return steps.stream().mapToInt(step -> step.cost).sum();
     }
 
     public Route(Outcome outcome, List<Step> steps, int cost, int target, int end, boolean exhausted, boolean limited,
@@ -183,18 +158,8 @@ public final class Route
                 {
                     continue;
                 }
-                List<Obstacle> obstaclesLeft = new ArrayList<>();
-                for (Obstacle o : step.obstacles)
-                {
-                    for (int p : rest)
-                    {
-                        if (p == o.at)
-                        {
-                            obstaclesLeft.add(o);
-                            break;
-                        }
-                    }
-                }
+                List<Obstacle> obstaclesLeft = step.obstacles.stream()
+                    .filter(o -> Arrays.stream(rest).anyMatch(p -> p == o.at)).collect(Collectors.toList());
                 step = new Step(step.kind, rest, step.name, step.detail, step.cost * rest.length / step.points.length,
                     step.doors, obstaclesLeft, step.category);
             }
@@ -225,14 +190,7 @@ public final class Route
 
     public Step first(Step.Kind kind)
     {
-        for (Step step : steps)
-        {
-            if (step.kind == kind)
-            {
-                return step;
-            }
-        }
-        return null;
+        return steps.stream().filter(step -> step.kind == kind).findFirst().orElse(null);
     }
 
     @Override

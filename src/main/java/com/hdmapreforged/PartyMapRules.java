@@ -1,6 +1,7 @@
 package com.hdmapreforged;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Objects;
 import net.runelite.http.api.worlds.WorldType;
 import net.runelite.api.coords.WorldPoint;
@@ -37,23 +38,9 @@ final class PartyMapRules
 
     static Join join(String code, boolean loggedIn, String currentPassphrase, long lastChange, long now)
     {
-        if (code == null)
-        {
-            return Join.INVALID_CODE;
-        }
-        if (code.equals(currentPassphrase))
-        {
-            return Join.ALREADY_IN;
-        }
-        if (!loggedIn)
-        {
-            return Join.NOT_LOGGED_IN;
-        }
-        if (now - lastChange < CHANGE_COOLDOWN_MILLIS)
-        {
-            return Join.TOO_SOON;
-        }
-        return currentPassphrase != null ? Join.CONFIRM_LEAVE_OTHER : Join.JOIN;
+        return code == null ? Join.INVALID_CODE : code.equals(currentPassphrase) ? Join.ALREADY_IN
+            : !loggedIn ? Join.NOT_LOGGED_IN : now - lastChange < CHANGE_COOLDOWN_MILLIS ? Join.TOO_SOON
+            : currentPassphrase != null ? Join.CONFIRM_LEAVE_OTHER : Join.JOIN;
     }
 
     /** Only reminds; joining always waits for the user's click. */
@@ -67,7 +54,7 @@ final class PartyMapRules
     /** Only a party this plugin joined; parties the user joined elsewhere are never left. */
     static boolean leaveIdle(String joinedCode, String currentPassphrase, Long loggedOutSince, long now)
     {
-        return joinedCode != null && joinedCode.equals(currentPassphrase) && loggedOutSince != null
+        return leaveOnShutdown(joinedCode, currentPassphrase) && loggedOutSince != null
             && now - loggedOutSince >= IDLE_LEAVE_MILLIS;
     }
 
@@ -79,11 +66,7 @@ final class PartyMapRules
     /** Why "Hop" refuses a world, or null; risky or special worlds are left to the game's own world switcher. */
     static String hopRefusal(Collection<WorldType> types, boolean member)
     {
-        if (types == null)
-        {
-            return null;
-        }
-        for (WorldType type : types)
+        for (WorldType type : types == null ? Collections.<WorldType>emptyList() : types)
         {
             switch (type)
             {
@@ -107,11 +90,7 @@ final class PartyMapRules
                     break;
             }
         }
-        if (!member && types.contains(WorldType.MEMBERS))
-        {
-            return "is a members world";
-        }
-        return null;
+        return !member && types.contains(WorldType.MEMBERS) ? "is a members world" : null;
     }
 
     /** {@link #shouldSend} runs on the client thread; party events reset and force it from other threads. */

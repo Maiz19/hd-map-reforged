@@ -2,6 +2,7 @@ package com.hdmapreforged;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /** Converts "Your house" settings to and from the house scan's words ("box:ornate", "glory", "portal:Varrock"). */
 final class HouseSettings
@@ -24,17 +25,9 @@ final class HouseSettings
         {
             features.add("glory");
         }
-        if (fairyRing && spiritTree)
+        if (fairyRing || spiritTree)
         {
-            features.add("spirit tree+fairy ring");
-        }
-        else if (fairyRing)
-        {
-            features.add("fairy ring");
-        }
-        else if (spiritTree)
-        {
-            features.add("spirit tree");
+            features.add(!fairyRing ? "spirit tree" : spiritTree ? "spirit tree+fairy ring" : "fairy ring");
         }
         for (String portal : portals == null ? new String[0] : portals.split("[,;\\n]"))
         {
@@ -67,14 +60,7 @@ final class HouseSettings
     /** As the setting shows them: "Varrock, Falador". */
     static String portals(Set<String> features)
     {
-        StringBuilder text = new StringBuilder();
-        for (String feature : features)
-        {
-            if (feature.startsWith(PORTAL))
-            {
-                text.append(text.length() == 0 ? "" : ", ").append(feature.substring(PORTAL.length()));
-            }
-        }
-        return text.toString();
+        return features.stream().filter(f -> f.startsWith(PORTAL)).map(f -> f.substring(PORTAL.length()))
+            .collect(Collectors.joining(", "));
     }
 }

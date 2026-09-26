@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /** Things at one place become one icon: teleports landing at a host icon, minigames in one building, twins. */
 final class Colocate
@@ -19,35 +20,22 @@ final class Colocate
 
     static List<Poi> merge(List<Poi> pois)
     {
-        List<Poi> hosts = new ArrayList<>();
-        for (Poi poi : pois)
-        {
-            if (isHost(poi))
-            {
-                hosts.add(poi);
-            }
-        }
+        List<Poi> hosts = pois.stream().filter(Colocate::isHost).collect(Collectors.toList());
         List<Poi> kept = new ArrayList<>(pois.size());
         List<Poi> minigames = new ArrayList<>();
         for (Poi poi : pois)
         {
-            if (poi.type == PoiType.TELEPORT)
+            boolean teleport = poi.type == PoiType.TELEPORT;
+            boolean minigame = poi.type == PoiType.MINIGAME;
+            Poi host = teleport ? nearest(hosts, poi, TELEPORT_RADIUS)
+                : minigame ? nearest(minigames, poi, MINIGAME_RADIUS) : null;
+            if (host != null)
             {
-                Poi host = nearest(hosts, poi, TELEPORT_RADIUS);
-                if (host != null)
-                {
-                    host.addNearby(poi);
-                    continue;
-                }
+                host.addNearby(poi);
+                continue;
             }
-            else if (poi.type == PoiType.MINIGAME)
+            if (minigame)
             {
-                Poi host = nearest(minigames, poi, MINIGAME_RADIUS);
-                if (host != null)
-                {
-                    host.addNearby(poi);
-                    continue;
-                }
                 minigames.add(poi);
             }
             kept.add(poi);

@@ -35,6 +35,13 @@ final class Tsv
             return value == null ? "" : value.trim();
         }
 
+        /** {@code fallback} when empty. */
+        String or(String column, String fallback)
+        {
+            String value = get(column);
+            return value.isEmpty() ? fallback : value;
+        }
+
         WorldPoint point(String column)
         {
             return parsePoint(get(column));

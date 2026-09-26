@@ -1,6 +1,9 @@
 package com.hdmapreforged;
 
+import lombok.RequiredArgsConstructor;
+
 /** One of the wiki's maps, in world tile coordinates. */
+@RequiredArgsConstructor
 final class BaseMap
 {
     static final int SURFACE = 0;
@@ -14,18 +17,6 @@ final class BaseMap
     final int maxY;
     final int centerX;
     final int centerY;
-
-    BaseMap(int id, String name, int minX, int minY, int maxX, int maxY, int centerX, int centerY)
-    {
-        this.id = id;
-        this.name = name;
-        this.minX = minX;
-        this.minY = minY;
-        this.maxX = maxX;
-        this.maxY = maxY;
-        this.centerX = centerX;
-        this.centerY = centerY;
-    }
 
     boolean contains(int x, int y)
     {

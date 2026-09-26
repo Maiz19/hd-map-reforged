@@ -6,6 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.Reader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -143,17 +144,7 @@ final class BaseMaps
             return false;
         }
         int[] owners = drawers(x, y);
-        if (owners != null)
-        {
-            for (int id : owners)
-            {
-                if (id == map.id)
-                {
-                    return true;
-                }
-            }
-        }
-        return find(x, y) == map;
+        return owners != null && Arrays.stream(owners).anyMatch(id -> id == map.id) || find(x, y) == map;
     }
 
     /** The owners of the spot's 8×8 zone where known, else the region's owners; null when not known. */
@@ -169,8 +160,7 @@ final class BaseMaps
         WorldMapMoves.Drawn drawn = WorldMapMoves.drawn(game);
         BaseMap moved = drawn == null ? null : byId(drawn.map);
         // Some moves put a place outside the bounds of the map they name.
-        boolean shows = moved != null && moved.contains(drawn.point.getX(), drawn.point.getY());
-        if (shows)
+        if (moved != null && moved.contains(drawn.point.getX(), drawn.point.getY()))
         {
             return moved;
         }
@@ -222,8 +212,7 @@ final class BaseMaps
         }
         if (owners != null && owners.length == 0)
         {
-            BaseMap full
- = byId.get(BaseMap.FULL);
+            BaseMap full = byId.get(BaseMap.FULL);
             if (full != null && full.contains(x, y))
             {
                 return full;
