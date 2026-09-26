@@ -1,0 +1,325 @@
+# Destination	Name	Group	Skills	Items	Quests	Varbits	Wiki
+# From the OSRS Wiki (CC BY-NC-SA 3.0) and the OSRS game cache; built by local-development/tools/travel-data
+# Teleports that work from anywhere. Destination: 'x y plane'. Group: spellbook, item or kind; icons of one group are highlighted together. Wiki: the page to show.
+# Skills: '25 Magic;43 Agility'. Items: item ids, '&&' joins items all needed, '||' alternatives, '=n' a quantity ('563=1&&556=3', '1712||1710'). Quests: quest names as RuneLite's Quest list names them, ';'-separated. Varbits: 'id=value' (also < > & for less, more, bit set), ';'-separated
+3221 3218 0	Lumbridge Home Teleport	Standard Spellbook				4070=0	Lumbridge Home Teleport
+3213 3424 0	Varrock Teleport	Standard Spellbook	25 Magic	563=1&&556=3&&554=1		4070=0	Varrock Teleport
+3165 3479 0	Varrock Teleport: Grand Exchange	Standard Spellbook	25 Magic	563=1&&556=3&&554=1		4070=0	Varrock Teleport
+3221 3218 0	Lumbridge Teleport	Standard Spellbook	31 Magic	563=1&&556=3&&557=1		4070=0	Lumbridge Teleport
+2964 3378 0	Falador Teleport	Standard Spellbook	37 Magic	563=1&&555=1&&556=3		4070=0	Falador Teleport
+2757 3479 0	Camelot Teleport	Standard Spellbook	45 Magic	563=1&&556=5		4070=0	Camelot Teleport
+1641 3673 0	Kourend Castle Teleport	Standard Spellbook	48 Magic	563=2&&555=1&&554=1	Client of Kourend	4070=0	Kourend Castle Teleport
+2662 3305 0	Ardougne Teleport	Standard Spellbook	51 Magic	563=2&&555=2	Plague City	4070=0	Ardougne Teleport
+1681 3133 0	Civitas illa Fortis Teleport	Standard Spellbook	54 Magic	563=2&&557=1&&554=1	Twilight's Promise	4070=0	Civitas illa Fortis Teleport
+2546 3114 0	Watchtower Teleport	Standard Spellbook	58 Magic	557=2&&563=2	Watchtower	4070=0	Watchtower Teleport
+2584 3097 0	Watchtower Teleport: Yanille centre	Standard Spellbook	58 Magic	557=2&&563=2	Watchtower	4070=0	Watchtower Teleport
+2890 3679 0	Trollheim Teleport	Standard Spellbook	61 Magic	563=2&&554=2	Eadgar's Ruse	4070=0	Trollheim Teleport
+2798 2799 0	Ape Atoll Teleport (standard)	Standard Spellbook	64 Magic	563=2&&554=2&&555=2&&1963=1	Recipe for Disaster - King Awowogei	4070=0	Ape Atoll Teleport (standard)
+3088 3502 0	Edgeville Home Teleport	Ancient Spellbook			Desert Treasure I	4070=1	Edgeville Home Teleport
+3097 9881 0	Paddewwa Teleport	Ancient Spellbook	54 Magic	563=2&&556=1&&554=1	Desert Treasure I	4070=1	Paddewwa Teleport
+3494 3473 0	Kharyrll Teleport	Ancient Spellbook	66 Magic	563=2&&565=1	Desert Treasure I	4070=1	Kharyrll Teleport
+2968 3696 0	Dareeyak Teleport	Ancient Spellbook	78 Magic	563=2&&554=3&&556=2	Desert Treasure I	4070=1	Dareeyak Teleport
+3158 3666 0	Carrallanger Teleport	Ancient Spellbook	84 Magic	566=2&&563=2	Desert Treasure I	4070=1	Carrallanger Teleport
+3288 3888 0	Annakarl Teleport	Ancient Spellbook	90 Magic	565=2&&563=2	Desert Treasure I	4070=1	Annakarl Teleport
+2976 3872 0	Ghorrock Teleport	Ancient Spellbook	96 Magic	563=2&&555=8	Desert Treasure I	4070=1	Ghorrock Teleport
+2094 3913 0	Lunar Home Teleport	Lunar Spellbook			Lunar Diplomacy	4070=2	Lunar Home Teleport
+2113 3915 0	Moonclan Teleport	Lunar Spellbook	69 Magic	563=1&&557=2&&9075=2	Lunar Diplomacy	4070=2	Moonclan Teleport
+2468 3246 0	Ourania Teleport	Lunar Spellbook	71 Magic	563=1&&557=6&&9075=2	Lunar Diplomacy	4070=2	Ourania Teleport
+2546 3755 0	Waterbirth Teleport	Lunar Spellbook	72 Magic	563=1&&555=1&&9075=2	Lunar Diplomacy	4070=2	Waterbirth Teleport
+2543 3569 0	Barbarian Teleport	Lunar Spellbook	75 Magic	563=2&&554=3&&9075=2	Lunar Diplomacy	4070=2	Barbarian Teleport
+2636 3167 0	Khazard Teleport	Lunar Spellbook	78 Magic	563=2&&555=4&&9075=2	Lunar Diplomacy	4070=2	Khazard Teleport
+2613 3391 0	Fishing Guild Teleport	Lunar Spellbook	85 Magic	563=3&&555=10&&9075=3	Lunar Diplomacy	4070=2	Fishing Guild Teleport
+2801 3449 0	Catherby Teleport	Lunar Spellbook	87 Magic	563=3&&555=10&&9075=3	Lunar Diplomacy	4070=2	Catherby Teleport
+2975 3938 0	Ice Plateau Teleport	Lunar Spellbook	89 Magic	563=3&&555=8&&9075=3	Lunar Diplomacy	4070=2	Ice Plateau Teleport
+1700 3882 0	Arceuus Home Teleport	Arceuus Spellbook				4070=3	Arceuus Home Teleport
+1632 3837 0	Arceuus Library Teleport	Arceuus Spellbook	6 Magic	563=1&&557=2		4070=3	Arceuus Library Teleport
+3109 3351 0	Draynor Manor Teleport	Arceuus Spellbook	17 Magic	563=1&&557=1&&555=1		4070=3	Draynor Manor Teleport
+1347 3740 0	Battlefront Teleport	Arceuus Spellbook	23 Magic	563=1&&557=1&&554=1		4070=3	Battlefront Teleport
+2979 3510 0	Mind Altar Teleport	Arceuus Spellbook	28 Magic	563=1&&558=2		4070=3	Mind Altar Teleport
+3433 3461 0	Salve Graveyard Teleport	Arceuus Spellbook	40 Magic	563=1&&566=2		4070=3	Salve Graveyard Teleport
+3548 3529 0	Fenkenstrain's Castle Teleport	Arceuus Spellbook	48 Magic	563=1&&566=1&&557=1		4070=3	Fenkenstrain's Castle Teleport
+2500 3290 0	West Ardougne Teleport	Arceuus Spellbook	61 Magic	563=2&&566=2		4070=3	West Ardougne Teleport
+3797 2866 0	Harmony Island Teleport	Arceuus Spellbook	65 Magic	563=1&&566=1&&561=1		4070=3	Harmony Island Teleport
+2981 3764 0	Cemetery Teleport	Arceuus Spellbook	71 Magic	563=1&&566=1&&565=1		4070=3	Cemetery Teleport
+3564 3315 0	Barrows Teleport	Arceuus Spellbook	83 Magic	563=2&&566=2&&565=1		4070=3	Barrows Teleport
+2769 2703 0	Ape Atoll Teleport (Arceuus)	Arceuus Spellbook	90 Magic	563=2&&566=2&&565=2		4070=3	Ape Atoll Teleport (Arceuus)
+2954 3224 0	Teleport to House (Outside)	Standard Spellbook	40 Magic	563=1&&556=1&&557=1		4070=0	Teleport to House
+2894 3465 0	Teleport to House (Outside)	Standard Spellbook	40 Magic	563=1&&556=1&&557=1		4070=0	Teleport to House
+3340 3004 0	Teleport to House (Outside)	Standard Spellbook	40 Magic	563=1&&556=1&&557=1		4070=0	Teleport to House
+1744 3517 0	Teleport to House (Outside)	Standard Spellbook	40 Magic	563=1&&556=1&&557=1		4070=0	Teleport to House
+1422 2965 0	Teleport to House (Outside)	Standard Spellbook	40 Magic	563=1&&556=1&&557=1		4070=0	Teleport to House
+2670 3632 0	Teleport to House (Outside)	Standard Spellbook	40 Magic	563=1&&556=1&&557=1		4070=0	Teleport to House
+2758 3178 0	Teleport to House (Outside)	Standard Spellbook	40 Magic	563=1&&556=1&&557=1		4070=0	Teleport to House
+2544 3095 0	Teleport to House (Outside)	Standard Spellbook	40 Magic	563=1&&556=1&&557=1		4070=0	Teleport to House
+3239 6076 0	Teleport to House (Outside)	Standard Spellbook	40 Magic	563=1&&556=1&&557=1		4070=0	Teleport to House
+3213 3424 0	Varrock tablet	Teleport tablets		8007			Varrock teleport (tablet)
+3221 3218 0	Lumbridge tablet	Teleport tablets		8008			Lumbridge teleport (tablet)
+2964 3378 0	Falador tablet	Teleport tablets		8009			Falador teleport (tablet)
+2757 3479 0	Camelot tablet	Teleport tablets		8010			Camelot teleport (tablet)
+1641 3673 0	Kourend Castle tablet	Teleport tablets		28790			Kourend castle teleport (tablet)
+2662 3305 0	Ardougne tablet	Teleport tablets		8011			Ardougne teleport (tablet)
+1681 3133 0	Civitas illa Fortis tablet	Teleport tablets		28824			Civitas illa fortis teleport (tablet)
+2546 3114 0	Watchtower tablet	Teleport tablets		8012			Watchtower teleport (tablet)
+2954 3224 0	Rimmington tablet	Teleport tablets		11741			Rimmington teleport
+2894 3465 0	Taverley tablet	Teleport tablets		11742			Taverley teleport
+3340 3004 0	Pollnivneach tablet	Teleport tablets		11743			Pollnivneach teleport
+1744 3517 0	Hosidius tablet	Teleport tablets		19651			Hosidius teleport
+2670 3632 0	Rellekka tablet	Teleport tablets		11744			Rellekka teleport
+1422 2965 0	Aldarin tablet	Teleport tablets		30149			Aldarin teleport
+2758 3178 0	Brimhaven tablet	Teleport tablets		11745			Brimhaven teleport
+2544 3095 0	Yanille tablet	Teleport tablets		11746			Yanille teleport
+3239 6076 0	Prifddinas tablet	Teleport tablets		23771			Prifddinas teleport
+2890 3679 0	Trollheim tablet	Teleport tablets		11747			Trollheim teleport (tablet)
+1632 3837 0	Arceuus Library tablet	Teleport tablets		19613			Arceuus library teleport (tablet)
+3109 3351 0	Draynor Manor tablet	Teleport tablets		19615			Draynor manor teleport (tablet)
+1347 3740 0	Battlefront tablet	Teleport tablets		22949			Battlefront teleport (tablet)
+2979 3510 0	Mind Altar tablet	Teleport tablets		19617			Mind altar teleport (tablet)
+3433 3461 0	Salve Graveyard tablet	Teleport tablets		19619			Salve graveyard teleport (tablet)
+3548 3529 0	Fenkenstrain's Castle tablet	Teleport tablets		19621			Fenkenstrain's castle teleport (tablet)
+2500 3290 0	West Ardougne tablet	Teleport tablets		19623			West ardougne teleport (tablet)
+3797 2866 0	Harmony Island tablet	Teleport tablets		19625			Harmony island teleport (tablet)
+2981 3764 0	Cemetery tablet	Teleport tablets		19627			Cemetery teleport (tablet)
+3564 3315 0	Barrows tablet	Teleport tablets		19629			Barrows teleport (tablet)
+2798 2799 0	Ape Atoll tablet	Teleport tablets		19631			Ape atoll teleport (tablet)
+3097 9881 0	Paddewwa tablet	Teleport tablets		12781			Paddewwa teleport (tablet)
+3494 3473 0	Kharyrll tablet	Teleport tablets		12779			Kharyrll teleport (tablet)
+2968 3696 0	Dareeyak tablet	Teleport tablets		12777			Dareeyak teleport (tablet)
+3158 3666 0	Carrallanger tablet	Teleport tablets		12776			Carrallanger teleport (tablet)
+3288 3888 0	Annakarl tablet	Teleport tablets		12775			Annakarl teleport (tablet)
+2976 3872 0	Ghorrock tablet	Teleport tablets		12778			Ghorrock teleport (tablet)
+2113 3915 0	Moonclan tablet	Teleport tablets		24949			Moonclan teleport (tablet)
+2468 3246 0	Ourania tablet	Teleport tablets		24951			Ourania teleport (tablet)
+2546 3755 0	Waterbirth tablet	Teleport tablets		24953			Waterbirth teleport (tablet)
+2543 3569 0	Barbarian tablet	Teleport tablets		24955			Barbarian teleport (tablet)
+2636 3167 0	Khazard tablet	Teleport tablets		24957			Khazard teleport (tablet)
+2613 3391 0	Fishing Guild tablet	Teleport tablets		24959			Fishing guild teleport (tablet)
+2801 3449 0	Catherby tablet	Teleport tablets		24961			Catherby teleport (tablet)
+2975 3938 0	Ice Plateau tablet	Teleport tablets		24963			Ice plateau teleport (tablet)
+3811 3813 0	Volcanic mine tablet	Teleport tablets		21541			Volcanic mine teleport
+3352 3782 0	Wilderness crabs tablet	Teleport tablets		24251			Wilderness crabs teleport
+3419 2917 0	Nardah teleport scroll	Teleport scrolls		12402			Nardah teleport
+3325 3412 0	Digsite teleport scroll	Teleport scrolls		12403			Digsite teleport
+2541 2925 0	Feldip hills teleport scroll	Teleport scrolls		12404			Feldip hills teleport
+2094 3913 0	Lunar isle teleport scroll	Teleport scrolls		12405			Lunar isle teleport
+3488 3288 0	Mort'ton teleport scroll	Teleport scrolls		12406			Mort'ton teleport
+2658 2659 0	Pest control teleport scroll	Teleport scrolls		12407			Pest control teleport
+2339 3649 0	Piscatoris teleport scroll	Teleport scrolls		12408			Piscatoris teleport
+2789 3066 0	Tai bwo wannai teleport scroll	Teleport scrolls		12409			Tai bwo wannai teleport
+2194 3258 0	Iorwerth camp teleport scroll	Teleport scrolls		12410			Iorwerth camp teleport
+3701 2996 0	Mos le'harmless teleport scroll	Teleport scrolls		12411			Mos le'harmless teleport
+3302 3487 0	Lumberyard teleport scroll	Teleport scrolls		12642			Lumberyard teleport
+2196 3056 0	Zul-andra teleport scroll	Teleport scrolls		12938			Zul-andra teleport
+1310 1250 0	Key master teleport scroll	Teleport scrolls		13249			Key master teleport
+1645 3580 0	Watson teleport scroll	Teleport scrolls		23387			Watson teleport
+4063 4557 0	Guthixian temple teleport scroll	Teleport scrolls		29684			Guthixian temple teleport
+3658 3403 0	Spider cave teleport scroll	Teleport scrolls		29782			Spider cave teleport
+1641 2921 0	Colossal wyrm teleport scroll	Teleport scrolls		30040			Colossal wyrm teleport scroll
+1439 10076 0	Chasm teleport scroll	Teleport scrolls		30775			Chasm teleport scroll
+2542 2216 0	Ardeaglais teleport scroll	Teleport scrolls		34033			Ardeaglais teleport
+3087 3496 0	Amulet of glory: Edgeville	Amulet of glory		1706||1708||1710||1712||10354||10356||10358||10360||11964||11966||11976||11978||19707			Amulet of glory
+2918 3176 0	Amulet of glory: Karamja	Amulet of glory		1706||1708||1710||1712||10354||10356||10358||10360||11964||11966||11976||11978||19707			Amulet of glory
+3105 3251 0	Amulet of glory: Draynor Village	Amulet of glory		1706||1708||1710||1712||10354||10356||10358||10360||11964||11966||11976||11978||19707			Amulet of glory
+3293 3163 0	Amulet of glory: Al Kharid	Amulet of glory		1706||1708||1710||1712||10354||10356||10358||10360||11964||11966||11976||11978||19707			Amulet of glory
+2520 3571 0	Games necklace: Barbarian Outpost	Games necklace		3853||3855||3857||3859||3861||3863||3865||3867			Games necklace
+2899 3553 0	Games necklace: Burthorpe Games Room	Games necklace		3853||3855||3857||3859||3861||3863||3865||3867			Games necklace
+2967 4254 0	Games necklace: Corporeal Beast's Lair	Games necklace		3853||3855||3857||3859||3861||3863||3865||3867			Games necklace
+3245 9500 0	Games necklace: Tears of Guthix Minigame	Games necklace		3853||3855||3857||3859||3861||3863||3865||3867			Games necklace
+1631 3940 0	Games necklace: Wintertodt Camp	Games necklace		3853||3855||3857||3859||3861||3863||3865||3867			Games necklace
+3315 3235 0	Ring of dueling: Emir's Arena	Ring of dueling		2552||2554||2556||2558||2560||2562||2564||2566			Ring of dueling
+2440 3090 0	Ring of dueling: Castle Wars Arena	Ring of dueling		2552||2554||2556||2558||2560||2562||2564||2566			Ring of dueling
+3151 3635 0	Ring of dueling: Ferox Enclave	Ring of dueling		2552||2554||2556||2558||2560||2562||2564||2566			Ring of dueling
+1793 3107 0	Ring of dueling: Fortis Colosseum	Ring of dueling		2552||2554||2556||2558||2560||2562||2564||2566			Ring of dueling
+2611 3390 0	Skills necklace: Fishing Guild	Skills necklace		11105||11107||11109||11111||11968||11970			Skills necklace
+3049 9763 0	Skills necklace: Mining Guild	Skills necklace		11105||11107||11109||11111||11968||11970			Skills necklace
+2933 3295 0	Skills necklace: Crafting Guild	Skills necklace		11105||11107||11109||11111||11968||11970			Skills necklace
+3144 3438 0	Skills necklace: Cooks' Guild	Skills necklace		11105||11107||11109||11111||11968||11970			Skills necklace
+1662 3505 0	Skills necklace: Woodcutting Guild	Skills necklace		11105||11107||11109||11111||11968||11970			Skills necklace
+1248 3719 0	Skills necklace: Farming Guild	Skills necklace		11105||11107||11109||11111||11968||11970			Skills necklace
+2882 3547 0	Combat bracelet: Warriors' Guild	Combat bracelet		11118||11120||11122||11124||11972||11974			Combat bracelet
+3192 3368 0	Combat bracelet: Champions' Guild	Combat bracelet		11118||11120||11122||11124||11972||11974			Combat bracelet
+3052 3490 0	Combat bracelet: Edgeville Monastery	Combat bracelet		11118||11120||11122||11124||11972||11974			Combat bracelet
+2653 3439 0	Combat bracelet: Ranging Guild	Combat bracelet		11118||11120||11122||11124||11972||11974			Combat bracelet
+2534 3862 0	Ring of wealth: Miscellania	Ring of wealth		11980||11982||11984||11986||11988||20786||20787||20788||20789||20790			Ring of wealth
+3163 3478 0	Ring of wealth: Grand Exchange entrance	Ring of wealth		11980||11982||11984||11986||11988||20786||20787||20788||20789||20790			Ring of wealth
+2995 3375 0	Ring of wealth: Falador Park	Ring of wealth		11980||11982||11984||11986||11988||20786||20787||20788||20789||20790			Ring of wealth
+2824 10168 0	Ring of wealth: Dondakan	Ring of wealth		11980||11982||11984||11986||11988||20786||20787||20788||20789||20790			Ring of wealth
+3341 3445 0	Digsite pendant: Digsite	Digsite pendant		11190||11191||11192||11193||11194			Digsite pendant
+3763 3869 1	Digsite pendant: Fossil Island	Digsite pendant		11190||11191||11192||11193||11194			Digsite pendant
+3549 10456 0	Digsite pendant: Lithkren	Digsite pendant		11190||11191||11192||11193||11194			Digsite pendant
+1579 3530 0	Xeric's talisman: Xeric's Lookout	Xeric's talisman		13393			Xeric's talisman
+1752 3566 0	Xeric's talisman: Xeric's Glade	Xeric's talisman		13393			Xeric's talisman
+1504 3815 0	Xeric's talisman: Xeric's Inferno	Xeric's talisman		13393			Xeric's talisman
+1644 3673 0	Xeric's talisman: Xeric's Heart	Xeric's talisman		13393			Xeric's talisman
+1254 3560 0	Xeric's talisman: Xeric's Honour	Xeric's talisman		13393			Xeric's talisman
+3649 3230 0	Drakan's medallion: Ver Sinhaza	Drakan's medallion		22400	A Taste of Hope		Drakan's medallion
+3592 3337 0	Drakan's medallion: Darkmeyer	Drakan's medallion		22400	A Taste of Hope		Drakan's medallion
+3808 9700 0	Drakan's medallion: Slepe	Drakan's medallion		22400	A Taste of Hope		Drakan's medallion
+3166 7711 0	Drakan's medallion: Castle Drakan	Drakan's medallion		22400	A Taste of Hope		Drakan's medallion
+2607 3221 0	Ardougne cloak: Kandarin Monastery	Ardougne cloak		13121||13122||13123||13124			Ardougne cloak 4
+2665 3376 0	Ardougne cloak: Ardougne Farm	Ardougne cloak		13122||13123||13124			Ardougne cloak 4
+2840 9387 0	Karamja gloves: Gem Mine	Karamja gloves		11140||13103			Karamja gloves 4
+2869 2982 1	Karamja gloves: Duradel	Karamja gloves		13103			Karamja gloves 4
+3052 3291 0	Explorer's ring: Cabbage patch	Explorer's ring		13126||13127||13128			Explorer's ring 4
+3322 3122 0	Desert amulet: Kalphite Cave	Desert amulet		13136			Desert amulet 4
+3426 2927 0	Desert amulet: Nardah	Desert amulet		13134||13135||13136			Desert amulet 4
+2643 3675 0	Fremennik sea boots: Rellekka	Fremennik sea boots		13131||13132			Fremennik sea boots 4
+3683 9888 0	Morytania legs: Ectofuntus Slime Pit	Morytania legs		13113||13114||13115			Morytania legs 4
+3482 3230 0	Morytania legs: Burgh de Rott	Morytania legs		13114||13115			Morytania legs 4
+2332 3681 0	Western banner: Piscatoris fishing colony	Western banner		13143||13144			Western banner 4
+2733 3414 0	Kandarin headgear: Sherlock	Kandarin headgear		13139||13140			Kandarin headgear 4
+3377 3894 0	Wilderness sword: Fountain of Rune	Wilderness sword		13110||13111			Wilderness sword
+2431 3422 0	Slayer ring: Stronghold Slayer Cave	Slayer ring		11866||11867||11868||11869||11870||11871||11872||11873||21268			Slayer ring
+3421 3537 0	Slayer ring: Slayer Tower	Slayer ring		11866||11867||11868||11869||11870||11871||11872||11873||21268			Slayer ring
+2802 9999 0	Slayer ring: Fremennik Slayer Dungeon	Slayer ring		11866||11867||11868||11869||11870||11871||11872||11873||21268			Slayer ring
+3185 4601 0	Slayer ring: Tarn's Lair	Slayer ring		11866||11867||11868||11869||11870||11871||11872||11873||21268			Slayer ring
+2028 4636 0	Slayer ring: Dark Beast	Slayer ring		11866||11867||11868||11869||11870||11871||11872||11873||21268			Slayer ring
+2581 8633 0	Slayer ring: Wyrmscraig Cavern	Slayer ring		11866||11867||11868||11869||11870||11871||11872||11873||21268			Slayer ring
+3114 3179 0	Necklace of passage: Wizards' Tower	Necklace of passage		21146||21149||21151||21153||21155			Necklace of passage
+2430 3349 0	Necklace of passage: The Outpost	Necklace of passage		21146||21149||21151||21153||21155			Necklace of passage
+3405 3158 0	Necklace of passage: Eagles' Eyrie	Necklace of passage		21146||21149||21151||21153||21155			Necklace of passage
+2591 2221 0	Necklace of passage: Wyrmscraig	Necklace of passage		21146||21149||21151||21153||21155			Necklace of passage
+3234 3634 0	Burning amulet: Chaos Temple	Burning amulet		21166||21169||21171||21173||21175			Burning amulet
+3038 3651 0	Burning amulet: Bandit Camp	Burning amulet		21166||21169||21171||21173||21175			Burning amulet
+3028 3842 0	Burning amulet: Lava Maze	Burning amulet		21166||21169||21171||21173||21175			Burning amulet
+1934 4428 3	Pharaoh's sceptre: Jalsavrah	Pharaoh's sceptre		9044||9045||9046||9047||9048||9049||9050||9051||13074||13075||13076||13077||13078||16176||21445||21446||26948||26950			Pharaoh's sceptre
+3341 2827 0	Pharaoh's sceptre: Jaleustrophos	Pharaoh's sceptre		9044||9045||9046||9047||9048||9049||9050||9051||13074||13075||13076||13077||13078||16176||21445||21446||26948||26950			Pharaoh's sceptre
+3232 2897 0	Pharaoh's sceptre: Jaldraocht	Pharaoh's sceptre		9044||9045||9046||9047||9048||9049||9050||9051||13074||13075||13076||13077||13078||16176||21445||21446||26948||26950			Pharaoh's sceptre
+3313 2718 0	Pharaoh's sceptre: Jaltevas	Pharaoh's sceptre		9044||9045||9046||9047||9048||9049||9050||9051||13074||13075||13076||13077||13078||16176||21445||21446||26948||26950			Pharaoh's sceptre
+2466 3496 0	Royal seed pod: Grand Tree	Royal seed pod		19564	Monkey Madness II		Royal seed pod
+3660 3522 0	Ectophial: Ectofuntus	Ectophial		4251||4252	Ghosts Ahoy		Ectophial
+2662 3644 0	Enchanted lyre: Rellekka	Enchanted lyre		3691||6125||6126||6127||13079||23458	The Fremennik Trials		Enchanted lyre
+2551 3755 0	Enchanted lyre: Waterbirth Island	Enchanted lyre		3691||6125||6126||6127||13079||23458	The Fremennik Trials		Enchanted lyre
+2409 3809 0	Enchanted lyre: Jatizso	Enchanted lyre		3691||6125||6126||6127||13079||23458	The Fremennik Trials		Enchanted lyre
+2336 3802 0	Enchanted lyre: Neitiznot	Enchanted lyre		3691||6125||6126||6127||13079||23458	The Fremennik Trials		Enchanted lyre
+2328 3170 0	Teleport crystal: Lletya	Teleport crystal		6099||6100||6101||6102||13102||23946	Mourning's End Part I		Teleport crystal
+3265 6067 0	Teleport crystal: Prifddinas	Teleport crystal		6099||6100||6101||6102||13102||23946	Song of the Elves		Teleport crystal
+1491 3283 0	Pendant of ates: The Darkfrost	Pendant of ates		29892||29893			Pendant of ates
+1668 3223 0	Pendant of ates: Twilight Temple	Pendant of ates		29892||29893			Pendant of ates
+1459 3138 0	Pendant of ates: Ralos' Rise	Pendant of ates		29892||29893			Pendant of ates
+1426 2995 0	Pendant of ates: North Aldarin	Pendant of ates		29892||29893			Pendant of ates
+1366 3086 0	Pendant of ates: North of Kastori	Pendant of ates		29892||29893			Pendant of ates
+1364 3277 0	Pendant of ates: Nemus Retreat	Pendant of ates		29892||29893			Pendant of ates
+3296 6436 0	Ring of shadows: Ancient Vault	Ring of shadows		28327	Desert Treasure II - The Fallen Empire		Ring of shadows
+2912 10336 0	Ring of shadows: Ghorrock Dungeon	Ring of shadows		28327	Desert Treasure II - The Fallen Empire		Ring of shadows
+2019 6434 0	Ring of shadows: The Scar	Ring of shadows		28327	Desert Treasure II - The Fallen Empire		Ring of shadows
+2588 6435 0	Ring of shadows: Lassar Undercity palace	Ring of shadows		28327	Desert Treasure II - The Fallen Empire		Ring of shadows
+1175 3424 0	Ring of shadows: The Stranglewood temple entrance	Ring of shadows		28327	Desert Treasure II - The Fallen Empire		Ring of shadows
+2981 3276 0	Ring of the elements: Air Altar	Ring of the elements		26815||26818			Ring of the elements
+3170 3155 0	Ring of the elements: Water Altar	Ring of the elements		26815||26818			Ring of the elements
+3288 3468 0	Ring of the elements: Earth Altar	Ring of the elements		26815||26818			Ring of the elements
+3314 3279 0	Ring of the elements: Fire Altar	Ring of the elements		26815||26818			Ring of the elements
+3174 9898 0	Giantsoul amulet: Bryophyta's lair	Giantsoul amulet		30637||30638			Giantsoul amulet
+3096 9833 0	Giantsoul amulet: Obor's lair	Giantsoul amulet		30637||30638			Giantsoul amulet
+2952 9574 0	Giantsoul amulet: Branda and Eldric's lair	Giantsoul amulet		30637||30638			Giantsoul amulet
+1520 3478 0	Kharedst's memoirs: Old Memorial	Kharedst's memoirs		21760||25818	Client of Kourend		Kharedst's memoirs
+1713 3612 0	Kharedst's memoirs: The Depths of Despair	Kharedst's memoirs		21760||25818	Client of Kourend		Kharedst's memoirs
+1804 3748 0	Kharedst's memoirs: The Queen of Thieves	Kharedst's memoirs		21760||25818	Client of Kourend		Kharedst's memoirs
+1478 3576 0	Kharedst's memoirs: Tale of the Righteous	Kharedst's memoirs		21760||25818	Client of Kourend		Kharedst's memoirs
+1545 3761 0	Kharedst's memoirs: The Forsaken Tower	Kharedst's memoirs		21760||25818	Client of Kourend		Kharedst's memoirs
+1681 3747 0	Kharedst's memoirs: The Ascent of Arceuus	Kharedst's memoirs		21760||25818	Client of Kourend		Kharedst's memoirs
+3105 9315 0	Camulet: Inside Enakhra's Temple	Camulet		6707	Enakhra's Lament		Camulet
+3191 2924 0	Camulet: Enakhra's Temple entrance	Camulet		6707	Enakhra's Lament		Camulet
+3201 3355 0	Chronicle: Champions' Guild	Chronicle		13660			Chronicle
+3081 3421 0	Skull sceptre: Stronghold of Security	Skull sceptre		9013||21276			Skull sceptre
+2846 3938 0	Icy basalt: Weiss	Icy basalt		22599	Making Friends with My Arm		Icy basalt
+2845 3694 0	Stony basalt: Troll Stronghold	Stony basalt		22601	Making Friends with My Arm		Stony basalt
+2837 3695 0	Stony basalt: Troll Stronghold roof	Stony basalt		22601	Making Friends with My Arm		Stony basalt
+3654 3387 0	Hallowed crystal shard: Hallowed Sepulchre	Hallowed crystal shard		24709	Sins of the Father		Hallowed crystal shard
+3259 3277 0	Cowbell amulet: Lumbridge cow field	Cowbell amulet		33103||33104			Cowbell amulet
+3615 9460 0	Amulet of the eye: Temple of the Eye	Amulet of the eye		26914||26990||26992||26994	Temple of the Eye		Amulet of the Eye
+3058 2974 0	Sailors' amulet: The Pandemonium	Sailors' amulet		32398||32399			Sailors' amulet
+1889 3292 0	Sailors' amulet: Port Roberts	Sailors' amulet		32398||32399			Sailors' amulet
+2797 2521 0	Sailors' amulet: Red Rock	Sailors' amulet		32398||32399			Sailors' amulet
+1943 2758 0	Sailors' amulet: Deepfin Point	Sailors' amulet		32398||32399			Sailors' amulet
+2954 3224 0	Construction cape: Rimmington	Construction cape		9789||9790			Construction cape
+2894 3465 0	Construction cape: Taverley	Construction cape		9789||9790			Construction cape
+3340 3004 0	Construction cape: Pollnivneach	Construction cape		9789||9790			Construction cape
+1744 3517 0	Construction cape: Hosidius	Construction cape		9789||9790			Construction cape
+1422 2965 0	Construction cape: Aldarin	Construction cape		9789||9790			Construction cape
+2670 3632 0	Construction cape: Rellekka	Construction cape		9789||9790			Construction cape
+2758 3178 0	Construction cape: Brimhaven	Construction cape		9789||9790			Construction cape
+2544 3095 0	Construction cape: Yanille	Construction cape		9789||9790			Construction cape
+3239 6076 0	Construction cape: Prifddinas	Construction cape		9789||9790			Construction cape
+2865 3546 0	Max cape: Warrior's Guild	Max cape		13280||13342			Max cape
+2604 3401 0	Max cape: Fishing Guild	Max cape		13280||13342			Max cape
+2931 3286 0	Max cape: Crafting Guild	Max cape		13280||13342			Max cape
+1248 3725 0	Max cape: Farming Guild	Max cape		13280||13342			Max cape
+2504 3484 0	Max cape: Otto's Grotto	Max cape		13280||13342			Max cape
+2556 2916 0	Max cape: Feldip Hunter area	Max cape		13280||13342			Max cape
+3144 3772 0	Max cape: Wilderness Hunter area	Max cape		13280||13342			Max cape
+1558 3046 0	Max cape: Hunter Guild	Max cape		13280||13342			Max cape
+3048 2972 0	Max cape: The Pandemonium	Max cape		13280||13342			Max cape
+2954 3224 0	Max cape: Rimmington	Max cape		13280||13342			Max cape
+2894 3465 0	Max cape: Taverley	Max cape		13280||13342			Max cape
+3340 3004 0	Max cape: Pollnivneach	Max cape		13280||13342			Max cape
+1744 3517 0	Max cape: Hosidius	Max cape		13280||13342			Max cape
+1422 2965 0	Max cape: Aldarin	Max cape		13280||13342			Max cape
+2670 3632 0	Max cape: Rellekka	Max cape		13280||13342			Max cape
+2758 3178 0	Max cape: Brimhaven	Max cape		13280||13342			Max cape
+2544 3095 0	Max cape: Yanille	Max cape		13280||13342			Max cape
+3239 6076 0	Max cape: Prifddinas	Max cape		13280||13342			Max cape
+2574 3324 0	Achievement diary cape: Two-pints	Achievement diary cape		13069||19476			Achievement diary cape
+3300 3121 0	Achievement diary cape: Jarr	Achievement diary cape		13069||19476			Achievement diary cape
+2977 3345 0	Achievement diary cape: Sir Rebral	Achievement diary cape		13069||19476			Achievement diary cape
+2659 3627 0	Achievement diary cape: Thorodin	Achievement diary cape		13069||19476			Achievement diary cape
+2744 3444 0	Achievement diary cape: Flax keeper	Achievement diary cape		13069||19476			Achievement diary cape
+2810 3191 0	Achievement diary cape: Pirate Jackie the Fruit	Achievement diary cape		13069||19476			Achievement diary cape
+2861 2995 1	Achievement diary cape: Kaleb Paramaya	Achievement diary cape		13069||19476			Achievement diary cape
+2795 2945 0	Achievement diary cape: Jungle forester	Achievement diary cape		13069||19476			Achievement diary cape
+2455 5133 0	Achievement diary cape: TzHaar-Mej	Achievement diary cape		13069||19476			Achievement diary cape
+1647 3666 0	Achievement diary cape: Elise	Achievement diary cape		13069||19476			Achievement diary cape
+3239 3220 0	Achievement diary cape: Hatius Cosaintus	Achievement diary cape		13069||19476			Achievement diary cape
+3465 3477 0	Achievement diary cape: Le-sabrè	Achievement diary cape		13069||19476			Achievement diary cape
+3224 3414 0	Achievement diary cape: Toby	Achievement diary cape		13069||19476			Achievement diary cape
+3122 3516 0	Achievement diary cape: Lesser Fanatic	Achievement diary cape		13069||19476			Achievement diary cape
+2467 3459 0	Achievement diary cape: Elder Gnome child	Achievement diary cape		13069||19476			Achievement diary cape
+3097 3226 0	Achievement diary cape: Twiggy O'Korn	Achievement diary cape		13069||19476			Achievement diary cape
+2931 3286 0	Crafting cape: Crafting Guild	Crafting cape		9780||9781			Crafting cape
+2604 3401 0	Fishing cape: Fishing Guild	Fishing cape		9798||9799			Fishing cape
+2504 3484 0	Fishing cape: Otto's Grotto	Fishing cape		9798||9799			Fishing cape
+1248 3725 0	Farming cape: Farming Guild	Farming cape		9810||9811			Farming cape
+2556 2916 0	Hunter cape: Feldip Hunter area	Hunter cape		9948||9949			Hunter cape
+3144 3772 0	Hunter cape: Wilderness Hunter area	Hunter cape		9948||9949			Hunter cape
+1558 3046 0	Hunter cape: Hunter Guild	Hunter cape		9948||9949			Hunter cape
+2865 3546 0	Strength cape: Warriors' Guild	Strength cape		9750||9751			Strength cape
+2729 3368 0	Quest point cape: Legends' Guild	Quest point cape		9813||13068			Quest point cape
+2457 2850 0	Mythical cape: Myths' Guild	Mythical cape		21913||22114	Dragon Slayer II		Mythical cape
+2689 3549 0	Music cape: Falo the Bard	Music cape		13221||13222			Music cape
+1389 2899 0	Quetzal whistle: Aldarin	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1410 3363 0	Quetzal whistle: Auburnvale	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1696 3141 0	Quetzal whistle: Civitas illa Fortis	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1584 3055 0	Quetzal whistle: Hunter Guild	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1512 3222 0	Quetzal whistle: Quetzacalli Gorge	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1548 2997 0	Quetzal whistle: Sunset Coast	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1225 3089 0	Quetzal whistle: Tal Teklan	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1437 3169 0	Quetzal whistle: The Teomat	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1448 3108 0	Quetzal whistle: Cam Torum	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1672 2933 0	Quetzal whistle: Colossal Wyrm Remains	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1776 3111 0	Quetzal whistle: Fortis Colosseum	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1343 3020 0	Quetzal whistle: Kastori	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1703 3037 0	Quetzal whistle: Outer Fortis	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+1613 3302 0	Quetzal whistle: Salvager Overlook	Quetzal whistle		29271||29273||29275	Twilight's Promise		Quetzal whistle
+2521 3570 0	Barbarian Assault Minigame Teleport	Minigame teleports					Barbarian Assault
+2930 10193 0	Blast Furnace Minigame Teleport	Minigame teleports					Blast Furnace
+3140 3626 0	Bounty Hunter Minigame Teleport	Minigame teleports					Bounty Hunter
+2899 3553 0	Burthorpe Games Room Minigame Teleport	Minigame teleports					Burthorpe Games Room
+2442 3093 0	Castle Wars Minigame Teleport	Minigame teleports					Castle Wars
+3149 3634 0	Clan Wars Minigame Teleport	Minigame teleports					Clan Wars
+2658 3157 0	Fishing Trawler Minigame Teleport	Minigame teleports	15 Fishing				Fishing Trawler
+3361 3149 0	Giants' Foundry Minigame Teleport	Minigame teleports	15 Smithing				Giants' Foundry
+3615 9477 0	Guardians of the Rift Minigame Teleport	Minigame teleports			Temple of the Eye		Guardians of the Rift
+3149 3634 0	Last Man Standing Minigame Teleport	Minigame teleports					Last Man Standing
+3363 3295 0	Mage Training Arena Minigame Teleport	Minigame teleports					Mage Training Arena
+1388 2918 0	Mastering Mixology Minigame Teleport	Minigame teleports	60 Herblore		Children of the Sun		Mastering Mixology
+2609 3114 0	Nightmare Zone Minigame Teleport	Minigame teleports					Nightmare Zone
+2658 2663 0	Pest Control Minigame Teleport	Minigame teleports	40 Combat				Pest Control
+2561 3320 0	Rat Pits Minigame Teleport	Minigame teleports			Ratcatchers		Rat Pits
+3267 3400 0	Rat Pits Minigame Teleport	Minigame teleports			Ratcatchers		Rat Pits
+2914 10193 0	Rat Pits Minigame Teleport	Minigame teleports			Ratcatchers		Rat Pits
+3018 3232 0	Rat Pits Minigame Teleport	Minigame teleports			Ratcatchers		Rat Pits
+3506 3304 0	Shades of Mort'ton Minigame Teleport	Minigame teleports			Shades of Mort'ton		Shades of Mort'ton
+3321 3138 0	Sorceress's Garden Minigame Teleport	Minigame teleports			Beneath Cursed Sands;Prince Ali Rescue		Sorceress's Garden
+2018 5929 0	Soul Wars Minigame Teleport	Minigame teleports					Soul Wars
+1792 3501 0	Tithe Farm Minigame Teleport	Minigame teleports	34 Farming				Tithe Farm
+3801 3015 0	Trouble Brewing Minigame Teleport	Minigame teleports	40 Cooking		Cabin Fever		Trouble Brewing
+2399 5177 0	TzHaar Fight Pit Minigame Teleport	Minigame teleports					TzHaar Fight Pit

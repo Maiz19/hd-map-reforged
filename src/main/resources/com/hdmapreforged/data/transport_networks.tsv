@@ -1,0 +1,107 @@
+# Network	Stop	Location	Arrival	Skills	Items	Quests	Varbits	Note
+# From the OSRS Wiki (CC BY-NC-SA 3.0) and the OSRS game cache; built by local-development/tools/travel-data
+# Networks where every stop reaches every other: fairy_ring, spirit_tree, gnome_glider, balloon, quetzal, mushtree, obelisk. Location: the object or NPC used, 'x y plane'. Arrival: where travelling there lands. The requirement columns hold what using that stop needs, whether travelling from or to it.
+# Skills: '25 Magic;43 Agility'. Items: item ids, '&&' joins items all needed, '||' alternatives, '=n' a quantity ('563=1&&556=3', '1712||1710'). Quests: quest names as RuneLite's Quest list names them, ';'-separated. Varbits: 'id=value' (also < > & for less, more, bit set), ';'-separated
+fairy_ring	AIQ – Asgarnia: Mudskipper Point	2996 3114 0	2996 3114 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	AIR – Islands: South-east of Ardougne	2700 3247 0	2700 3247 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	AIS – Varlamore: Auburn Valley	1429 3324 0	1429 3324 0		772||9084	Fairytale I - Growing Pains;Children of the Sun		Requires having travelled to Civitas illa Fortis via Regulus Cento, after completion of Children of the Sun.
+fairy_ring	AJP – Varlamore: Avium Savannah	1651 3010 0	1651 3010 0		772||9084	Fairytale I - Growing Pains;Children of the Sun		Requires having travelled to Civitas illa Fortis via Regulus Cento, after completion of Children of the Sun.
+fairy_ring	AJQ – Dungeons: Cave south of Dorgesh-Kaan	2735 5221 0	2735 5221 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	AJR – Kandarin: Slayer cave south-east of Rellekka	2780 3613 0	2780 3613 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	AJS – Islands: Penguins near Miscellania.	2500 3896 0	2500 3896 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	AKP – Kharidian Desert: Necropolis	3284 2706 0	3284 2706 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	AKQ – Kandarin: Piscatoris Hunter area	2319 3619 0	2319 3619 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	AKR – Great Kourend: Hosidius Vinery	1826 3540 0	1826 3540 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	AKS – Feldip Hills: Feldip Hunter area	2571 2956 0	2571 2956 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	ALP – Islands: Lighthouse	2503 3636 0	2503 3636 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	ALQ – Morytania: Haunted Woods east of Canifis	3597 3495 0	3597 3495 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	ALR – Other Realms: Abyssal Area	3059 4875 0	3059 4875 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	ALS – Kandarin: McGrubor's Wood	2644 3495 0	2644 3495 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BIP – Islands: South-west of Mort Myre, on the river Salve	3410 3324 0	3410 3324 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BIQ – Kharidian Desert near the Kalphite Hive.	3251 3095 0	3251 3095 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BIS – Kandarin: Ardougne Zoo - Unicorns	2635 3266 0	2635 3266 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BJP – Islands: Isle of Souls	2267 2976 0	2267 2976 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BJR – Other Realms: Realm of the Fisher King	2650 4730 0	2650 4730 0		772||9084	Fairytale I - Growing Pains;Holy Grail		Requires partial completion of the Holy Grail quest.
+fairy_ring	BJS – Islands: Near Zul-Andra	2150 3070 0	2150 3070 0		772||9084	Fairytale I - Growing Pains;Regicide		Requires completion of the Regicide quest.
+fairy_ring	BKP – Feldip Hills: Chompy Marsh, south of Castle Wars	2385 3035 0	2385 3035 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BKQ – Other Realms: Enchanted Valley	3041 4532 0	3041 4532 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BKR – Morytania: Mort Myre Swamp, south of Canifis	3469 3431 0	3469 3431 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BKS – Other Realms: Zanaris	2412 4434 0	2412 4434 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BLP – Dungeons: TzHaar area	2437 5126 0	2437 5126 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BLQ – Other Realms: Yu'biusk	3573 4371 0	3573 4371 0		772||9084	Fairytale I - Growing Pains;Land of the Goblins		Requires partial completion of the Land of the Goblins quest.
+fairy_ring	BLR – Kandarin: Legends' Guild	2740 3351 0	2740 3351 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	BLS – Kebos Lowlands: South of Mount Quidamortem	1295 3493 0	1295 3493 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	CIP – Islands: Miscellania	2513 3884 0	2513 3884 0		772||9084	Fairytale I - Growing Pains;The Fremennik Trials		Requires completion of The Fremennik Trials quest.
+fairy_ring	CIQ – Kandarin: North-west of Yanille	2528 3127 0	2528 3127 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	CIR – Kebos Lowlands: South of Mount Karuulm	1302 3762 0	1302 3762 0		772||9084	Fairytale I - Growing Pains		The player must have visited Great Kourend at least once to access this fairy ring.
+fairy_ring	CIS – Great Kourend: Arceuus Library	1639 3868 0	1639 3868 0		772||9084	Fairytale I - Growing Pains		The player must have visited Great Kourend at least once to access this fairy ring.
+fairy_ring	CJQ – The Great Conch	3178 2447 0	3178 2447 0		772||9084	Fairytale I - Growing Pains		The player must have visited The Great Conch at least once to access this fairy ring.
+fairy_ring	CJR – Kandarin: Sinclair Mansion (east)	2705 3576 0	2705 3576 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	CKP – Other Realms: Cosmic entity's plane	2075 4848 0	2075 4848 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	CKQ – Varlamore: Aldarin	1359 2941 0	1359 2941 0		772||9084	Fairytale I - Growing Pains		Requires having travelled to Civitas illa Fortis via Regulus Cento, after completion of Children of the Sun.
+fairy_ring	CKR – Karamja: South of Tai Bwo Wannai Village	2801 3003 0	2801 3003 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	CKS – Morytania: Canifis	3447 3470 0	3447 3470 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	CLP – Islands: Draynor island	3082 3206 0	3082 3206 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	CLR – Islands: Ape Atoll	2740 2738 0	2740 2738 0		772||9084	Fairytale I - Growing Pains;Monkey Madness I		Requires completion of the Monkey Madness I quest.
+fairy_ring	CLS – Islands: Yanille Chain	2682 3081 0	2682 3081 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	DIP – Other Realms: Abyssal Nexus	3037 4763 0	3037 4763 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	DIR – Other Realms: Gorak's Plane	3038 5348 0	3038 5348 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	DIS – Misthalin: Wizards' Tower	3108 3149 0	3108 3149 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	DJP – Kandarin: Tower of Life	2658 3230 0	2658 3230 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	DJR – Great Kourend: Chasm of Fire	1455 3658 0	1455 3658 0		772||9084	Fairytale I - Growing Pains		The player must have visited Great Kourend at least once to access this fairy ring.
+fairy_ring	DKP – Karamja: Gnome glider	2900 3111 0	2900 3111 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	DKR – Misthalin: Edgeville	3129 3496 0	3129 3496 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	DKS – Fremennik: Polar Hunter area	2744 3719 0	2744 3719 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	DLQ – Kharidian Desert: North of Nardah	3423 3016 0	3423 3016 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	DLR – Islands: Poison Waste south of Isafdar	2213 3099 0	2213 3099 0		772||9084	Fairytale I - Growing Pains
+fairy_ring	DLS – Dungeons: Myreque hideout under The Hollows	3447 9824 0	3447 9824 0		772||9084	Fairytale I - Growing Pains;In Search of the Myreque		Requires completion of the In Search of the Myreque quest.
+spirit_tree	Tree Gnome Village	2544 3169 0	2544 3169 0			Tree Gnome Village
+spirit_tree	Gnome Stronghold	2461 3446 0	2461 3446 0			Tree Gnome Village		Travelling from this tree needs The Grand Tree
+spirit_tree	Battlefield of Khazard	2555 3260 0	2555 3260 0			Tree Gnome Village
+spirit_tree	Grand Exchange	3184 3509 0	3184 3509 0			Tree Gnome Village
+spirit_tree	Feldip Hills	2486 2850 0	2486 2850 0			Tree Gnome Village
+spirit_tree	Poison Waste	2339 3111 0	2339 3111 0			Tree Gnome Village;The Path of Glouphrie
+spirit_tree	Prifddinas	3274 6124 0	3274 6124 0			Tree Gnome Village;Song of the Elves
+spirit_tree	Laguna Aurorae	1202 2786 0	1202 2786 0	58 Sailing		Tree Gnome Village;Pandemonium
+spirit_tree	Etceteria	2613 3858 0	2613 3858 0	83 Farming		Tree Gnome Village		Only after planting a spirit tree here
+spirit_tree	Port Sarim	3060 3258 0	3060 3258 0	83 Farming		Tree Gnome Village		Only after planting a spirit tree here
+spirit_tree	Brimhaven	2802 3203 0	2802 3203 0	83 Farming		Tree Gnome Village		Only after planting a spirit tree here
+spirit_tree	Hosidius	1693 3542 0	1693 3542 0	83 Farming		Tree Gnome Village		Only after planting a spirit tree here
+spirit_tree	Farming Guild	1253 3750 0	1253 3750 0	85 Farming		Tree Gnome Village		Only after planting a spirit tree here
+gnome_glider	The Grand Tree (Ta Quir Priw)	2466 3496 3	2466 3496 3			The Grand Tree
+gnome_glider	White Wolf Mountain (Sindarpos)	2849 3499 0	2849 3499 0			The Grand Tree
+gnome_glider	Digsite (Lemanto Andra)		3325 3429 0			The Grand Tree		One way: the glider crashes here and cannot fly back
+gnome_glider	Al Kharid (Kar-Hewo)	3282 3212 0	3282 3212 0			The Grand Tree
+gnome_glider	Feldip Hills (Lemantolly Undri)	2541 2971 0	2541 2971 0			The Grand Tree;One Small Favour
+gnome_glider	Ape Atoll (Ookookolly Undri)	2714 2803 0	2714 2803 0			The Grand Tree;Monkey Madness II
+gnome_glider	Ship Yard (Gandius)	2972 2965 0	2972 2965 0			The Grand Tree
+balloon	Crafting Guild	2924 3301 0	2924 3301 0	30 Firemaking	1521	Enlightened Journey
+balloon	Taverley	2939 3421 0	2939 3421 0	20 Firemaking	1511||2511||24650	Enlightened Journey
+balloon	Entrana	2806 3355 0	2806 3355 0	20 Firemaking	1511||2511||24650	Enlightened Journey
+balloon	Varrock	3296 3481 0	3296 3481 0	40 Firemaking	1519	Enlightened Journey
+balloon	Castle Wars	2461 3109 0	2461 3109 0	50 Firemaking	1515	Enlightened Journey
+balloon	Grand Tree	2481 3457 0	2481 3457 0	60 Firemaking	1513	Enlightened Journey
+quetzal	Aldarin	1389 2899 0	1389 2899 0			Twilight's Promise
+quetzal	Auburnvale	1410 3363 0	1410 3363 0			Twilight's Promise
+quetzal	Civitas illa Fortis	1696 3141 0	1696 3141 0			Twilight's Promise
+quetzal	Hunter Guild	1584 3055 0	1584 3055 0			Twilight's Promise
+quetzal	Quetzacalli Gorge	1512 3222 0	1512 3222 0			Twilight's Promise
+quetzal	Sunset Coast	1548 2997 0	1548 2997 0			Twilight's Promise
+quetzal	Tal Teklan	1225 3089 0	1225 3089 0			Twilight's Promise
+quetzal	The Teomat	1437 3169 0	1437 3169 0			Twilight's Promise
+quetzal	Cam Torum	1448 3108 0	1448 3108 0			Twilight's Promise		Must first be built at the landing site
+quetzal	Colossal Wyrm Remains	1672 2933 0	1672 2933 0			Twilight's Promise		Must first be built at the landing site
+quetzal	Fortis Colosseum	1776 3111 0	1776 3111 0			Twilight's Promise		Must first be built at the landing site
+quetzal	Kastori	1343 3020 0	1343 3020 0			Twilight's Promise		Must first be built at the landing site
+quetzal	Outer Fortis	1703 3037 0	1703 3037 0			Twilight's Promise		Must first be built at the landing site
+quetzal	Salvager Overlook	1613 3302 0	1613 3302 0			Twilight's Promise		Must first be built at the landing site
+mushtree	House on the Hill	3764 3880 1	3764 3880 1			Bone Voyage
+mushtree	Verdant Valley	3758 3756 0	3758 3756 0			Bone Voyage
+mushtree	Sticky Swamp	3677 3755 0	3677 3755 0			Bone Voyage
+mushtree	Mushroom Meadow	3674 3871 0	3674 3871 0			Bone Voyage
+obelisk	Ferox Enclave (level 13)	3156 3620 0	3156 3620 0					The destination is random, unless you set one after completing the hard Wilderness Diary.
+obelisk	Graveyard of Shadows (level 18-19)	3227 3667 0	3227 3667 0					The destination is random, unless you set one after completing the hard Wilderness Diary.
+obelisk	Wilderness God Wars Dungeon (level 27)	3035 3732 0	3035 3732 0					The destination is random, unless you set one after completing the hard Wilderness Diary.
+obelisk	Lava Maze (level 35)	3106 3794 0	3106 3794 0					The destination is random, unless you set one after completing the hard Wilderness Diary.
+obelisk	Lava Maze (level 44)	2980 3867 0	2980 3867 0					The destination is random, unless you set one after completing the hard Wilderness Diary.
+obelisk	Rogues' Castle (level 50)	3307 3916 0	3307 3916 0					The destination is random, unless you set one after completing the hard Wilderness Diary.

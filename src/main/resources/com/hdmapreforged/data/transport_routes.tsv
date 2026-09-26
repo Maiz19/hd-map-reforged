@@ -1,0 +1,651 @@
+# Type	From	Origin	To	Destination	Skills	Items	Quests	Varbits	Note
+# From the OSRS Wiki (CC BY-NC-SA 3.0) and the OSRS game cache; built by local-development/tools/travel-data
+# One trip per row, from Origin to Destination ('x y plane'): boat, charter, canoe, carpet, minecart, portal, lever. From/To: the names of both ends. Charter fares are coins (item 995) in Items.
+# Skills: '25 Magic;43 Agility'. Items: item ids, '&&' joins items all needed, '||' alternatives, '=n' a quantity ('563=1&&556=3', '1712||1710'). Quests: quest names as RuneLite's Quest list names them, ';'-separated. Varbits: 'id=value' (also < > & for less, more, bit set), ';'-separated
+boat	Port Sarim	3028 3218 0	Musa Point	2950 3151 0		995=30
+boat	Musa Point	2950 3151 0	Port Sarim	3028 3218 0		995=30
+boat	Port Sarim	3054 3245 0	Port Piscarilius	1824 3690 0
+boat	Port Piscarilius	1824 3690 0	Port Sarim	3054 3245 0
+boat	Land's End	1505 3401 0	Port Sarim	3054 3245 0
+boat	Port Sarim	3054 3245 0	Land's End	1505 3401 0
+boat	Land's End	1505 3401 0	Port Piscarilius	1824 3690 0
+boat	Port Piscarilius	1824 3690 0	Land's End	1505 3401 0
+boat	Ardougne	2680 3274 0	Brimhaven	2768 3227 0		995=30
+boat	Brimhaven	2768 3227 0	Ardougne	2680 3274 0		995=30
+boat	Ardougne	2680 3274 0	Rimmington	2916 3225 0		995=30
+boat	Rimmington	2916 3225 0	Ardougne	2680 3274 0		995=30
+boat	Brimhaven	2768 3227 0	Rimmington	2916 3225 0		995=30
+boat	Rimmington	2916 3225 0	Brimhaven	2768 3227 0		995=30
+boat	Rimmington	2910 3226 0	Corsair Cove	2586 2867 0			The Corsair Curse
+boat	Corsair Cove	2586 2867 0	Rimmington	2910 3226 0			The Corsair Curse
+boat	Rellekka	2621 3683 0	Waterbirth Island	2544 3761 0
+boat	Waterbirth Island	2544 3761 0	Rellekka	2621 3683 0
+boat	Rellekka	2644 3709 0	Jatizso	2421 3781 0			The Fremennik Trials
+boat	Jatizso	2421 3781 0	Rellekka	2644 3709 0			The Fremennik Trials
+boat	Rellekka	2644 3710 0	Neitiznot	2311 3781 0			The Fremennik Trials
+boat	Neitiznot	2311 3781 0	Rellekka	2644 3710 0			The Fremennik Trials
+boat	Rellekka	2629 3693 0	Miscellania	2581 3847 0			The Fremennik Trials
+boat	Miscellania	2581 3847 0	Rellekka	2629 3693 0			The Fremennik Trials
+boat	Rellekka	2621 3694 0	Pirates' Cove	2224 3798 0			Lunar Diplomacy
+boat	Pirates' Cove	2224 3798 0	Rellekka	2621 3694 0			Lunar Diplomacy
+boat	Pirates' Cove	2222 3796 2	Lunar Isle	2138 3899 2			Lunar Diplomacy
+boat	Lunar Isle	2138 3899 2	Pirates' Cove	2222 3796 2			Lunar Diplomacy
+boat	Rellekka	2707 3734 0	Iceberg	2661 3990 1			Cold War
+boat	Iceberg	2661 3990 1	Rellekka	2707 3734 0			Cold War
+boat	Witchaven	2723 3304 0	Fishing Platform	2778 3282 0			Sea Slug
+boat	Fishing Platform	2778 3282 0	Witchaven	2723 3304 0			Sea Slug
+boat	Port Phasmatys	3704 3487 0	Dragontooth Island	3806 3549 0			Ghosts Ahoy
+boat	Dragontooth Island	3806 3549 0	Port Phasmatys	3704 3487 0			Ghosts Ahoy
+boat	Ectofuntus pier	3680 3535 0	Braindeath Island	1862 5347 0			Rum Deal
+boat	Braindeath Island	1862 5347 0	Ectofuntus pier	3680 3535 0			Rum Deal
+boat	Al Kharid	3271 3144 0	Ruins of Unkah	3149 2843 0
+boat	Ruins of Unkah	3149 2843 0	Al Kharid	3271 3144 0
+boat	Ruins of Unkah	3133 2842 0	Tempoross Cove	3035 2850 0
+boat	Tempoross Cove	3035 2850 0	Ruins of Unkah	3133 2842 0
+boat	Karamja	2758 3085 0	Feldip Hills	2654 2964 0
+boat	Feldip Hills	2654 2964 0	Karamja	2758 3085 0
+boat	Ape Atoll	2847 2715 0	Crash Island	2914 2720 0			Monkey Madness I
+boat	Crash Island	2914 2720 0	Ape Atoll	2847 2715 0			Monkey Madness I
+boat	Gnome Stronghold	2369 3486 0	Piscatoris	2357 3640 0
+boat	Piscatoris	2357 3640 0	Gnome Stronghold	2369 3486 0
+boat	Mort Myre Swamp	3523 3284 0	Nature Grotto	3498 3377 0			Nature Spirit
+boat	Nature Grotto	3498 3377 0	Mort Myre Swamp	3523 3284 0			Nature Spirit
+boat	Kastori	1381 3059 0	Tal Teklan	1255 3124 0
+boat	Tal Teklan	1255 3124 0	Kastori	1381 3059 0
+boat	Kastori	1381 3059 0	Gloomthorn Trail	1390 3267 0
+boat	Gloomthorn Trail	1390 3267 0	Kastori	1381 3059 0
+boat	Tal Teklan	1255 3124 0	Gloomthorn Trail	1390 3267 0
+boat	Gloomthorn Trail	1390 3267 0	Tal Teklan	1255 3124 0
+boat	Digsite	3362 3448 0	Fossil Island	3674 3888 0			Bone Voyage
+boat	Fossil Island	3674 3888 0	Digsite	3362 3448 0			Bone Voyage
+charter	Brimhaven	2761 3238 0	Aldarin	1455 2968 0		995=2500	Children of the Sun
+charter	Brimhaven	2761 3238 0	Catherby	2792 3415 0		995=480
+charter	Brimhaven	2761 3238 0	Civitas illa Fortis	1743 3136 0		995=2400	Children of the Sun
+charter	Brimhaven	2761 3238 0	Corsair Cove	2590 2851 0		995=680
+charter	Brimhaven	2761 3238 0	Deepfin Point	1944 2751 0		995=2000
+charter	Brimhaven	2761 3238 0	Karamja Shipyard	3000 3032 0		995=400	The Grand Tree
+charter	Brimhaven	2761 3238 0	Land's End	1495 3403 0		995=2200
+charter	Brimhaven	2761 3238 0	Mos Le'Harmless	3670 2931 0		995=1950	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Brimhaven	2761 3238 0	Musa Point	2955 3158 0		995=480
+charter	Brimhaven	2761 3238 0	Port Khazard	2674 3143 0		995=400
+charter	Brimhaven	2761 3238 0	Port Phasmatys	3703 3503 0		995=2900	Priest in Peril
+charter	Brimhaven	2761 3238 0	Port Piscarilius	1809 3679 0		995=2000
+charter	Brimhaven	2761 3238 0	Port Roberts	1871 3314 0		995=3200
+charter	Brimhaven	2761 3238 0	Port Sarim	3038 3191 0		995=1600
+charter	Brimhaven	2761 3238 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Brimhaven	2761 3238 0	Prifddinas	2157 3331 0		995=3450	Song of the Elves
+charter	Brimhaven	2761 3238 0	Red Rock	2805 2502 0		995=1900
+charter	Brimhaven	2761 3238 0	Sunset Coast	1514 2970 0		995=2500	Children of the Sun
+charter	Brimhaven	2761 3238 0	The Pandemonium	3060 3000 0		995=400
+charter	Brimhaven	2761 3238 0	The Summer Shore	3187 2365 0		995=1900
+charter	Catherby	2792 3415 0	Aldarin	1455 2968 0		995=2500	Children of the Sun
+charter	Catherby	2792 3415 0	Brimhaven	2761 3238 0		995=480
+charter	Catherby	2792 3415 0	Civitas illa Fortis	1743 3136 0		995=2400	Children of the Sun
+charter	Catherby	2792 3415 0	Corsair Cove	2590 2851 0		995=1000
+charter	Catherby	2792 3415 0	Deepfin Point	1944 2751 0		995=2200
+charter	Catherby	2792 3415 0	Karamja Shipyard	3000 3032 0		995=1600	The Grand Tree
+charter	Catherby	2792 3415 0	Land's End	1495 3403 0		995=2200
+charter	Catherby	2792 3415 0	Mos Le'Harmless	3670 2931 0		995=1250	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Catherby	2792 3415 0	Musa Point	2955 3158 0		995=480
+charter	Catherby	2792 3415 0	Port Khazard	2674 3143 0		995=1600
+charter	Catherby	2792 3415 0	Port Phasmatys	3703 3503 0		995=3500	Priest in Peril
+charter	Catherby	2792 3415 0	Port Piscarilius	1809 3679 0		995=2000
+charter	Catherby	2792 3415 0	Port Roberts	1871 3314 0		995=3400
+charter	Catherby	2792 3415 0	Port Sarim	3038 3191 0		995=1000
+charter	Catherby	2792 3415 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Catherby	2792 3415 0	Prifddinas	2157 3331 0		995=3560	Song of the Elves
+charter	Catherby	2792 3415 0	Red Rock	2805 2502 0		995=2000
+charter	Catherby	2792 3415 0	Sunset Coast	1514 2970 0		995=2500	Children of the Sun
+charter	Catherby	2792 3415 0	The Pandemonium	3060 3000 0		995=1200
+charter	Catherby	2792 3415 0	The Summer Shore	3187 2365 0		995=2000
+charter	Civitas illa Fortis	1743 3136 0	Aldarin	1455 2968 0		995=600	Children of the Sun
+charter	Civitas illa Fortis	1743 3136 0	Brimhaven	2761 3238 0		995=2400
+charter	Civitas illa Fortis	1743 3136 0	Catherby	2792 3415 0		995=2400
+charter	Civitas illa Fortis	1743 3136 0	Corsair Cove	2590 2851 0		995=2000
+charter	Civitas illa Fortis	1743 3136 0	Deepfin Point	1944 2751 0		995=1200
+charter	Civitas illa Fortis	1743 3136 0	Karamja Shipyard	3000 3032 0		995=3000	The Grand Tree
+charter	Civitas illa Fortis	1743 3136 0	Land's End	1495 3403 0		995=800
+charter	Civitas illa Fortis	1743 3136 0	Mos Le'Harmless	3670 2931 0		995=2300	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Civitas illa Fortis	1743 3136 0	Musa Point	2955 3158 0		995=2900
+charter	Civitas illa Fortis	1743 3136 0	Port Khazard	2674 3143 0		995=2200
+charter	Civitas illa Fortis	1743 3136 0	Port Phasmatys	3703 3503 0		995=4400	Priest in Peril
+charter	Civitas illa Fortis	1743 3136 0	Port Piscarilius	1809 3679 0		995=1000
+charter	Civitas illa Fortis	1743 3136 0	Port Roberts	1871 3314 0		995=600
+charter	Civitas illa Fortis	1743 3136 0	Port Sarim	3038 3191 0		995=3000
+charter	Civitas illa Fortis	1743 3136 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Civitas illa Fortis	1743 3136 0	Prifddinas	2157 3331 0		995=1700	Song of the Elves
+charter	Civitas illa Fortis	1743 3136 0	Red Rock	2805 2502 0		995=2000
+charter	Civitas illa Fortis	1743 3136 0	Sunset Coast	1514 2970 0		995=500	Children of the Sun
+charter	Civitas illa Fortis	1743 3136 0	The Pandemonium	3060 3000 0		995=2800
+charter	Civitas illa Fortis	1743 3136 0	The Summer Shore	3187 2365 0		995=2200
+charter	Corsair Cove	2590 2851 0	Aldarin	1455 2968 0		995=2100	Children of the Sun
+charter	Corsair Cove	2590 2851 0	Brimhaven	2761 3238 0		995=680
+charter	Corsair Cove	2590 2851 0	Catherby	2792 3415 0		995=1000
+charter	Corsair Cove	2590 2851 0	Civitas illa Fortis	1743 3136 0		995=2000	Children of the Sun
+charter	Corsair Cove	2590 2851 0	Deepfin Point	1944 2751 0		995=1600
+charter	Corsair Cove	2590 2851 0	Karamja Shipyard	3000 3032 0		995=800	The Grand Tree
+charter	Corsair Cove	2590 2851 0	Land's End	1495 3403 0		995=1800
+charter	Corsair Cove	2590 2851 0	Mos Le'Harmless	3670 2931 0		995=2040	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Corsair Cove	2590 2851 0	Musa Point	2955 3158 0		995=800
+charter	Corsair Cove	2590 2851 0	Port Khazard	2674 3143 0		995=600
+charter	Corsair Cove	2590 2851 0	Port Phasmatys	3703 3503 0		995=4040	Priest in Peril
+charter	Corsair Cove	2590 2851 0	Port Piscarilius	1809 3679 0		995=1500
+charter	Corsair Cove	2590 2851 0	Port Roberts	1871 3314 0		995=2200
+charter	Corsair Cove	2590 2851 0	Port Sarim	3038 3191 0		995=1200
+charter	Corsair Cove	2590 2851 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Corsair Cove	2590 2851 0	Prifddinas	2157 3331 0		995=1420	Song of the Elves
+charter	Corsair Cove	2590 2851 0	Red Rock	2805 2502 0		995=1500
+charter	Corsair Cove	2590 2851 0	Sunset Coast	1514 2970 0		995=2100	Children of the Sun
+charter	Corsair Cove	2590 2851 0	The Pandemonium	3060 3000 0		995=800
+charter	Corsair Cove	2590 2851 0	The Summer Shore	3187 2365 0		995=1600
+charter	Deepfin Point	1944 2751 0	Aldarin	1455 2968 0		995=1200	Children of the Sun
+charter	Deepfin Point	1944 2751 0	Brimhaven	2761 3238 0		995=2000
+charter	Deepfin Point	1944 2751 0	Catherby	2792 3415 0		995=2200
+charter	Deepfin Point	1944 2751 0	Civitas illa Fortis	1743 3136 0		995=1200	Children of the Sun
+charter	Deepfin Point	1944 2751 0	Corsair Cove	2590 2851 0		995=1600
+charter	Deepfin Point	1944 2751 0	Karamja Shipyard	3000 3032 0		995=2800	The Grand Tree
+charter	Deepfin Point	1944 2751 0	Land's End	1495 3403 0		995=1400
+charter	Deepfin Point	1944 2751 0	Mos Le'Harmless	3670 2931 0		995=1600	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Deepfin Point	1944 2751 0	Musa Point	2955 3158 0		995=2400
+charter	Deepfin Point	1944 2751 0	Port Khazard	2674 3143 0		995=1800
+charter	Deepfin Point	1944 2751 0	Port Phasmatys	3703 3503 0		995=3400	Priest in Peril
+charter	Deepfin Point	1944 2751 0	Port Piscarilius	1809 3679 0		995=1600
+charter	Deepfin Point	1944 2751 0	Port Roberts	1871 3314 0		995=1000
+charter	Deepfin Point	1944 2751 0	Port Sarim	3038 3191 0		995=2600
+charter	Deepfin Point	1944 2751 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Deepfin Point	1944 2751 0	Prifddinas	2157 3331 0		995=1200	Song of the Elves
+charter	Deepfin Point	1944 2751 0	Red Rock	2805 2502 0		995=1400
+charter	Deepfin Point	1944 2751 0	Sunset Coast	1514 2970 0		995=1200	Children of the Sun
+charter	Deepfin Point	1944 2751 0	The Pandemonium	3060 3000 0		995=2800
+charter	Deepfin Point	1944 2751 0	The Summer Shore	3187 2365 0		995=1800
+charter	Karamja Shipyard	3000 3032 0	Aldarin	1455 2968 0		995=3100	Children of the Sun
+charter	Karamja Shipyard	3000 3032 0	Brimhaven	2761 3238 0		995=400
+charter	Karamja Shipyard	3000 3032 0	Catherby	2792 3415 0		995=1600
+charter	Karamja Shipyard	3000 3032 0	Civitas illa Fortis	1743 3136 0		995=3000	Children of the Sun
+charter	Karamja Shipyard	3000 3032 0	Corsair Cove	2590 2851 0		995=800
+charter	Karamja Shipyard	3000 3032 0	Deepfin Point	1944 2751 0		995=2800
+charter	Karamja Shipyard	3000 3032 0	Land's End	1495 3403 0		995=2800
+charter	Karamja Shipyard	3000 3032 0	Mos Le'Harmless	3670 2931 0		995=550	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Karamja Shipyard	3000 3032 0	Musa Point	2955 3158 0		995=200
+charter	Karamja Shipyard	3000 3032 0	Port Khazard	2674 3143 0		995=1600
+charter	Karamja Shipyard	3000 3032 0	Port Phasmatys	3703 3503 0		995=3200	Priest in Peril
+charter	Karamja Shipyard	3000 3032 0	Port Piscarilius	1809 3679 0		995=2600
+charter	Karamja Shipyard	3000 3032 0	Port Roberts	1871 3314 0		995=3600
+charter	Karamja Shipyard	3000 3032 0	Port Sarim	3038 3191 0		995=400
+charter	Karamja Shipyard	3000 3032 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Karamja Shipyard	3000 3032 0	Prifddinas	2157 3331 0		995=4000	Song of the Elves
+charter	Karamja Shipyard	3000 3032 0	Red Rock	2805 2502 0		995=1600
+charter	Karamja Shipyard	3000 3032 0	Sunset Coast	1514 2970 0		995=3100	Children of the Sun
+charter	Karamja Shipyard	3000 3032 0	The Pandemonium	3060 3000 0		995=200
+charter	Karamja Shipyard	3000 3032 0	The Summer Shore	3187 2365 0		995=1600
+charter	Land's End	1495 3403 0	Aldarin	1455 2968 0		995=900	Children of the Sun
+charter	Land's End	1495 3403 0	Brimhaven	2761 3238 0		995=2200
+charter	Land's End	1495 3403 0	Catherby	2792 3415 0		995=2200
+charter	Land's End	1495 3403 0	Civitas illa Fortis	1743 3136 0		995=800	Children of the Sun
+charter	Land's End	1495 3403 0	Corsair Cove	2590 2851 0		995=1800
+charter	Land's End	1495 3403 0	Deepfin Point	1944 2751 0		995=1400
+charter	Land's End	1495 3403 0	Karamja Shipyard	3000 3032 0		995=2800	The Grand Tree
+charter	Land's End	1495 3403 0	Mos Le'Harmless	3670 2931 0		995=2200	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Land's End	1495 3403 0	Musa Point	2955 3158 0		995=2700
+charter	Land's End	1495 3403 0	Port Khazard	2674 3143 0		995=2000
+charter	Land's End	1495 3403 0	Port Phasmatys	3703 3503 0		995=4200	Priest in Peril
+charter	Land's End	1495 3403 0	Port Roberts	1871 3314 0		995=800
+charter	Land's End	1495 3403 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Land's End	1495 3403 0	Prifddinas	2157 3331 0		995=1500	Song of the Elves
+charter	Land's End	1495 3403 0	Red Rock	2805 2502 0		995=2200
+charter	Land's End	1495 3403 0	Sunset Coast	1514 2970 0		995=900	Children of the Sun
+charter	Land's End	1495 3403 0	The Pandemonium	3060 3000 0		995=2600
+charter	Land's End	1495 3403 0	The Summer Shore	3187 2365 0		995=2400
+charter	Mos Le'Harmless	3670 2931 0	Aldarin	1455 2968 0		995=2350	Children of the Sun		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Brimhaven	2761 3238 0		995=1950			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Catherby	2792 3415 0		995=1250			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Civitas illa Fortis	1743 3136 0		995=2300	Children of the Sun		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Corsair Cove	2590 2851 0		995=2040			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Deepfin Point	1944 2751 0		995=1600			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Karamja Shipyard	3000 3032 0		995=550	The Grand Tree		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Land's End	1495 3403 0		995=2200			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Musa Point	2955 3158 0		995=2050			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Port Khazard	2674 3143 0		995=550			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Port Piscarilius	1809 3679 0		995=2100			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Port Roberts	1871 3314 0		995=2200			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Port Sarim	3038 3191 0		995=650			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Port Tyras	2142 3123 0		995=1600	Regicide		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Prifddinas	2157 3331 0		995=2475	Song of the Elves		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Red Rock	2805 2502 0		995=1000			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	Sunset Coast	1514 2970 0		995=2350	Children of the Sun		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	The Pandemonium	3060 3000 0		995=500			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Mos Le'Harmless	3670 2931 0	The Summer Shore	3187 2365 0		995=900			Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Musa Point	2955 3158 0	Aldarin	1455 2968 0		995=3000	Children of the Sun
+charter	Musa Point	2955 3158 0	Brimhaven	2761 3238 0		995=480
+charter	Musa Point	2955 3158 0	Catherby	2792 3415 0		995=480
+charter	Musa Point	2955 3158 0	Civitas illa Fortis	1743 3136 0		995=2900	Children of the Sun
+charter	Musa Point	2955 3158 0	Corsair Cove	2590 2851 0		995=800
+charter	Musa Point	2955 3158 0	Deepfin Point	1944 2751 0		995=2400
+charter	Musa Point	2955 3158 0	Karamja Shipyard	3000 3032 0		995=200	The Grand Tree
+charter	Musa Point	2955 3158 0	Land's End	1495 3403 0		995=2700
+charter	Musa Point	2955 3158 0	Mos Le'Harmless	3670 2931 0		995=2050	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Musa Point	2955 3158 0	Port Khazard	2674 3143 0		995=400
+charter	Musa Point	2955 3158 0	Port Phasmatys	3703 3503 0		995=1100	Priest in Peril
+charter	Musa Point	2955 3158 0	Port Piscarilius	1809 3679 0		995=2500
+charter	Musa Point	2955 3158 0	Port Roberts	1871 3314 0		995=3500
+charter	Musa Point	2955 3158 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Musa Point	2955 3158 0	Prifddinas	2157 3331 0		995=4400	Song of the Elves
+charter	Musa Point	2955 3158 0	Red Rock	2805 2502 0		995=1700
+charter	Musa Point	2955 3158 0	Sunset Coast	1514 2970 0		995=3000	Children of the Sun
+charter	Musa Point	2955 3158 0	The Summer Shore	3187 2365 0		995=1700
+charter	Port Khazard	2674 3143 0	Aldarin	1455 2968 0		995=2300	Children of the Sun
+charter	Port Khazard	2674 3143 0	Brimhaven	2761 3238 0		995=400
+charter	Port Khazard	2674 3143 0	Catherby	2792 3415 0		995=1600
+charter	Port Khazard	2674 3143 0	Civitas illa Fortis	1743 3136 0		995=2200	Children of the Sun
+charter	Port Khazard	2674 3143 0	Corsair Cove	2590 2851 0		995=600
+charter	Port Khazard	2674 3143 0	Deepfin Point	1944 2751 0		995=1800
+charter	Port Khazard	2674 3143 0	Karamja Shipyard	3000 3032 0		995=1600	The Grand Tree
+charter	Port Khazard	2674 3143 0	Land's End	1495 3403 0		995=2000
+charter	Port Khazard	2674 3143 0	Mos Le'Harmless	3670 2931 0		995=550	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Port Khazard	2674 3143 0	Musa Point	2955 3158 0		995=400
+charter	Port Khazard	2674 3143 0	Port Phasmatys	3703 3503 0		995=4100	Priest in Peril
+charter	Port Khazard	2674 3143 0	Port Piscarilius	1809 3679 0		995=1800
+charter	Port Khazard	2674 3143 0	Port Roberts	1871 3314 0		995=3000
+charter	Port Khazard	2674 3143 0	Port Sarim	3038 3191 0		995=1280
+charter	Port Khazard	2674 3143 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Port Khazard	2674 3143 0	Prifddinas	2157 3331 0		995=2800	Song of the Elves
+charter	Port Khazard	2674 3143 0	Red Rock	2805 2502 0		995=1800
+charter	Port Khazard	2674 3143 0	Sunset Coast	1514 2970 0		995=2300	Children of the Sun
+charter	Port Khazard	2674 3143 0	The Pandemonium	3060 3000 0		995=700
+charter	Port Khazard	2674 3143 0	The Summer Shore	3187 2365 0		995=1800
+charter	Port Phasmatys	3703 3503 0	Aldarin	1455 2968 0		995=4500	Children of the Sun
+charter	Port Phasmatys	3703 3503 0	Brimhaven	2761 3238 0		995=2900
+charter	Port Phasmatys	3703 3503 0	Catherby	2792 3415 0		995=3500
+charter	Port Phasmatys	3703 3503 0	Civitas illa Fortis	1743 3136 0		995=4400	Children of the Sun
+charter	Port Phasmatys	3703 3503 0	Corsair Cove	2590 2851 0		995=4040
+charter	Port Phasmatys	3703 3503 0	Deepfin Point	1944 2751 0		995=3400
+charter	Port Phasmatys	3703 3503 0	Karamja Shipyard	3000 3032 0		995=3200	The Grand Tree
+charter	Port Phasmatys	3703 3503 0	Land's End	1495 3403 0		995=4200
+charter	Port Phasmatys	3703 3503 0	Musa Point	2955 3158 0		995=1100
+charter	Port Phasmatys	3703 3503 0	Port Khazard	2674 3143 0		995=4100
+charter	Port Phasmatys	3703 3503 0	Port Piscarilius	1809 3679 0		995=4000
+charter	Port Phasmatys	3703 3503 0	Port Roberts	1871 3314 0		995=4600
+charter	Port Phasmatys	3703 3503 0	Port Sarim	3038 3191 0		995=1300
+charter	Port Phasmatys	3703 3503 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Port Phasmatys	3703 3503 0	Prifddinas	2157 3331 0		995=5200	Song of the Elves
+charter	Port Phasmatys	3703 3503 0	Red Rock	2805 2502 0		995=2200
+charter	Port Phasmatys	3703 3503 0	Sunset Coast	1514 2970 0		995=4500	Children of the Sun
+charter	Port Phasmatys	3703 3503 0	The Pandemonium	3060 3000 0		995=1000
+charter	Port Phasmatys	3703 3503 0	The Summer Shore	3187 2365 0		995=2000
+charter	Port Piscarilius	1809 3679 0	Aldarin	1455 2968 0		995=1100	Children of the Sun
+charter	Port Piscarilius	1809 3679 0	Brimhaven	2761 3238 0		995=2000
+charter	Port Piscarilius	1809 3679 0	Catherby	2792 3415 0		995=2000
+charter	Port Piscarilius	1809 3679 0	Civitas illa Fortis	1743 3136 0		995=1000	Children of the Sun
+charter	Port Piscarilius	1809 3679 0	Corsair Cove	2590 2851 0		995=1500
+charter	Port Piscarilius	1809 3679 0	Deepfin Point	1944 2751 0		995=1600
+charter	Port Piscarilius	1809 3679 0	Karamja Shipyard	3000 3032 0		995=2600	The Grand Tree
+charter	Port Piscarilius	1809 3679 0	Mos Le'Harmless	3670 2931 0		995=2100	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Port Piscarilius	1809 3679 0	Musa Point	2955 3158 0		995=2500
+charter	Port Piscarilius	1809 3679 0	Port Khazard	2674 3143 0		995=1800
+charter	Port Piscarilius	1809 3679 0	Port Phasmatys	3703 3503 0		995=4000	Priest in Peril
+charter	Port Piscarilius	1809 3679 0	Port Roberts	1871 3314 0		995=1000
+charter	Port Piscarilius	1809 3679 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Port Piscarilius	1809 3679 0	Prifddinas	2157 3331 0		995=1200	Song of the Elves
+charter	Port Piscarilius	1809 3679 0	Red Rock	2805 2502 0		995=2400
+charter	Port Piscarilius	1809 3679 0	Sunset Coast	1514 2970 0		995=1100	Children of the Sun
+charter	Port Piscarilius	1809 3679 0	The Pandemonium	3060 3000 0		995=2400
+charter	Port Piscarilius	1809 3679 0	The Summer Shore	3187 2365 0		995=2600
+charter	Port Roberts	1871 3314 0	Aldarin	1455 2968 0		995=1400	Children of the Sun
+charter	Port Roberts	1871 3314 0	Brimhaven	2761 3238 0		995=3200
+charter	Port Roberts	1871 3314 0	Catherby	2792 3415 0		995=3400
+charter	Port Roberts	1871 3314 0	Civitas illa Fortis	1743 3136 0		995=600	Children of the Sun
+charter	Port Roberts	1871 3314 0	Corsair Cove	2590 2851 0		995=2200
+charter	Port Roberts	1871 3314 0	Deepfin Point	1944 2751 0		995=1000
+charter	Port Roberts	1871 3314 0	Karamja Shipyard	3000 3032 0		995=3600	The Grand Tree
+charter	Port Roberts	1871 3314 0	Land's End	1495 3403 0		995=800
+charter	Port Roberts	1871 3314 0	Mos Le'Harmless	3670 2931 0		995=2200	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Port Roberts	1871 3314 0	Musa Point	2955 3158 0		995=3500
+charter	Port Roberts	1871 3314 0	Port Khazard	2674 3143 0		995=3000
+charter	Port Roberts	1871 3314 0	Port Phasmatys	3703 3503 0		995=4600	Priest in Peril
+charter	Port Roberts	1871 3314 0	Port Piscarilius	1809 3679 0		995=1000
+charter	Port Roberts	1871 3314 0	Port Sarim	3038 3191 0		995=3500
+charter	Port Roberts	1871 3314 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Port Roberts	1871 3314 0	Prifddinas	2157 3331 0		995=600	Song of the Elves
+charter	Port Roberts	1871 3314 0	Red Rock	2805 2502 0		995=2000
+charter	Port Roberts	1871 3314 0	Sunset Coast	1514 2970 0		995=1400	Children of the Sun
+charter	Port Roberts	1871 3314 0	The Pandemonium	3060 3000 0		995=3600
+charter	Port Roberts	1871 3314 0	The Summer Shore	3187 2365 0		995=2500
+charter	Port Sarim	3038 3191 0	Aldarin	1455 2968 0		995=3100	Children of the Sun
+charter	Port Sarim	3038 3191 0	Brimhaven	2761 3238 0		995=1600
+charter	Port Sarim	3038 3191 0	Catherby	2792 3415 0		995=1000
+charter	Port Sarim	3038 3191 0	Civitas illa Fortis	1743 3136 0		995=3000	Children of the Sun
+charter	Port Sarim	3038 3191 0	Corsair Cove	2590 2851 0		995=1200
+charter	Port Sarim	3038 3191 0	Deepfin Point	1944 2751 0		995=2600
+charter	Port Sarim	3038 3191 0	Karamja Shipyard	3000 3032 0		995=400	The Grand Tree
+charter	Port Sarim	3038 3191 0	Mos Le'Harmless	3670 2931 0		995=650	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Port Sarim	3038 3191 0	Port Khazard	2674 3143 0		995=1280
+charter	Port Sarim	3038 3191 0	Port Phasmatys	3703 3503 0		995=1300	Priest in Peril
+charter	Port Sarim	3038 3191 0	Port Roberts	1871 3314 0		995=3500
+charter	Port Sarim	3038 3191 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Port Sarim	3038 3191 0	Prifddinas	2157 3331 0		995=4800	Song of the Elves
+charter	Port Sarim	3038 3191 0	Red Rock	2805 2502 0		995=1700
+charter	Port Sarim	3038 3191 0	Sunset Coast	1514 2970 0		995=3100	Children of the Sun
+charter	Port Sarim	3038 3191 0	The Summer Shore	3187 2365 0		995=1700
+charter	Port Tyras	2142 3123 0	Aldarin	1455 2968 0		995=3200	Children of the Sun
+charter	Port Tyras	2142 3123 0	Brimhaven	2761 3238 0		995=3200
+charter	Port Tyras	2142 3123 0	Catherby	2792 3415 0		995=3200
+charter	Port Tyras	2142 3123 0	Civitas illa Fortis	1743 3136 0		995=3200	Children of the Sun
+charter	Port Tyras	2142 3123 0	Corsair Cove	2590 2851 0		995=3200
+charter	Port Tyras	2142 3123 0	Deepfin Point	1944 2751 0		995=3200
+charter	Port Tyras	2142 3123 0	Karamja Shipyard	3000 3032 0		995=3200	The Grand Tree
+charter	Port Tyras	2142 3123 0	Land's End	1495 3403 0		995=3200
+charter	Port Tyras	2142 3123 0	Mos Le'Harmless	3670 2931 0		995=1600	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Port Tyras	2142 3123 0	Musa Point	2955 3158 0		995=3200
+charter	Port Tyras	2142 3123 0	Port Khazard	2674 3143 0		995=3200
+charter	Port Tyras	2142 3123 0	Port Phasmatys	3703 3503 0		995=3200	Priest in Peril
+charter	Port Tyras	2142 3123 0	Port Piscarilius	1809 3679 0		995=3200
+charter	Port Tyras	2142 3123 0	Port Roberts	1871 3314 0		995=3200
+charter	Port Tyras	2142 3123 0	Port Sarim	3038 3191 0		995=3200
+charter	Port Tyras	2142 3123 0	Prifddinas	2157 3331 0		995=3200	Song of the Elves
+charter	Port Tyras	2142 3123 0	Red Rock	2805 2502 0		995=3200
+charter	Port Tyras	2142 3123 0	Sunset Coast	1514 2970 0		995=3200	Children of the Sun
+charter	Port Tyras	2142 3123 0	The Pandemonium	3060 3000 0		995=3200
+charter	Port Tyras	2142 3123 0	The Summer Shore	3187 2365 0		995=3200
+charter	Prifddinas	2157 3331 0	Aldarin	1455 2968 0		995=1800	Children of the Sun
+charter	Prifddinas	2157 3331 0	Brimhaven	2761 3238 0		995=3450
+charter	Prifddinas	2157 3331 0	Catherby	2792 3415 0		995=3560
+charter	Prifddinas	2157 3331 0	Civitas illa Fortis	1743 3136 0		995=1700	Children of the Sun
+charter	Prifddinas	2157 3331 0	Corsair Cove	2590 2851 0		995=1420
+charter	Prifddinas	2157 3331 0	Deepfin Point	1944 2751 0		995=1200
+charter	Prifddinas	2157 3331 0	Karamja Shipyard	3000 3032 0		995=4000	The Grand Tree
+charter	Prifddinas	2157 3331 0	Land's End	1495 3403 0		995=1500
+charter	Prifddinas	2157 3331 0	Mos Le'Harmless	3670 2931 0		995=2475	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Prifddinas	2157 3331 0	Musa Point	2955 3158 0		995=4400
+charter	Prifddinas	2157 3331 0	Port Khazard	2674 3143 0		995=2800
+charter	Prifddinas	2157 3331 0	Port Phasmatys	3703 3503 0		995=5200	Priest in Peril
+charter	Prifddinas	2157 3331 0	Port Piscarilius	1809 3679 0		995=1200
+charter	Prifddinas	2157 3331 0	Port Roberts	1871 3314 0		995=600
+charter	Prifddinas	2157 3331 0	Port Sarim	3038 3191 0		995=4800
+charter	Prifddinas	2157 3331 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Prifddinas	2157 3331 0	Red Rock	2805 2502 0		995=2000
+charter	Prifddinas	2157 3331 0	Sunset Coast	1514 2970 0		995=1800	Children of the Sun
+charter	Prifddinas	2157 3331 0	The Pandemonium	3060 3000 0		995=3800
+charter	Prifddinas	2157 3331 0	The Summer Shore	3187 2365 0		995=2200
+charter	Red Rock	2805 2502 0	Aldarin	1455 2968 0		995=2200	Children of the Sun
+charter	Red Rock	2805 2502 0	Brimhaven	2761 3238 0		995=1900
+charter	Red Rock	2805 2502 0	Catherby	2792 3415 0		995=2000
+charter	Red Rock	2805 2502 0	Civitas illa Fortis	1743 3136 0		995=2000	Children of the Sun
+charter	Red Rock	2805 2502 0	Corsair Cove	2590 2851 0		995=1500
+charter	Red Rock	2805 2502 0	Deepfin Point	1944 2751 0		995=1400
+charter	Red Rock	2805 2502 0	Karamja Shipyard	3000 3032 0		995=1600	The Grand Tree
+charter	Red Rock	2805 2502 0	Land's End	1495 3403 0		995=2200
+charter	Red Rock	2805 2502 0	Mos Le'Harmless	3670 2931 0		995=2000	Cabin Fever
+charter	Red Rock	2805 2502 0	Musa Point	2955 3158 0		995=1700
+charter	Red Rock	2805 2502 0	Port Khazard	2674 3143 0		995=1800
+charter	Red Rock	2805 2502 0	Port Phasmatys	3703 3503 0		995=2200	Priest in Peril
+charter	Red Rock	2805 2502 0	Port Piscarilius	1809 3679 0		995=2400
+charter	Red Rock	2805 2502 0	Port Roberts	1871 3314 0		995=2000
+charter	Red Rock	2805 2502 0	Port Sarim	3038 3191 0		995=1700
+charter	Red Rock	2805 2502 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Red Rock	2805 2502 0	Prifddinas	2157 3331 0		995=2000	Song of the Elves
+charter	Red Rock	2805 2502 0	Sunset Coast	1514 2970 0		995=2200	Children of the Sun
+charter	Red Rock	2805 2502 0	The Pandemonium	3060 3000 0		995=1600
+charter	Red Rock	2805 2502 0	The Summer Shore	3187 2365 0		995=1000
+charter	Sunset Coast	1514 2970 0	Brimhaven	2761 3238 0		995=2500
+charter	Sunset Coast	1514 2970 0	Catherby	2792 3415 0		995=2500
+charter	Sunset Coast	1514 2970 0	Civitas illa Fortis	1743 3136 0		995=500	Children of the Sun
+charter	Sunset Coast	1514 2970 0	Corsair Cove	2590 2851 0		995=2100
+charter	Sunset Coast	1514 2970 0	Deepfin Point	1944 2751 0		995=1200
+charter	Sunset Coast	1514 2970 0	Karamja Shipyard	3000 3032 0		995=3100	The Grand Tree
+charter	Sunset Coast	1514 2970 0	Land's End	1495 3403 0		995=900
+charter	Sunset Coast	1514 2970 0	Mos Le'Harmless	3670 2931 0		995=2350	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	Sunset Coast	1514 2970 0	Musa Point	2955 3158 0		995=3000
+charter	Sunset Coast	1514 2970 0	Port Khazard	2674 3143 0		995=2300
+charter	Sunset Coast	1514 2970 0	Port Phasmatys	3703 3503 0		995=4500	Priest in Peril
+charter	Sunset Coast	1514 2970 0	Port Piscarilius	1809 3679 0		995=1100
+charter	Sunset Coast	1514 2970 0	Port Roberts	1871 3314 0		995=1400
+charter	Sunset Coast	1514 2970 0	Port Sarim	3038 3191 0		995=3100
+charter	Sunset Coast	1514 2970 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	Sunset Coast	1514 2970 0	Prifddinas	2157 3331 0		995=1800	Song of the Elves
+charter	Sunset Coast	1514 2970 0	Red Rock	2805 2502 0		995=2200
+charter	Sunset Coast	1514 2970 0	The Pandemonium	3060 3000 0		995=3000
+charter	Sunset Coast	1514 2970 0	The Summer Shore	3187 2365 0		995=2400
+charter	The Pandemonium	3060 3000 0	Aldarin	1455 2968 0		995=3000	Children of the Sun
+charter	The Pandemonium	3060 3000 0	Brimhaven	2761 3238 0		995=400
+charter	The Pandemonium	3060 3000 0	Catherby	2792 3415 0		995=1200
+charter	The Pandemonium	3060 3000 0	Civitas illa Fortis	1743 3136 0		995=2800	Children of the Sun
+charter	The Pandemonium	3060 3000 0	Corsair Cove	2590 2851 0		995=800
+charter	The Pandemonium	3060 3000 0	Deepfin Point	1944 2751 0		995=2800
+charter	The Pandemonium	3060 3000 0	Karamja Shipyard	3000 3032 0		995=200	The Grand Tree
+charter	The Pandemonium	3060 3000 0	Land's End	1495 3403 0		995=2600
+charter	The Pandemonium	3060 3000 0	Mos Le'Harmless	3670 2931 0		995=500	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	The Pandemonium	3060 3000 0	Port Khazard	2674 3143 0		995=700
+charter	The Pandemonium	3060 3000 0	Port Phasmatys	3703 3503 0		995=1000	Priest in Peril
+charter	The Pandemonium	3060 3000 0	Port Piscarilius	1809 3679 0		995=2400
+charter	The Pandemonium	3060 3000 0	Port Roberts	1871 3314 0		995=3600
+charter	The Pandemonium	3060 3000 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	The Pandemonium	3060 3000 0	Prifddinas	2157 3331 0		995=3800	Song of the Elves
+charter	The Pandemonium	3060 3000 0	Red Rock	2805 2502 0		995=1600
+charter	The Pandemonium	3060 3000 0	Sunset Coast	1514 2970 0		995=3000	Children of the Sun
+charter	The Pandemonium	3060 3000 0	The Summer Shore	3187 2365 0		995=1600
+charter	The Summer Shore	3187 2365 0	Aldarin	1455 2968 0		995=2400	Children of the Sun
+charter	The Summer Shore	3187 2365 0	Brimhaven	2761 3238 0		995=1900
+charter	The Summer Shore	3187 2365 0	Catherby	2792 3415 0		995=2000
+charter	The Summer Shore	3187 2365 0	Civitas illa Fortis	1743 3136 0		995=2200	Children of the Sun
+charter	The Summer Shore	3187 2365 0	Corsair Cove	2590 2851 0		995=1600
+charter	The Summer Shore	3187 2365 0	Deepfin Point	1944 2751 0		995=1800
+charter	The Summer Shore	3187 2365 0	Karamja Shipyard	3000 3032 0		995=1600	The Grand Tree
+charter	The Summer Shore	3187 2365 0	Land's End	1495 3403 0		995=2400
+charter	The Summer Shore	3187 2365 0	Mos Le'Harmless	3670 2931 0		995=900	Cabin Fever		Fares marked * on the wiki differ with the Cabin Fever quest
+charter	The Summer Shore	3187 2365 0	Musa Point	2955 3158 0		995=1700
+charter	The Summer Shore	3187 2365 0	Port Khazard	2674 3143 0		995=1800
+charter	The Summer Shore	3187 2365 0	Port Phasmatys	3703 3503 0		995=2000	Priest in Peril
+charter	The Summer Shore	3187 2365 0	Port Piscarilius	1809 3679 0		995=2600
+charter	The Summer Shore	3187 2365 0	Port Roberts	1871 3314 0		995=2500
+charter	The Summer Shore	3187 2365 0	Port Sarim	3038 3191 0		995=1700
+charter	The Summer Shore	3187 2365 0	Port Tyras	2142 3123 0		995=3200	Regicide
+charter	The Summer Shore	3187 2365 0	Prifddinas	2157 3331 0		995=2200	Song of the Elves
+charter	The Summer Shore	3187 2365 0	Red Rock	2805 2502 0		995=1000
+charter	The Summer Shore	3187 2365 0	Sunset Coast	1514 2970 0		995=2400	Children of the Sun
+charter	The Summer Shore	3187 2365 0	The Pandemonium	3060 3000 0		995=1600
+canoe	Lumbridge	3241 3237 0	Champions' Guild	3202 3341 0	12 Woodcutting
+canoe	Lumbridge	3241 3237 0	Barbarian Village	3110 3411 0	27 Woodcutting
+canoe	Lumbridge	3241 3237 0	Edgeville	3130 3510 0	42 Woodcutting
+canoe	Lumbridge	3241 3237 0	Ferox Enclave	3155 3630 0	57 Woodcutting
+canoe	Lumbridge	3241 3237 0	Wilderness Pond	3144 3800 0	57 Woodcutting				Only a waka canoe goes into the Wilderness
+canoe	Champions' Guild	3202 3341 0	Lumbridge	3241 3237 0	12 Woodcutting
+canoe	Champions' Guild	3202 3341 0	Barbarian Village	3110 3411 0	12 Woodcutting
+canoe	Champions' Guild	3202 3341 0	Edgeville	3130 3510 0	27 Woodcutting
+canoe	Champions' Guild	3202 3341 0	Ferox Enclave	3155 3630 0	42 Woodcutting
+canoe	Champions' Guild	3202 3341 0	Wilderness Pond	3144 3800 0	57 Woodcutting				Only a waka canoe goes into the Wilderness
+canoe	Barbarian Village	3110 3411 0	Lumbridge	3241 3237 0	27 Woodcutting
+canoe	Barbarian Village	3110 3411 0	Champions' Guild	3202 3341 0	12 Woodcutting
+canoe	Barbarian Village	3110 3411 0	Edgeville	3130 3510 0	12 Woodcutting
+canoe	Barbarian Village	3110 3411 0	Ferox Enclave	3155 3630 0	27 Woodcutting
+canoe	Barbarian Village	3110 3411 0	Wilderness Pond	3144 3800 0	57 Woodcutting				Only a waka canoe goes into the Wilderness
+canoe	Edgeville	3130 3510 0	Lumbridge	3241 3237 0	42 Woodcutting
+canoe	Edgeville	3130 3510 0	Champions' Guild	3202 3341 0	27 Woodcutting
+canoe	Edgeville	3130 3510 0	Barbarian Village	3110 3411 0	12 Woodcutting
+canoe	Edgeville	3130 3510 0	Ferox Enclave	3155 3630 0	12 Woodcutting
+canoe	Edgeville	3130 3510 0	Wilderness Pond	3144 3800 0	57 Woodcutting				Only a waka canoe goes into the Wilderness
+canoe	Ferox Enclave	3155 3630 0	Lumbridge	3241 3237 0	57 Woodcutting
+canoe	Ferox Enclave	3155 3630 0	Champions' Guild	3202 3341 0	42 Woodcutting
+canoe	Ferox Enclave	3155 3630 0	Barbarian Village	3110 3411 0	27 Woodcutting
+canoe	Ferox Enclave	3155 3630 0	Edgeville	3130 3510 0	12 Woodcutting
+canoe	Castle Wars	2439 3133 0	Tree Gnome Village	2483 3192 0	12 Woodcutting
+canoe	Castle Wars	2439 3133 0	The Clocktower	2577 3258 0	27 Woodcutting
+canoe	Castle Wars	2439 3133 0	Chaos Druid Tower	2575 3359 0	42 Woodcutting
+canoe	Castle Wars	2439 3133 0	Tree Gnome Stronghold	2527 3409 0	57 Woodcutting
+canoe	Tree Gnome Village	2483 3192 0	Castle Wars	2439 3133 0	12 Woodcutting
+canoe	Tree Gnome Village	2483 3192 0	The Clocktower	2577 3258 0	12 Woodcutting
+canoe	Tree Gnome Village	2483 3192 0	Chaos Druid Tower	2575 3359 0	27 Woodcutting
+canoe	Tree Gnome Village	2483 3192 0	Tree Gnome Stronghold	2527 3409 0	42 Woodcutting
+canoe	The Clocktower	2577 3258 0	Castle Wars	2439 3133 0	27 Woodcutting
+canoe	The Clocktower	2577 3258 0	Tree Gnome Village	2483 3192 0	12 Woodcutting
+canoe	The Clocktower	2577 3258 0	Chaos Druid Tower	2575 3359 0	12 Woodcutting
+canoe	The Clocktower	2577 3258 0	Tree Gnome Stronghold	2527 3409 0	27 Woodcutting
+canoe	Chaos Druid Tower	2575 3359 0	Castle Wars	2439 3133 0	42 Woodcutting
+canoe	Chaos Druid Tower	2575 3359 0	Tree Gnome Village	2483 3192 0	27 Woodcutting
+canoe	Chaos Druid Tower	2575 3359 0	The Clocktower	2577 3258 0	12 Woodcutting
+canoe	Chaos Druid Tower	2575 3359 0	Tree Gnome Stronghold	2527 3409 0	12 Woodcutting
+canoe	Tree Gnome Stronghold	2527 3409 0	Castle Wars	2439 3133 0	57 Woodcutting
+canoe	Tree Gnome Stronghold	2527 3409 0	Tree Gnome Village	2483 3192 0	42 Woodcutting
+canoe	Tree Gnome Stronghold	2527 3409 0	The Clocktower	2577 3258 0	27 Woodcutting
+canoe	Tree Gnome Stronghold	2527 3409 0	Chaos Druid Tower	2575 3359 0	12 Woodcutting
+carpet	Shantay Pass	3312 3108 0	Pollnivneach (north)	3352 3002 0		995=200			Free after the hard Desert Diary
+carpet	Pollnivneach (north)	3352 3002 0	Shantay Pass	3312 3108 0		995=200			Free after the hard Desert Diary
+carpet	Shantay Pass	3312 3108 0	Bedabin Camp	3184 3043 0		995=200			Free after the hard Desert Diary
+carpet	Bedabin Camp	3184 3043 0	Shantay Pass	3312 3108 0		995=200			Free after the hard Desert Diary
+carpet	Shantay Pass	3312 3108 0	Uzer	3469 3112 0		995=200	The Golem		Free after the hard Desert Diary
+carpet	Uzer	3469 3112 0	Shantay Pass	3312 3108 0		995=200	The Golem		Free after the hard Desert Diary
+carpet	Pollnivneach (south)	3346 2944 0	Nardah	3400 2917 0		995=200			Free after the hard Desert Diary
+carpet	Nardah	3400 2917 0	Pollnivneach (south)	3346 2944 0		995=200			Free after the hard Desert Diary
+carpet	Pollnivneach (south)	3346 2944 0	Sophanem	3289 2815 0		995=200	Icthlarin's Little Helper		Free after the hard Desert Diary
+carpet	Sophanem	3289 2815 0	Pollnivneach (south)	3346 2944 0		995=200	Icthlarin's Little Helper		Free after the hard Desert Diary
+carpet	Pollnivneach (south)	3346 2944 0	Menaphos	3245 2813 0		995=200	Icthlarin's Little Helper		Free after the hard Desert Diary
+carpet	Menaphos	3245 2813 0	Pollnivneach (south)	3346 2944 0		995=200	Icthlarin's Little Helper		Free after the hard Desert Diary
+minecart	Arceuus	1670 3832 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Arceuus	1670 3832 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Arceuus	1670 3832 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Arceuus	1670 3832 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Arceuus	1670 3832 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Arceuus	1670 3832 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Arceuus	1670 3832 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Arceuus	1670 3832 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Arceuus	1670 3832 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Arceuus	1670 3832 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Arceuus	1670 3832 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Farming Guild	1218 3738 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius South (Tithe Farm)	1808 3480 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Hosidius West	1655 3542 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Kingstown	1698 3660 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Kourend Woodland	1571 3466 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Lovakengj	1518 3732 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Mount Quidamortem	1254 3548 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Northern Tundras (Wintertodt)	1648 3930 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Port Piscarilius	1760 3710 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien East	1590 3621 0	Shayzien West (Shayziens' Wall)	1414 3577 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Arceuus	1670 3832 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Farming Guild	1218 3738 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Hosidius South (Tithe Farm)	1808 3480 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Hosidius West	1655 3542 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Kingstown	1698 3660 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Kourend Woodland	1571 3466 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Lovakengj	1518 3732 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Mount Quidamortem	1254 3548 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Northern Tundras (Wintertodt)	1648 3930 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Port Piscarilius	1760 3710 0		995=20			Free after The Forsaken Tower
+minecart	Shayzien West (Shayziens' Wall)	1414 3577 0	Shayzien East	1590 3621 0		995=20			Free after The Forsaken Tower
+minecart	Grand Exchange	3140 3504 0	Keldagrim	2921 10177 0			The Giant Dwarf
+minecart	Keldagrim	2921 10177 0	Grand Exchange	3140 3504 0			The Giant Dwarf
+minecart	Ice Mountain	2995 9836 0	Keldagrim	2921 10177 0			The Giant Dwarf
+minecart	Keldagrim	2921 10177 0	Ice Mountain	2995 9836 0			The Giant Dwarf
+minecart	White Wolf Mountain	2875 9868 0	Keldagrim	2921 10177 0			The Giant Dwarf;Fishing Contest
+minecart	Keldagrim	2921 10177 0	White Wolf Mountain	2875 9868 0			The Giant Dwarf;Fishing Contest
+minecart	Brimhaven	2777 3212 0	Shilo Village	2832 2952 0		995=10	Shilo Village
+minecart	Shilo Village	2832 2952 0	Brimhaven	2777 3212 0		995=10	Shilo Village
+minecart	Dorgesh-Kaan	2695 5277 1	Keldagrim	2942 10180 0			Another Slice of H.A.M.
+minecart	Keldagrim	2942 10180 0	Dorgesh-Kaan	2695 5277 1			Another Slice of H.A.M.
+lever	Lever (Ardougne)	2561 3311 0	Lever (Deserted Keep)	3153 3923 0					Leads into level 54 Wilderness
+lever	Lever (Deserted Keep)	3153 3923 0	Lever (Ardougne)	2561 3311 0					Leads into level 54 Wilderness
+lever	Lever (Edgeville)	3090 3475 0	Lever (Deserted Keep)	3153 3923 0					Leads into level 54 Wilderness
+lever	Lever (Deserted Keep)	3153 3923 0	Lever (Edgeville)	3090 3475 0					Leads into level 54 Wilderness
+lever	Lever (Mage Bank)	3090 3956 0	Lever (Mage Bank, inside)	2539 4712 0
+lever	Lever (Mage Bank, inside)	2539 4712 0	Lever (Mage Bank)	3090 3956 0
+lever	Lever (Mage Arena, outside)	3104 3956 0	Lever (Mage Arena, inside)	3105 3952 0
+lever	Lever (Mage Arena, inside)	3105 3952 0	Lever (Mage Arena, outside)	3104 3956 0

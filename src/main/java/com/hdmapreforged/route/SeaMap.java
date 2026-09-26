@@ -1,0 +1,231 @@
+package com.hdmapreforged.route;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * Where a boat can sail: the ground floor's water in blocks of {@link Tiles#CELL}×{@link Tiles#CELL} tiles, a block
+ * counting as open sea when most of it is water (so boats, 3 to 10 tiles long, keep off narrow rivers and the
+ * shore). Each block gets the hazard of the nearest named sea (the wiki's sea pages and its "Sailing hazards"
+ * table): a Sailing level that lets a boat with the right equipment through, or no way through at all. Named seas
+ * only give a point, not borders, so hazards near a border are approximate. Immutable after building.
+ */
+public final class SeaMap
+{
+    public static final String AREAS = "/com/hdmapreforged/route/sea_areas.tsv";
+    /** Water tiles a block needs, of {@code CELL * CELL}. */
+    static final int MIN_WATER = 10;
+    /** No sea here. */
+    static final byte NONE = -2;
+    /** Sea no boat can cross yet. */
+    static final byte CLOSED = -1;
+
+    /** A named sea from the wiki. */
+    public static final class Area
+    {
+        public final String name;
+        public final String ocean;
+        public final int x;
+        public final int y;
+        public final String hazard;
+        /** Sailing level needed, 0 for none, -1 when it cannot be crossed. */
+        public final int level;
+
+        Area(String name, String ocean, int x, int y, String hazard, int level)
+        {
+            this.name = name;
+            this.ocean = ocean;
+            this.x = x;
+            this.y = y;
+            this.hazard = hazard;
+            this.level = level;
+        }
+    }
+
+    /** Per 64-tile region: per block (16×16), the level needed or {@link #NONE}/{@link #CLOSED}; null when no sea. */
+    private final byte[][] blocks = new byte[1 << 15][];
+    private final List<Area> areas;
+
+    private SeaMap(List<Area> areas)
+    {
+        this.areas = areas;
+    }
+
+    public static SeaMap build(CollisionMap collision) throws IOException
+    {
+        InputStream in = SeaMap.class.getResourceAsStream(AREAS);
+        if (in == null)
+        {
+            throw new IOException("Missing " + AREAS);
+        }
+        try (InputStream stream = in)
+        {
+            return build(collision, readAreas(stream));
+        }
+    }
+
+    static List<Area> readAreas(InputStream in) throws IOException
+    {
+        List<Area> areas = new ArrayList<>();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        String line;
+        while ((line = reader.readLine()) != null)
+        {
+            if (line.startsWith("#") || line.trim().isEmpty())
+            {
+                continue;
+            }
+            String[] c = line.split("\t", -1);
+            if (c.length < 6)
+            {
+                continue;
+            }
+            try
+            {
+                areas.add(new Area(c[0], c[1], Integer.parseInt(c[2].trim()), Integer.parseInt(c[3].trim()), c[4],
+                    Integer.parseInt(c[5].trim())));
+            }
+            catch (NumberFormatException e)
+            {
+                // Skip the row.
+            }
+        }
+        return areas;
+    }
+
+    public static SeaMap build(CollisionMap collision, List<Area> areas)
+    {
+        SeaMap sea = new SeaMap(Collections.unmodifiableList(areas));
+        for (int region = 0; region < 1 << 15; region++)
+        {
+            int baseX = (region >> 8) << 6;
+            int baseY = (region & 255) << 6;
+            if (!collision.hasWater(region))
+            {
+                continue;
+            }
+            byte[] cells = null;
+            for (int cx = 0; cx < 64 / Tiles.CELL; cx++)
+            {
+                for (int cy = 0; cy < 64 / Tiles.CELL; cy++)
+                {
+                    int count = 0;
+                    for (int dx = 0; dx < Tiles.CELL; dx++)
+                    {
+                        for (int dy = 0; dy < Tiles.CELL; dy++)
+                        {
+                            if (collision.water(baseX + cx * Tiles.CELL + dx, baseY + cy * Tiles.CELL + dy))
+                            {
+                                count++;
+                            }
+                        }
+                    }
+                    if (count < MIN_WATER)
+                    {
+                        continue;
+                    }
+                    if (cells == null)
+                    {
+                        cells = new byte[256];
+                        java.util.Arrays.fill(cells, NONE);
+                    }
+                    Area area = sea.nearest(baseX + cx * Tiles.CELL + 2, baseY + cy * Tiles.CELL + 2);
+                    cells[cx << 4 | cy] = area == null ? 0 : (byte) Math.max(CLOSED, Math.min(120, area.level));
+                }
+            }
+            sea.blocks[region] = cells;
+        }
+        return sea;
+    }
+
+    /** The named sea nearest to a point, or null. */
+    public Area nearest(int x, int y)
+    {
+        Area best = null;
+        long bestDistance = Long.MAX_VALUE;
+        for (Area area : areas)
+        {
+            long dx = area.x - x;
+            long dy = area.y - y;
+            long d = dx * dx + dy * dy;
+            if (d < bestDistance)
+            {
+                bestDistance = d;
+                best = area;
+            }
+        }
+        return best;
+    }
+
+    public List<Area> areas()
+    {
+        return areas;
+    }
+
+    /** The level a block needs: {@code NONE} when it is no sea, {@code CLOSED} when no boat may cross. */
+    int level(int cellX, int cellY)
+    {
+        if (cellX < 0 || cellY < 0 || cellX >= 1 << 12 || cellY >= 1 << 12)
+        {
+            return NONE;
+        }
+        int region = (cellX >> 4) << 8 | (cellY >> 4);
+        if (region >= 1 << 15)
+        {
+            return NONE;
+        }
+        byte[] cells = blocks[region];
+        return cells == null ? NONE : cells[(cellX & 15) << 4 | (cellY & 15)];
+    }
+
+    /** Whether a boat may be in a block with a given Sailing level. */
+    public boolean sailable(int cellX, int cellY, int sailingLevel)
+    {
+        int level = level(cellX, cellY);
+        return level >= 0 && sailingLevel >= level;
+    }
+
+    public boolean isSea(int cellX, int cellY)
+    {
+        return level(cellX, cellY) != NONE;
+    }
+
+    /**
+     * The open sea block nearest to a tile within {@code radius} tiles that a boat with this level may be in, as a
+     * packed sea node, or -1.
+     */
+    public int nearestBlock(int x, int y, int radius, int sailingLevel)
+    {
+        int best = -1;
+        long bestDistance = Long.MAX_VALUE;
+        int cx0 = (x - radius) / Tiles.CELL;
+        int cx1 = (x + radius) / Tiles.CELL;
+        int cy0 = (y - radius) / Tiles.CELL;
+        int cy1 = (y + radius) / Tiles.CELL;
+        for (int cx = cx0; cx <= cx1; cx++)
+        {
+            for (int cy = cy0; cy <= cy1; cy++)
+            {
+                if (!sailable(cx, cy, sailingLevel))
+                {
+                    continue;
+                }
+                long dx = cx * Tiles.CELL + Tiles.CELL / 2 - x;
+                long dy = cy * Tiles.CELL + Tiles.CELL / 2 - y;
+                long d = dx * dx + dy * dy;
+                if (d < bestDistance && d <= (long) radius * radius)
+                {
+                    bestDistance = d;
+                    best = Tiles.sea(cx, cy);
+                }
+            }
+        }
+        return best;
+    }
+}

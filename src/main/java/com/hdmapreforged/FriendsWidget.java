@@ -1,0 +1,641 @@
+package com.hdmapreforged;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.RoundRectangle2D;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.IntSupplier;
+import java.util.function.Supplier;
+import net.runelite.api.coords.WorldPoint;
+
+/**
+ * A small friends button at the bottom left of the map that opens into a list of the party: members sharing their
+ * location, each with their world; click one to look at them and what they carry. Swing thread only.
+ */
+final class FriendsWidget implements MapView.Widget
+{
+    /** A member of the party, as the party knows them (also those not sharing where they are). */
+    static final class Member
+    {
+        final long id;
+        final String name;
+
+        Member(long id, String name)
+        {
+            this.id = id;
+            this.name = name;
+        }
+    }
+
+    /** One row of the list. */
+    static final class Row
+    {
+        final String name;
+        final int world;
+        final WorldPoint point;
+        final Color color;
+        /** The party member's id, or -1 for a friend from the game's list. */
+        final long id;
+
+        Row(String name, int world, WorldPoint point, Color color, long id)
+        {
+            this.name = name;
+            this.world = world;
+            this.point = point;
+            this.color = color;
+            this.id = id;
+        }
+    }
+
+    /** Item and skill pictures for the details of a party member. */
+    interface Images
+    {
+        java.awt.image.BufferedImage item(int id, int quantity);
+
+        java.awt.image.BufferedImage skill(int ordinal);
+
+        /** One of the game's sprites (the orbs'), or null while it loads. */
+        default java.awt.image.BufferedImage sprite(int id)
+        {
+            return null;
+        }
+    }
+
+    private static final Color FILL = new Color(22, 24, 28, 225);
+    private static final Color HOVER = new Color(52, 56, 64, 235);
+    private static final Color EDGE = new Color(255, 255, 255, 45);
+    private static final Color OTHER_WORLD = new Color(255, 190, 120);
+    private static final Color FRIEND = new Color(150, 150, 160);
+    private static final Font TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 13);
+    private static final Font ROW = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
+    private static final int WIDTH = 256;
+    /** The button's distance from the map's left edge: the map's own margin. */
+    static final int LEFT = 12;
+    private static final int ROW_HEIGHT = 22;
+    /** Experience amounts with grouping ("+1,234"); one instance, used on the Swing thread only. */
+    private static final java.text.NumberFormat AMOUNT = java.text.NumberFormat.getIntegerInstance();
+
+    private final Supplier<List<PartyMapMembers.Marker>> party;
+    private final Supplier<List<Member>> group;
+    private final java.util.function.BooleanSupplier inGroup;
+    private final IntSupplier myWorld;
+    private final Supplier<Boolean> enabled;
+    private final Consumer<WorldPoint> focus;
+    private final Runnable repaint;
+    /** Repaints while experience drops rise; {@link #dropsMoving} says whether the frame had any. */
+    private final PartyMapOverlay.Ticker ticker;
+    private boolean dropsMoving;
+    private boolean open;
+    /** The party member whose details are shown, or -1. */
+    private long selected = -1;
+    private int page;
+    /** The details folded up to the name and the orbs. */
+    private boolean folded;
+    private java.util.function.LongFunction<PartyMapMembers.Gear> gear = id -> null;
+    private Images images;
+
+    private java.util.function.LongFunction<List<PartyMapMembers.Drop>> drops = id -> java.util.Collections.emptyList();
+
+    /** A member's experience drops showing now. */
+    void setDrops(java.util.function.LongFunction<List<PartyMapMembers.Drop>> drops)
+    {
+        this.drops = drops;
+    }
+
+    /** The member whose details show, or -1. */
+    long selected()
+    {
+        return open ? selected : -1;
+    }
+
+    private java.util.function.IntConsumer hop = world -> { };
+    private java.util.function.BooleanSupplier canJoin = () -> false;
+    private Runnable join = () -> { };
+
+    /** Hopping to a member's world, and joining the party from a button when not in it. */
+    void setActions(java.util.function.IntConsumer hop, java.util.function.BooleanSupplier canJoin, Runnable join)
+    {
+        this.hop = hop;
+        this.canJoin = canJoin;
+        this.join = join;
+    }
+
+    /** Opens the list at a member's details (clicked on the map), on the page shown last. */
+    void show(long id)
+    {
+        open = true;
+        selected = id;
+    }
+
+    /** What party members share, and the pictures to show it with. */
+    void setDetails(java.util.function.LongFunction<PartyMapMembers.Gear> gear, Images images)
+    {
+        this.gear = gear;
+        this.images = images;
+    }
+
+    /** {@code group}: every member of the party; {@code inGroup}: whether the player is in one. */
+    FriendsWidget(Supplier<List<PartyMapMembers.Marker>> party, Supplier<List<Member>> group,
+        java.util.function.BooleanSupplier inGroup, IntSupplier myWorld, Supplier<Boolean> enabled,
+        Consumer<WorldPoint> focus, Runnable repaint)
+    {
+        this.party = party;
+        this.group = group;
+        this.inGroup = inGroup;
+        this.myWorld = myWorld;
+        this.enabled = enabled;
+        this.focus = focus;
+        this.repaint = repaint;
+        this.ticker = new PartyMapOverlay.Ticker(repaint);
+    }
+
+    /** The members of the party sharing where they are, then the others (grey, no place), each once. */
+    static List<Row> rows(List<PartyMapMembers.Marker> party, List<Member> group)
+    {
+        List<Row> rows = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        Set<Long> ids = new HashSet<>();
+        for (PartyMapMembers.Marker marker : party)
+        {
+            String name = marker.name != null ? marker.name : "Party member";
+            if (seen.add(PartyMapOverlay.nameKey(name)))
+            {
+                ids.add(marker.id);
+                rows.add(new Row(name, marker.world, marker.point, PartyMapOverlay.color(marker.id), marker.id));
+            }
+        }
+        for (Member member : group)
+        {
+            // Not logged in (or a connection the party has not dropped yet): left out, there is nothing to show.
+            if (member.name == null)
+            {
+                continue;
+            }
+            String name = member.name;
+            if (!ids.contains(member.id) && seen.add(PartyMapOverlay.nameKey(name)))
+            {
+                rows.add(new Row(name, 0, null, null, member.id));
+            }
+        }
+        return rows;
+    }
+
+    @Override
+    public void paint(Graphics2D g, int width, int height, int bottom, MapView.Clicks clicks)
+    {
+        dropsMoving = false;
+        try
+        {
+            paintWidget(g, width, bottom, clicks);
+        }
+        finally
+        {
+            // Drawn again while experience drops rise.
+            ticker.painted(dropsMoving);
+        }
+    }
+
+    /** Stops the drops' animation (the plugin shutting down). Swing thread. */
+    void dispose()
+    {
+        ticker.stop();
+    }
+
+    /** The party's members; none when the party's list cannot be read now. */
+    private List<Member> groupNow()
+    {
+        try
+        {
+            return group.get();
+        }
+        catch (java.util.ConcurrentModificationException e)
+        {
+            // The party changed its members while they were read (on another thread); the next frame has them.
+            return java.util.Collections.emptyList();
+        }
+    }
+
+    private void paintWidget(Graphics2D g, int width, int bottom, MapView.Clicks clicks)
+    {
+        if (!enabled.get())
+        {
+            return;
+        }
+        List<Row> rows = rows(party.get(), groupNow());
+        if (rows.isEmpty() && !inGroup.getAsBoolean())
+        {
+            if (canJoin.getAsBoolean())
+            {
+                paintJoin(g, bottom, clicks);
+            }
+            return;
+        }
+        int w = Math.min(WIDTH, width - 24);
+        // Bottom left, as large as the floor buttons, above the custom routes button that sits on them.
+        double left = LEFT;
+        g.setFont(MapView.CONTROL_FONT);
+        FontMetrics title = g.getFontMetrics();
+        int tabWidth = MapView.floorGroupWidth(title);
+        double tabTop = bottom - 2 * MapView.CONTROL - 6;
+        RoundRectangle2D tab = new RoundRectangle2D.Double(left, tabTop, tabWidth, MapView.CONTROL, 10, 10);
+        g.setColor(new Color(0, 0, 0, 70));
+        g.fill(new RoundRectangle2D.Double(left + 1, tabTop + 2, tabWidth, MapView.CONTROL, 10, 10));
+        g.setColor(clicks.hovered(tab) ? MapView.CONTROL_HOVER : MapView.CONTROL_FILL);
+        g.fill(tab);
+        g.setColor(MapView.CONTROL_EDGE);
+        g.setStroke(new java.awt.BasicStroke(1f));
+        g.draw(tab);
+        g.setColor(Color.WHITE);
+        String label = "Friends · " + rows.size() + (open ? "  ▾" : "  ▴");
+        g.drawString(label, (float) (left + (tabWidth - title.stringWidth(label)) / 2.0),
+            (float) (tabTop + (MapView.CONTROL + title.getAscent()) / 2.0 - 2));
+        clicks.add(tab, () -> {
+            open = !open;
+            repaint.run();
+        }, open ? "Close the list" : "Your party: click someone to see where they are");
+        if (!open)
+        {
+            return;
+        }
+        Row chosen = null;
+        for (Row row : rows)
+        {
+            chosen = row.id == selected && selected >= 0 ? row : chosen;
+        }
+        if (chosen != null && images != null)
+        {
+            paintDetails(g, chosen, left, w, tabTop - 4, clicks);
+            return;
+        }
+        selected = -1;
+        if (rows.isEmpty())
+        {
+            // In a group, alone so far.
+            String text = "No one else in your party yet";
+            g.setFont(ROW);
+            // As wide as the text needs: the list's width is too narrow for it.
+            double boxWidth = Math.max(w, g.getFontMetrics().stringWidth(text) + 20);
+            RoundRectangle2D alone = new RoundRectangle2D.Double(left, tabTop - 4 - ROW_HEIGHT - 6, boxWidth,
+                ROW_HEIGHT + 6, 10, 10);
+            box(g, alone, false);
+            g.setFont(ROW);
+            g.setColor(FRIEND);
+            g.drawString(text, (float) (left + 10),
+                (float) (alone.getCenterY() + g.getFontMetrics().getAscent() / 2.0 - 2));
+            return;
+        }
+        // The list opens upwards, as many rows as fit.
+        int fit = Math.max(1, (int) ((tabTop - 60) / ROW_HEIGHT));
+        // When not all fit, the last line says how many more there are.
+        List<Row> shown = rows.size() > fit ? rows.subList(0, Math.max(0, fit - 1)) : rows;
+        int more = rows.size() - shown.size();
+        int lines = shown.size() + (more > 0 ? 1 : 0);
+        double listTop = tabTop - 4 - lines * ROW_HEIGHT - 6;
+        RoundRectangle2D list = new RoundRectangle2D.Double(left, listTop, w, lines * ROW_HEIGHT + 6, 10, 10);
+        box(g, list, false);
+        g.setFont(ROW);
+        FontMetrics metrics = g.getFontMetrics();
+        int mine = myWorld.getAsInt();
+        for (int i = 0; i < shown.size(); i++)
+        {
+            Row row = shown.get(i);
+            double top = listTop + 3 + i * ROW_HEIGHT;
+            RoundRectangle2D area = new RoundRectangle2D.Double(left + 3, top, w - 6, ROW_HEIGHT, 8, 8);
+            if (row.point != null || row.id >= 0)
+            {
+                if (clicks.hovered(area))
+                {
+                    g.setColor(HOVER);
+                    g.fill(area);
+                }
+                WorldPoint point = row.point;
+                clicks.add(area, () -> {
+                    if (point != null)
+                    {
+                        focus.accept(point);
+                    }
+                    if (row.id >= 0)
+                    {
+                        // A party member: what they carry, wear and can do.
+                        selected = row.id;
+                        repaint.run();
+                    }
+                }, row.id >= 0 ? "Look at " + row.name + " and what they carry" : "Look at " + row.name);
+            }
+            double cy = top + ROW_HEIGHT / 2.0;
+            g.setColor(row.color != null ? row.color : FRIEND);
+            g.fill(new Ellipse2D.Double(left + 10, cy - 4, 8, 8));
+            String world = row.world > 0 ? "W" + row.world : "";
+            int worldWidth = metrics.stringWidth(world);
+            g.setColor(row.world > 0 && mine > 0 && row.world != mine ? OTHER_WORLD : new Color(190, 190, 195));
+            g.drawString(world, (float) (left + w - 10 - worldWidth), (float) (cy + metrics.getAscent() / 2.0 - 2));
+            g.setColor(row.point != null ? Color.WHITE : FRIEND);
+            String name = fit(row.name, metrics, w - 38 - worldWidth);
+            g.drawString(name, (float) (left + 24), (float) (cy + metrics.getAscent() / 2.0 - 2));
+        }
+        if (more > 0)
+        {
+            double cy = listTop + 3 + shown.size() * ROW_HEIGHT + ROW_HEIGHT / 2.0;
+            g.setColor(FRIEND);
+            g.drawString("+" + more + " more", (float) (left + 24), (float) (cy + metrics.getAscent() / 2.0 - 2));
+        }
+    }
+
+    private static final String[] PAGES = {"Inventory", "Worn", "Skills"};
+    private static final int SLOT_W = 48;
+    private static final int SLOT_H = 40;
+    /** The skills page: three columns this wide, rows this high. */
+    private static final int SKILL_W = 74;
+    private static final int SKILL_H = 30;
+    /** Every page's height: the inventory's, the largest. */
+    private static final int BODY_H = 7 * SLOT_H;
+    private static final int STATUS_H = Orbs.HEIGHT + 6;
+    /** Equipment slots laid out as the game's worn items tab: column and row of each slot index. */
+    static final int[][] WORN = {{1, 0}, {0, 1}, {1, 1}, {0, 2}, {1, 2}, {2, 2}, null, {1, 3}, null, {0, 4},
+        {1, 4}, null, {2, 4}, {2, 1}};
+
+    /** A party member's inventory, worn items or skills, in a calm panel above the tab. */
+    private void paintDetails(Graphics2D g, Row row, double left, int w, double bottomY, MapView.Clicks clicks)
+    {
+        PartyMapMembers.Gear shared = gear.apply(row.id);
+        int panelW = Math.max(w, 4 * Orbs.WIDTH + 3 * 4 + 16);
+        double x0 = left;
+        // One size for every page, as large as the inventory, so switching pages does not move anything.
+        int bodyH = BODY_H;
+        int full = 30 + 26 + STATUS_H + bodyH + 10;
+        // Folded (or the map too low for all of it): the name and the orbs only.
+        boolean cramped = bottomY - full < 44;
+        boolean compact = folded || cramped;
+        int height = compact ? 30 + STATUS_H + 4 : full;
+        double top = bottomY - height;
+        RoundRectangle2D panel = new RoundRectangle2D.Double(x0, top, panelW, height, 12, 12);
+        box(g, panel, false);
+        // Title: who, which world, and a way back to the list.
+        g.setFont(TITLE);
+        FontMetrics title = g.getFontMetrics();
+        g.setColor(row.color != null ? row.color : FRIEND);
+        g.fill(new Ellipse2D.Double(x0 + 12, top + 11, 8, 8));
+        g.setColor(Color.WHITE);
+        g.drawString(fit(row.name, title, panelW - 130), (float) (x0 + 26), (float) (top + 19));
+        if (row.world > 0)
+        {
+            String world = "W" + row.world;
+            g.setFont(ROW);
+            FontMetrics rowMetrics = g.getFontMetrics();
+            int mine = myWorld.getAsInt();
+            boolean elsewhere = mine > 0 && row.world != mine;
+            double right = x0 + panelW - (cramped ? 34 : 56);
+            if (elsewhere)
+            {
+                // On another world: a button to hop there (the game's world switcher does the hop).
+                String text = "Hop";
+                double bw = rowMetrics.stringWidth(text) + 14;
+                RoundRectangle2D button = new RoundRectangle2D.Double(right - bw, top + 6, bw, 19, 8, 8);
+                g.setColor(clicks.hovered(button) ? new Color(90, 140, 80) : new Color(60, 100, 55));
+                g.fill(button);
+                g.setColor(Color.WHITE);
+                g.drawString(text, (float) (button.getX() + 7), (float) (top + 20));
+                int target = row.world;
+                clicks.add(button, () -> hop.accept(target), "Hop to world " + row.world);
+                right -= bw + 6;
+            }
+            g.setColor(elsewhere ? OTHER_WORLD : new Color(190, 190, 195));
+            g.drawString(world, (float) (right - rowMetrics.stringWidth(world)), (float) (top + 20));
+        }
+        RoundRectangle2D close = new RoundRectangle2D.Double(x0 + panelW - 26, top + 5, 20, 20, 8, 8);
+        if (clicks.hovered(close))
+        {
+            g.setColor(HOVER);
+            g.fill(close);
+        }
+        g.setColor(new Color(200, 200, 205));
+        g.setFont(TITLE);
+        g.drawString("×", (float) (close.getCenterX() - title.stringWidth("×") / 2.0), (float) (top + 20));
+        clicks.add(close, () -> {
+            selected = -1;
+            repaint.run();
+        }, "Back to the list");
+        if (!cramped)
+        {
+            RoundRectangle2D foldButton = new RoundRectangle2D.Double(x0 + panelW - 48, top + 5, 20, 20, 8, 8);
+            if (clicks.hovered(foldButton))
+            {
+                g.setColor(HOVER);
+                g.fill(foldButton);
+            }
+            g.setColor(new Color(200, 200, 205));
+            String mark = folded ? "+" : "\u2013";
+            g.drawString(mark, (float) (foldButton.getCenterX() - title.stringWidth(mark) / 2.0), (float) (top + 20));
+            clicks.add(foldButton, () -> {
+                folded = !folded;
+                repaint.run();
+            }, folded ? "Unfold" : "Fold up: the name and the orbs only");
+        }
+        if (compact)
+        {
+            if (shared != null)
+            {
+                paintStatus(g, shared, x0 + 8, top + 28, panelW - 16);
+            }
+            paintDrops(g, row.id, x0, top + height - 6, panelW);
+            return;
+        }
+        // Pages.
+        double tabW = (panelW - 16) / 3.0;
+        g.setFont(ROW);
+        FontMetrics metrics = g.getFontMetrics();
+        for (int k = 0; k < PAGES.length; k++)
+        {
+            RoundRectangle2D tabShape = new RoundRectangle2D.Double(x0 + 8 + k * tabW, top + 30, tabW - 4, 20, 8, 8);
+            g.setColor(k == page ? new Color(70, 76, 88, 235) : clicks.hovered(tabShape) ? HOVER : new Color(40, 43, 50, 220));
+            g.fill(tabShape);
+            g.setColor(k == page ? Color.WHITE : new Color(180, 180, 186));
+            g.drawString(PAGES[k], (float) (tabShape.getCenterX() - metrics.stringWidth(PAGES[k]) / 2.0),
+                (float) (top + 44));
+            int chosen = k;
+            clicks.add(tabShape, () -> {
+                page = chosen;
+                repaint.run();
+            }, PAGES[k]);
+        }
+        double y0 = top + 56;
+        if (shared != null)
+        {
+            paintStatus(g, shared, x0 + 8, y0, panelW - 16);
+        }
+        y0 += STATUS_H;
+        if (shared == null)
+        {
+            g.setColor(FRIEND);
+            g.drawString("Nothing shared yet.", (float) (x0 + 12), (float) (y0 + 16));
+            g.drawString("They share it with this plugin's setting.", (float) (x0 + 12), (float) (y0 + 32));
+            return;
+        }
+        double gridLeft = x0 + (panelW - (page == 2 ? 3 * SKILL_W : (page == 0 ? 4 : 3) * SLOT_W)) / 2.0;
+        if (page == 0)
+        {
+            for (int k = 0; k < HdMapPartyGear.INVENTORY; k++)
+            {
+                slot(g, gridLeft + (k % 4) * SLOT_W, y0 + (k / 4) * SLOT_H, shared.inventory[k], shared.quantities[k]);
+            }
+        }
+        else if (page == 1)
+        {
+            for (int k = 0; k < WORN.length; k++)
+            {
+                if (WORN[k] == null)
+                {
+                    continue;
+                }
+                double sx = gridLeft + WORN[k][0] * SLOT_W;
+                double sy = y0 + WORN[k][1] * SLOT_H;
+                g.setColor(new Color(255, 255, 255, 18));
+                g.fill(new RoundRectangle2D.Double(sx + 2, sy + 1, SLOT_W - 4, SLOT_H - 2, 8, 8));
+                slot(g, sx, sy, shared.equipment[k], 1);
+            }
+        }
+        else
+        {
+            g.setFont(ROW);
+            for (int k = 0; k < HdMapPartyGear.SKILLS; k++)
+            {
+                double sx = gridLeft + (k % 3) * SKILL_W;
+                double sy = y0 + (k / 3) * SKILL_H;
+                java.awt.image.BufferedImage icon = images.skill(k);
+                if (icon != null)
+                {
+                    g.drawImage(icon, (int) sx + 2, (int) sy + 3, 16, 16, null);
+                }
+                int now = shared.boosted[k];
+                int real = shared.levels[k];
+                // Boosted or drained levels in the game's colours; the real level beside a changed one.
+                g.setColor(now > real ? new Color(120, 220, 120) : now < real ? new Color(230, 120, 110) : Color.WHITE);
+                String text = now == real ? String.valueOf(real) : now + "/" + real;
+                g.drawString(text, (float) (sx + 22), (float) (sy + 16));
+            }
+        }
+        paintDrops(g, row.id, x0, top + 110, panelW);
+    }
+
+    /** Not in a party but in one before: one button to rejoin it. */
+    private void paintJoin(Graphics2D g, int bottom, MapView.Clicks clicks)
+    {
+        g.setFont(MapView.CONTROL_FONT);
+        FontMetrics metrics = g.getFontMetrics();
+        int tabWidth = MapView.floorGroupWidth(metrics);
+        double tabTop = bottom - 2 * MapView.CONTROL - 6;
+        RoundRectangle2D tab = new RoundRectangle2D.Double(LEFT, tabTop, tabWidth, MapView.CONTROL, 10, 10);
+        g.setColor(new Color(0, 0, 0, 70));
+        g.fill(new RoundRectangle2D.Double(LEFT + 1, tabTop + 2, tabWidth, MapView.CONTROL, 10, 10));
+        g.setColor(clicks.hovered(tab) ? MapView.CONTROL_HOVER : MapView.CONTROL_FILL);
+        g.fill(tab);
+        g.setColor(MapView.CONTROL_EDGE);
+        g.setStroke(new java.awt.BasicStroke(1f));
+        g.draw(tab);
+        g.setColor(Color.WHITE);
+        String label = "Rejoin party";
+        g.drawString(label, (float) (LEFT + (tabWidth - metrics.stringWidth(label)) / 2.0),
+            (float) (tabTop + (MapView.CONTROL + metrics.getAscent()) / 2.0 - 2));
+        clicks.add(tab, join, "Join your last party again");
+    }
+
+    /** HP, prayer, run and special attack, as the game's orbs across the panel. */
+    private void paintStatus(Graphics2D g, PartyMapMembers.Gear shared, double x, double y, double width)
+    {
+        int hp = net.runelite.api.Skill.HITPOINTS.ordinal();
+        int prayer = net.runelite.api.Skill.PRAYER.ordinal();
+        double gap = (width - 4 * Orbs.WIDTH) / 3.0;
+        java.util.function.IntFunction<java.awt.image.BufferedImage> sprites = images == null ? id -> null : images::sprite;
+        int top = (int) y + 2;
+        Orbs.paint(g, (int) x, top, Orbs.Kind.HITPOINTS, shared.boosted[hp], shared.levels[hp], sprites);
+        Orbs.paint(g, (int) (x + Orbs.WIDTH + gap), top, Orbs.Kind.PRAYER, shared.boosted[prayer], shared.levels[prayer],
+            sprites);
+        Orbs.paint(g, (int) (x + 2 * (Orbs.WIDTH + gap)), top, Orbs.Kind.RUN, shared.run, 100, sprites);
+        Orbs.paint(g, (int) (x + 3 * (Orbs.WIDTH + gap)), top, Orbs.Kind.SPECIAL, shared.special, 100, sprites);
+    }
+
+    /** Experience drops: each rises from the bottom of the title and fades, newest lowest, as in the game. */
+    private void paintDrops(Graphics2D g, long id, double x0, double start, int panelW)
+    {
+        List<PartyMapMembers.Drop> showing = drops.apply(id);
+        if (showing.isEmpty())
+        {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        g.setFont(TITLE);
+        FontMetrics metrics = g.getFontMetrics();
+        for (int k = 0; k < showing.size(); k++)
+        {
+            PartyMapMembers.Drop drop = showing.get(k);
+            double t = Math.min(1, (now - drop.at) / (double) PartyMapMembers.DROP_MS);
+            // Eased: quick at first, slowing down, fading over the last part.
+            double rise = 1 - Math.pow(1 - t, 3);
+            float alpha = (float) (t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3);
+            String text = "+" + AMOUNT.format(drop.amount);
+            double tx = x0 + panelW - 14 - metrics.stringWidth(text);
+            double ty = start + (showing.size() - 1 - k) * 18 - rise * 60;
+            java.awt.Composite old = g.getComposite();
+            g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, Math.max(0, alpha)));
+            java.awt.image.BufferedImage icon = images == null ? null : images.skill(drop.skill);
+            if (icon != null)
+            {
+                g.drawImage(icon, (int) tx - 19, (int) ty - 13, 16, 16, null);
+            }
+            g.setColor(new Color(0, 0, 0, 180));
+            g.drawString(text, (float) tx + 1, (float) ty + 1);
+            g.setColor(Color.WHITE);
+            g.drawString(text, (float) tx, (float) ty);
+            g.setComposite(old);
+        }
+        dropsMoving = true;
+    }
+
+    /** One item slot: the item's picture with its quantity, as in the game. */
+    private void slot(Graphics2D g, double x, double y, int id, int quantity)
+    {
+        if (id < 0)
+        {
+            return;
+        }
+        java.awt.image.BufferedImage image = images.item(id, Math.max(1, quantity));
+        if (image != null)
+        {
+            g.drawImage(image, (int) (x + (SLOT_W - image.getWidth()) / 2.0), (int) (y + (SLOT_H - image.getHeight()) / 2.0),
+                null);
+        }
+    }
+
+    private static void box(Graphics2D g, RoundRectangle2D shape, boolean hover)
+    {
+        g.setColor(new Color(0, 0, 0, 70));
+        g.fill(new RoundRectangle2D.Double(shape.getX() + 1, shape.getY() + 2, shape.getWidth(), shape.getHeight(), 10, 10));
+        g.setColor(hover ? HOVER : FILL);
+        g.fill(shape);
+        g.setColor(EDGE);
+        g.setStroke(new BasicStroke(1f));
+        g.draw(shape);
+    }
+
+    private static String fit(String text, FontMetrics metrics, int width)
+    {
+        if (metrics.stringWidth(text) <= width)
+        {
+            return text;
+        }
+        String cut = text;
+        while (cut.length() > 1 && metrics.stringWidth(cut + "…") > width)
+        {
+            cut = cut.substring(0, cut.length() - 1);
+        }
+        return cut + "…";
+    }
+}

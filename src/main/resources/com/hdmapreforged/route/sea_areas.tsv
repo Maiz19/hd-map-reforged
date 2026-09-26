@@ -1,0 +1,112 @@
+# Named seas from the OSRS Wiki (CC BY-NC-SA 3.0), Category:Seas and Sailing hazards; built by local-development/tools/build-sea-areas.py
+# Name	Ocean	X	Y	Hazard	Sailing level (0 none, -1 cannot be crossed)
+Aehecatl	Sunset Ocean	1103	3045	Jagged reefs	0
+Aestuarium Tempestus	Sunset Ocean	1157	3218		0
+Ancient Reef	Untamed Ocean	3642	4019	Scalding seas	-1
+Anglerfish's Light	Unquiet Ocean	2759	2359		0
+Arrow Passage	Ardent Ocean	2849	2754		0
+Aureum Coast	Shrouded Ocean	1765	2901		0
+Backwater	Shrouded Ocean	2349	3002	Fetid waters	40
+Barracuda Belt	Shrouded Ocean	2169	2558		0
+Bay of Elidinis	Unquiet Ocean	3282	2667		0
+Bay of Sarim	Ardent Ocean	3070	3177		0
+Bleakwater Bay	Untamed Ocean	3429	3641	Cursed seas	-1
+Breakbone Strait	Shrouded Ocean	2388	2866	Fetid waters	40
+Brimhaven Passage	Ardent Ocean	2752	3263		0
+Calidum Reach	Sunset Ocean	1190	2642		0
+Catherby Bay	Ardent Ocean	2823	3410		0
+Crabclaw Bay	Western Ocean	1687	3427		0
+Crystal Sea	Western Ocean	1982	3247		0
+Dagger's Edge	Forgotten Ocean	1141	3942	Eternal cold	-1
+Dragon's Maw	Eastern Ocean	3901	3559	Cursed seas	-1
+Dusk's Maw	Sunset Ocean	1239	2948		0
+Eastern Ridge	Eastern Ocean	3892	3148	Cursed seas	-1
+Echoing Rift	Untamed Ocean	3723	3694	Scalding seas	-1
+Everwinter Sea	Northern Ocean	1792	4095	Icy seas	78
+Feldip Gulf	Ardent Ocean	2699	2955		0
+Fiend's Passage	Untamed Ocean	3308	4002	Scalding seas	-1
+Forbidden Depths	Eastern Ocean	3808	2499	Profane waters	-1
+Fortis Bay	Shrouded Ocean	1821	3020		0
+Fremennik Strait	Northern Ocean	2349	3747		0
+Fremensund	Northern Ocean	2593	3724		0
+Frostgrave Depths	Forgotten Ocean	1556	4113	Eternal cold	-1
+Grandroot Bay	Northern Ocean	2455	3591		0
+Gravewater Bay	Eastern Ocean	3755	3446	Cursed seas	-1
+Great Sound	Western Ocean	1527	3380		0
+Grieving Bight	Forgotten Ocean	1106	3553		0
+Gu'tanoth Bay	Ardent Ocean	2623	3036		0
+Gulf of Kourend	Western Ocean	1910	3757		0
+Hallowed Sea	Eastern Ocean	3866	3330	Cursed seas	-1
+Haunted Coast	Eastern Ocean	3642	3578	Cursed seas	-1
+Horizon's End	Sunset Ocean	1278	2371	Sunbaked seas	-1
+Hosidian Sea	Western Ocean	1917	3597		0
+Idestia Strait	Northern Ocean	2662	3855	Icy seas	78
+Kannski Tides	Northern Ocean	2395	3947	Icy seas	78
+Kebos Shore	Forgotten Ocean	1163	3734		0
+Kharazi Strait	Ardent Ocean	2822	2851	Stormy seas	24
+Kharidian Sea	Ardent Ocean	3103	2968		0
+Last Gasp	Forgotten Ocean	1060	3379		0
+Litus Lucis	Western Ocean	1767	3241		0
+Lovkengj's Shroud	Forgotten Ocean	1447	3994	Eternal cold	-1
+Lum Lagoon	Ardent Ocean	3253	3144		0
+Lumbridge Basin	Ardent Ocean	3184	3106		0
+Lunar Sea	Northern Ocean	2124	4070	Icy seas	78
+Menaphite Sea	Ardent Ocean	3057	2721		0
+Misty Sea	Sunset Ocean	1427	2747		0
+Moonshadow	Western Ocean	2105	3814		0
+Mos Le'Water	Eastern Ocean	3902	2981	Cursed seas	-1
+Mudskipper Sound	Ardent Ocean	2981	3090		0
+Murkshore Sea	Eastern Ocean	3694	3122	Cursed seas	-1
+Musa Passage	Ardent Ocean	2855	3133		0
+Mythic Sea	Ardent Ocean	2530	2742	Fetid waters	40
+Ochre Sea	Sunset Ocean	1510	2528		0
+Oo'glog Channel	Ardent Ocean	2644	2828		0
+Pearl Bank	Unquiet Ocean	3262	2237		0
+Pilgrims' Passage	Western Ocean	1928	3397		0
+Piscatoris Sea	Western Ocean	2231	3679	Crystal-flecked waters	66
+Porth Gwenith	Western Ocean	2163	3483	Crystal-flecked waters	66
+Porth Neigwl	Western Ocean	2124	3205	Crystal-flecked waters	66
+Rainbow Reef	Shrouded Ocean	2278	2340	Tangled kelp	72
+Red Reef	Unquiet Ocean	2874	2497		0
+Rimmington Strait	Ardent Ocean	2887	3249		0
+Sanctuary's End	Eastern Ocean	3518	3145	Sunbaked seas	-1
+Sapphire Sea	Shrouded Ocean	1784	2578		0
+Scabaras' Shallows	Eastern Ocean	3485	2818	Sunbaked seas	-1
+Sea of Shells	Unquiet Ocean	3054	2344		0
+Sea of Souls	Shrouded Ocean	2250	2707	Fetid waters	40
+Shiverwake Expanse	Northern Ocean	2750	4103	Icy seas	78
+Shrieking Waters	Eastern Ocean	3894	2691	Profane waters	-1
+Slepe Sound	Eastern Ocean	3733	3248	Cursed seas	-1
+Soul Bay	Shrouded Ocean	2091	2806		0
+Southern Expanse	Shrouded Ocean	1984	2397	Tangled kelp	72
+Stoneheart Sea	Northern Ocean	2553	4014	Icy seas	78
+Strait of Discord	Eastern Ocean	3754	2908	Cursed seas	-1
+Strait of Khazard	Ardent Ocean	2704	3131		0
+Sulphur Cove	Forgotten Ocean	1354	3876	Eternal cold	-1
+Sunset Bay	Sunset Ocean	1538	2933		0
+Tainted Tides	Eastern Ocean	3644	2674	Profane waters	-1
+The Accursed Sea	Eastern Ocean	3669	2307		0
+The Cinderwaters	Untamed Ocean	3443	3923	Scalding seas	-1
+The Eastern Doldrums	Untamed Ocean	3852	3985	Scalding seas	-1
+The Endless Sea	Forgotten Ocean	1276	4070	Eternal cold	-1
+The Everdeep	Shrouded Ocean	1884	2729		0
+The Iron Sea	Eastern Ocean	3462	2614	Sunbaked seas	-1
+The Lonely Sea	Unquiet Ocean	2518	2316		0
+The Precipice	Untamed Ocean	3925	3796	Scalding seas	-1
+The Searing Sea	Untamed Ocean	3161	4067	Scalding seas	-1
+The Simian Sea	Ardent Ocean	2757	2636		0
+The Skullhorde	Shrouded Ocean	2445	2505		0
+The Storm Tempor	Ardent Ocean	3082	2878	Stormy seas	24
+Tirannwn Bight	Western Ocean	2119	3362	Crystal-flecked waters	66
+Tortugan Sea	Unquiet Ocean	3337	2461		0
+Turtle Belt	Unquiet Ocean	3025	2595		0
+Uzer Channel	Eastern Ocean	3586	3010	Sunbaked seas	-1
+V's Belt	Northern Ocean	2477	3815	Icy seas	78
+Vagabonds Rest	Western Ocean	2080	3626		0
+Weiss Melt	Northern Ocean	2952	4031	Icy seas	78
+Weissmere	Northern Ocean	2777	3941	Icy seas	78
+Western Gate	Shrouded Ocean	1994	2977		0
+Winter's Edge	Northern Ocean	1969	3959	Icy seas	78
+Wyrm's Waters	Shrouded Ocean	1632	2844		0
+Wyvern's Wake	Untamed Ocean	3546	3776	Scalding seas	-1
+Zul-Egil	Shrouded Ocean	2158	3032	Fetid waters	40

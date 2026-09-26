@@ -1,0 +1,183 @@
+package com.hdmapreforged;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.event.MouseEvent;
+import java.awt.geom.RoundRectangle2D;
+import javax.swing.SwingUtilities;
+import net.runelite.client.input.MouseAdapter;
+import net.runelite.client.ui.FontManager;
+import net.runelite.client.ui.overlay.Overlay;
+import net.runelite.client.ui.overlay.OverlayLayer;
+import net.runelite.client.ui.overlay.OverlayPosition;
+
+/**
+ * A small button over the game after logging in, out of a party that was joined before: "Rejoin party" and a cross to
+ * dismiss it. One left click rejoins; nothing happens without it. It can be moved like any overlay (Alt-drag). The
+ * click on it is taken by the button, every other click goes to the game as usual.
+ */
+final class RejoinButton extends Overlay
+{
+    private static final Color FILL = new Color(20, 21, 25, 215);
+    private static final Color EDGE = new Color(255, 255, 255, 45);
+    private static final Color HOVER = new Color(255, 255, 255, 30);
+    private static final Color JOIN_HOVER = new Color(90, 160, 90, 110);
+    private static final Color ACCENT = new Color(120, 210, 130);
+    private static final Color TEXT = new Color(225, 225, 225);
+    private static final Font FONT = FontManager.getRunescapeSmallFont();
+
+    private final Runnable rejoin;
+    private final Runnable dismiss;
+    private volatile boolean showing;
+    /** Where the two parts were drawn, relative to the overlay; empty before the first frame. */
+    private volatile Rectangle joinArea = new Rectangle();
+    private volatile Rectangle closeArea = new Rectangle();
+    private volatile Point mouse;
+
+    /** The mouse on the game canvas: clicks on the button, and where it is for hovering. */
+    final MouseAdapter clicks = new MouseAdapter()
+    {
+        @Override
+        public MouseEvent mousePressed(MouseEvent e)
+        {
+            if (!showing || !SwingUtilities.isLeftMouseButton(e))
+            {
+                return e;
+            }
+            Point at = local(e.getPoint());
+            if (at == null)
+            {
+                return e;
+            }
+            if (joinArea.contains(at))
+            {
+                e.consume();
+                rejoin.run();
+            }
+            else if (closeArea.contains(at))
+            {
+                e.consume();
+                dismiss.run();
+            }
+            return e;
+        }
+
+        @Override
+        public MouseEvent mouseReleased(MouseEvent e)
+        {
+            return onButton(e);
+        }
+
+        @Override
+        public MouseEvent mouseClicked(MouseEvent e)
+        {
+            return onButton(e);
+        }
+
+        /** The rest of a left click on the button is ours too, so the game never sees half of it. */
+        private MouseEvent onButton(MouseEvent e)
+        {
+            Point at = showing && SwingUtilities.isLeftMouseButton(e) ? local(e.getPoint()) : null;
+            if (at != null && (joinArea.contains(at) || closeArea.contains(at)))
+            {
+                e.consume();
+            }
+            return e;
+        }
+
+        @Override
+        public MouseEvent mouseMoved(MouseEvent e)
+        {
+            mouse = e.getPoint();
+            return e;
+        }
+    };
+
+    RejoinButton(Runnable rejoin, Runnable dismiss)
+    {
+        this.rejoin = rejoin;
+        this.dismiss = dismiss;
+        // Bottom left, just above the chat box; can be moved like any overlay.
+        setPosition(OverlayPosition.BOTTOM_LEFT);
+        setLayer(OverlayLayer.ABOVE_WIDGETS);
+    }
+
+    void setShowing(boolean show)
+    {
+        showing = show;
+    }
+
+    /** A point on the canvas as a point on the button, or null when the button has not been drawn yet. */
+    private Point local(Point canvas)
+    {
+        Rectangle bounds = getBounds();
+        if (bounds == null || bounds.isEmpty())
+        {
+            return null;
+        }
+        return new Point(canvas.x - bounds.x, canvas.y - bounds.y);
+    }
+
+    @Override
+    public Dimension render(Graphics2D g)
+    {
+        if (!showing)
+        {
+            return null;
+        }
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setFont(FONT);
+        FontMetrics metrics = g.getFontMetrics();
+        String text = "Rejoin party";
+        int height = 18;
+        // A small people mark, the text, a thin divider and the cross.
+        int markWidth = 14;
+        int joinWidth = 6 + markWidth + metrics.stringWidth(text) + 6;
+        int closeWidth = 15;
+        int width = joinWidth + 1 + closeWidth;
+        Point at = mouse == null ? null : local(mouse);
+        Rectangle join = new Rectangle(0, 0, joinWidth, height);
+        Rectangle close = new Rectangle(joinWidth + 1, 0, closeWidth, height);
+        boolean onJoin = at != null && join.contains(at);
+        boolean onClose = at != null && close.contains(at);
+        RoundRectangle2D shape = new RoundRectangle2D.Double(0, 0, width, height, height, height);
+        g.setColor(FILL);
+        g.fill(shape);
+        if (onJoin || onClose)
+        {
+            java.awt.Shape clip = g.getClip();
+            g.clip(shape);
+            g.setColor(onJoin ? JOIN_HOVER : HOVER);
+            g.fill(onJoin ? join : close);
+            g.setClip(clip);
+        }
+        g.setColor(EDGE);
+        g.setStroke(new BasicStroke(1f));
+        g.draw(new RoundRectangle2D.Double(0.5, 0.5, width - 1, height - 1, height - 1, height - 1));
+        g.drawLine(joinWidth, 4, joinWidth, height - 4);
+        // Two heads and shoulders.
+        int mx = 7;
+        int my = height / 2;
+        g.setColor(ACCENT);
+        g.fillOval(mx + 5, my - 5, 5, 5);
+        g.fillArc(mx + 3, my + 1, 9, 8, 0, 180);
+        g.setColor(ACCENT.darker());
+        g.fillOval(mx, my - 4, 4, 4);
+        g.fillArc(mx - 2, my + 1, 8, 7, 0, 180);
+        g.setColor(onJoin ? Color.WHITE : TEXT);
+        g.drawString(text, 6 + markWidth, (height + metrics.getAscent()) / 2 - 1);
+        g.setColor(onClose ? Color.WHITE : new Color(160, 160, 165));
+        g.drawString("\u00D7", close.x + (closeWidth - metrics.stringWidth("\u00D7")) / 2 - 1,
+            (height + metrics.getAscent()) / 2 - 1);
+        joinArea = join;
+        closeArea = close;
+        return new Dimension(width + 1, height + 1);
+    }
+}

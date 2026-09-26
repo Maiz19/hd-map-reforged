@@ -1,0 +1,386 @@
+# Passages the cache and the game's map links do not give, added by hand: from x y plane (a walkable tile next to it) <tab> to x y plane <tab> name. Every row has a comment above it naming its source: the wiki page (and map) and the cache objects at both ends.
+# Waterbirth Island Dungeon: past the door-supports, through the doors into the room with the ladder down, and down to
+# the Dagannoth levels (the ladder's other end has no pair in the cache); down the Kings' ladder into their lair
+2542 10143 0	2544 10143 0	Go-through Door
+2544 10143 0	2542 10143 0	Go-through Door
+2545 10143 0	1799 4406 3	Climb-down Iron ladder
+1799 4406 3	2545 10143 0	Climb-up Ladder
+1910 4367 0	2900 4449 0	Climb-down Kings' ladder
+2900 4449 0	1910 4367 0	Climb-up Kings' ladder
+# Yanille Agility Dungeon: the staircase down to the lower part (the cache pairs it with Yanille itself), and the pile
+# of rubble up into Salarin the Twisted's room
+2620 9496 0	2622 9565 0	Climb-down Staircase
+2622 9565 0	2620 9496 0	Climb-up Staircase
+2616 9571 0	2614 9504 0	Climb-up Pile of rubble
+2614 9504 0	2616 9571 0	Climb-down Pile of rubble
+# White Wolf Mountain: from the ice cave up the ladder to the ledge with two ladders, and down the other into the Ice
+# Queen's lair (the cache puts both ladders' feet in the ice cave)
+2857 9918 0	2858 3517 0	Climb-up Ladder
+2858 3517 0	2857 9918 0	Climb-down Ladder
+2860 3519 0	2860 9919 0	Climb-down Ladder
+2860 9919 0	2860 3519 0	Climb-up Ladder
+# Stronghold of Security: the ladders and vine down each level (the cache has no pairs for them)
+1902 5223 0	2042 5245 0	Climb-down Ladder
+2042 5245 0	1902 5223 0	Climb-up Ladder
+2026 5219 0	2123 5252 0	Climb-down Ladder
+2123 5252 0	2026 5219 0	Climb-up Dripping vine
+2148 5283 0	2309 5239 0	Climb-down Dripping vine
+2309 5239 0	2148 5283 0	Climb-up Bone Chain
+# Monk's Friend: the ladder in the middle of the stone circle south-west of the Clock Tower (not in the cache until the
+# quest shows it) down to the thieves' hideout, and its ladder back up
+2561 3221 0	2561 9621 0	Climb-down Ladder
+2561 9621 0	2561 3221 0	Climb-up Ladder
+# Gu'Tanoth: the cave in the market into the Ogre Enclave, coming out at the end of its southern passage past the
+# enclave guards (the landing tile is the passage's end, the cache does not say it)
+2502 3038 0	2588 9410 0	Enter Cave entrance
+2588 9410 0	2502 3038 0	Leave Cave
+# Neypotzli: the entrances between its caverns, as the wiki's Neypotzli layout map joins them, from the walkable tile
+# beside each
+1462 9632 0	1509 9675 0	Pass-through Entrance
+1509 9675 0	1462 9632 0	Pass-through Entrance
+1440 9654 0	1403 9704 0	Pass-through Entrance
+1403 9704 0	1440 9654 0	Pass-through Entrance
+1390 9676 0	1522 9719 0	Pass-through Entrance
+1522 9719 0	1390 9676 0	Pass-through Entrance
+1347 9590 0	1374 9667 0	Pass-through Entrance
+1374 9667 0	1347 9590 0	Pass-through Entrance
+1513 9596 0	1526 9671 0	Pass-through Entrance
+1526 9671 0	1513 9596 0	Pass-through Entrance
+# Crypt of Tonali: the Lift Platform (The Final Dawn: its Strange Platform inspected) between the pit east of Tal Teklan
+# and the middle of the cavern, as the wiki's Lift Platform page places both ends
+1312 3103 0	1310 9428 2	Use Lift Platform
+1310 9428 2	1312 3103 0	Use Lift Platform
+# Underground Pass (an instance since Song of the Elves; these are its template tiles, as the wiki's maps use), the
+# way through as the wiki's Underground Pass (dungeon) guide and its area maps describe it. The cave in West Ardougne
+# comes out at the pass's eastern end, by the cave exit (the wiki's first area map, 1)
+2435 3315 0	2494 9715 0	Enter Cave entrance
+2494 9715 0	2435 3315 0	Leave Cave exit
+# The bridge over the river, lowered by a fire arrow at its guide rope (first area map, 3); its lever brings it back
+2447 9716 0	2442 9716 0	Cross Bridge
+2442 9716 0	2447 9716 0	Cross Bridge
+# The rope swing over the trench on the northern path (first area map, 5): one way
+2460 9692 0	2464 9692 0	Swing-on Rope swing
+# The well down to the second area (first area map, 9). Where it lands is not in the cache: by the second area's map
+# link icon at the rockpile (its map, 1), an estimate
+2415 9674 0	2422 9661 0	Climb-down Well
+# The 50 Thieving shortcut around the stone bridge maze: its two gates (second area map, 5)
+2380 9619 0	2381 9619 0	Picklock Gate
+2381 9619 0	2380 9619 0	Picklock Gate
+2403 9620 0	2404 9620 0	Picklock Gate
+2404 9620 0	2403 9620 0	Picklock Gate
+# The pipe into the third area (second area map, 6), by the unicorn's cage
+2419 9605 0	2412 9605 0	Squeeze-through Pipe
+2412 9605 0	2419 9605 0	Squeeze-through Pipe
+# Third area: the tunnel north of the unicorn's room comes out by the zombies, on the way to the paladins (map links
+# at both ends)
+2400 9610 0	2370 9666 0	Pass-through Tunnel
+2370 9666 0	2400 9610 0	Pass-through Tunnel
+# The doors past the well open onto the entrance of Iban's lair (its map: "Entrance (to upper lair)")
+2370 9718 0	2173 4725 1	Open Door
+2173 4725 1	2370 9718 0	Open Door
+# Keldagrim: from the tunnel cave east of Rellekka, the Cave entrance between the two statues (2781 10161) goes to the
+# Dwarven Boatman's room (the Entrance at 2838 10123 back), per the wiki's The Giant Dwarf guide; the boatman (2842 10129)
+# ferries across the River Kelda to his dock in the city (2888 10227), per the wiki's Dwarven Boatman page.
+2780 10161 0	2838 10124 0	Go-through Cave entrance
+2838 10124 0	2780 10161 0	Go-through Entrance
+2841 10129 0	2888 10227 0	Travel Dwarven Boatman
+2888 10227 0	2841 10129 0	Travel Dwarven Boatman
+# Obor's lair (Edgeville Dungeon): the gate in the hill giants' part opens with a giant key into the lair's upper room,
+# whose gate has "Quick-exit" back (cache objects 29486/29487 and 29488/29489); the rocks there lead down to Obor
+3096 9832 0	3091 9814 0	Open Gate (Obor's lair, needs a giant key)
+3091 9814 0	3096 9832 0	Quick-exit Gate
+# Corporeal Beast's lair: the Wilderness cave (3201 3679) leads into the lair (2964 4254, floor 2); the cache pairs it
+# only with the Ironman lair 128 tiles north. The lair's "Cave exit" (2963 4254) leads back out beside the cave
+3200 3679 0	2964 4254 2	Enter Cave (Corporeal Beast's lair)
+2964 4254 2	3206 3681 0	Exit Cave exit
+# Neypotzli (Moons of Peril): Cam Torum's north Entrance (cache object 51375 at 1439 9600 1) into the antechamber, the
+# other end of the game's own map link 1440 9613 1 -> 1440 9602 1; and the antechamber's entrance (object 51376 at
+# 1421 9613 1) to the Ancient prison's (object 51375 at 1388 9576 0), as the wiki's Neypotzli page draws it (layout map,
+# map 45, "Antechamber - Ancient prison": drawn 1423 9552, which the world map moves to 1423 9616 floor 1)
+1439 9599 1	1439 9615 1	Pass-through Entrance
+1422 9615 1	1389 9578 0	Pass-through Entrance
+1389 9578 0	1422 9615 1	Pass-through Entrance
+# Scabaras Dungeon: the Entry in the Ruins of Ullek (cache object 6643 at 3408 2847) and the door below it (object 43961
+# at 3405 9248), as the wiki's Scabaras Dungeon page places them (entrance 3408 2848, the dungeon at 3403 9250, map -1)
+3410 2846 0	3405 9249 0	Enter Entry
+3405 9249 0	3410 2846 0	Open Door
+# Smoke Dungeon: the Smokey well (cache object 6279 at 3310 2962, Climb-down; the wiki's Smoke Dungeon and Smokey well
+# pages: "climb down the smokey well", map at 3310 2962) and the Rope back up at its bottom (object 6439 at 3205 9379, the
+# dungeon's only Climb-up); needs Desert Treasure I started
+3310 2963 0	3205 9378 0	Climb-down Smokey well
+3205 9378 0	3310 2963 0	Climb-up Rope
+# Zalcano's prison: the Barrier (cache object 36201 at 3033 6062, "Pass") between the teleport platform's landing and the
+# prison (wiki page Zalcano: "accessed ... via a teleport platform"; the cave at 3271 6049 leads to the Trahaearn Mine instead,
+# as the game's map link says)
+3033 6063 0	3033 6061 0	Pass Barrier
+3033 6061 0	3033 6063 0	Pass Barrier
+
+# ---- Restored with sources (after the old-logic cleanup): each group cites the cache objects at both ends and a wiki page
+# The Blood Moon Rises: the portal in Castle Drakan (where Drakan's medallion lands) and the one in Vampyrium's castle courtyard
+# Source: Portal 61214 at 3161 7710 0 <-> Portal 61223 at 2526 7837 0; wiki: Vampyrium#Transportation (the portal inside Castle Drakan, the one in the castle courtyard)
+3162 7710 0	2527 7837 0	Enter Portal to Vampyrium
+2527 7837 0	3162 7710 0	Enter Portal to Castle Drakan
+# Stalker Den: the rope (Climb) between the multicombat caverns in the south-west and their north-western part
+# Source: Rope 57276 at 1261 9758 0 <-> Rope 57275 at 1260 9758 0 (one crossing of three tiles, both ends in the cache); wiki: Stalker Den
+1262 9758 0	1259 9758 0	Climb Rope
+1259 9758 0	1262 9758 0	Climb Rope
+# Ancient Guthixian Temple (Tormented Demons): from where the Guthixian temple teleport lands, up two walls and through
+# the opening, which comes out at the hole in the north of the temple; the walls are jumped down on the way back
+# Source: Wall 53623 (Climb-up) at 4061/4065 4554 0, Wall 53676 (Jump-down) at 4061/4065 4555 1, Wall 53624 at 4060/4066 4552 1, Opening 54082 (Climb-through) at 4062 4548 2 <-> Hole 53637 (Crawl-through) at 4061 4467 0; wiki: Ancient Guthixian Temple (climb up two stone walls to reach the entrance)
+4061 4555 0	4061 4554 1	Climb-up Wall
+4065 4555 0	4065 4554 1	Climb-up Wall
+4061 4554 1	4061 4555 0	Jump-down Wall
+4065 4554 1	4065 4555 0	Jump-down Wall
+4060 4553 1	4060 4552 2	Climb-up Wall
+4066 4553 1	4066 4552 2	Climb-up Wall
+4060 4552 2	4060 4553 1	Jump-down Wall
+4066 4552 2	4066 4553 1	Jump-down Wall
+4062 4550 2	4061 4466 0	Climb-through Opening
+4061 4466 0	4062 4550 2	Crawl-through Hole
+# God Wars Dungeon, to Nex: the frozen door on the top floor of the main cave leads down to the Ancient Prison's
+# corridor, whose door opens into the lobby before Nex's door
+# Source: Frozen Door 42841 at 2883 5279 2 <-> Frozen Door 42931 at 2855 5228 0, Door 42933 at 2862 5219 0; wiki: Frozen door (gives access to the Ancient Prison), Nex
+2883 5280 2	2855 5226 0	Open Frozen Door
+2855 5226 0	2883 5280 2	Open Frozen Door
+2861 5219 0	2863 5219 0	Open Door
+2863 5219 0	2861 5219 0	Open Door
+# Kalphite Lair: down the tunnel entrance into the Kalphite Queen's chamber (a rope tied to it once), up the rope back
+# Source: Tunnel entrance 23609 at 3509 9497 2 <-> Rope 3832 at 3508 9494 0; wiki: Kalphite Lair (a rope to enter the area containing the Kalphite Queen)
+3508 9497 2	3507 9494 0	Climb-down Tunnel entrance (needs a rope)
+3507 9494 0	3508 9496 2	Climb-up Rope
+# Shantay Pass: through the pass into the desert and back (a Shantay pass from Shantay, going south)
+# Source: Shantay pass 4031 at 3302 3116 0 (both sides of the one object); wiki: Shantay Pass
+3303 3117 0	3303 3115 0	Go-through Shantay pass (needs a Shantay pass)
+3303 3115 0	3303 3117 0	Go-through Shantay pass
+# King Black Dragon: the lever in the Lava Maze dungeon teleports into the lair, the lever in the lair back
+# Source: Lever 1816 at 3067 10253 0 <-> Lever 1817 at 2271 4680 0; wiki: King Black Dragon Lair (a lever which will teleport the player to the lair)
+3067 10254 0	2271 4681 0	Pull Lever
+2271 4681 0	3067 10254 0	Pull Lever
+# Kraken Cove: the crevice into the Kraken's boss room (Enter), and out again (Use)
+# Source: Crevice 537 (Enter) at 2280 10017 0 <-> Crevice 538 (Use) at 2280 10021 0; wiki: Crevice (Kraken Cove)
+2280 10016 0	2280 10022 0	Enter Crevice
+2280 10022 0	2280 10016 0	Use Crevice
+# Morytania Spider Cave: the two web tunnels from the Daeyalt mine's side into the araxyte nest
+# Source: Web tunnel 54161 at 3655 9814 0 <-> Web tunnel 54274 at 3648 9814 0; wiki: Araxxor (the lair can be entered via a web tunnel)
+3658 9815 0	3647 9815 0	Squeeze-through Web tunnel
+3647 9815 0	3658 9815 0	Squeeze-through Web tunnel
+# God Wars Dungeon: across the river to Zamorak's fortress (in at one end of the ice bridge, out at the other), and
+# the grapple across to Armadyl's eyrie
+# Source: Ice bridge 26518 at 2885 5333 2 <-> 2885 5344 2; Pillar 26380 (Grapple) at 2871 5270 2; wiki: God Wars Dungeon#Zamorak's Fortress (70 Hitpoints to cross the river), #Required items (crossbow and mith grapple for Armadyl's Eyrie)
+2885 5332 2	2885 5345 2	Climb-off Ice bridge
+2885 5345 2	2885 5332 2	Climb-off Ice bridge
+2871 5279 2	2871 5269 2	Grapple Pillar (needs a crossbow and mith grapple)
+2871 5269 2	2871 5279 2	Grapple Pillar (needs a crossbow and mith grapple)
+# Cerberus' lair: the iron winch by the northern arena lowers one into it
+# Source: Iron Winch 23104 at 1307 1269 0 -> the arena by Portcullis 21772 at 1303 1289 0; wiki: Cerberus (the Iron Winches into the lair)
+1309 1269 0	1304 1290 0	Turn Iron Winch
+# Varrock Sewers: the gate to Bryophyta's lair (a mossy key, used up), and the rock pile out again
+# Source: Gate 32534 at 3174 9901 0 <-> Rock Pile 32535 at 3212 9937 0; wiki: Bryophyta (a mossy key for the gate leading to the lair)
+3174 9900 0	3214 9937 0	Open Gate (needs a mossy key)
+3214 9937 0	3174 9900 0	Clamber Rock Pile
+# Lithkren: over the staircase in the research facility, through the broken doors into the vault, and past its
+# barriers into the adamant (west) and rune (east) dragons' rooms
+# Source: Staircase 32113 at 3549 10469 0, Broken Doors 32117 at 3547 10482 0 <-> Broken Doors 32132 at 1565 5058 0, Barrier 32153 at 1548 5088, 1561 5074, 1574 5074, 1586 5088 0; wiki: Lithkren Vault (the dragons behind the red barriers)
+3549 10468 0	3549 10473 0	Climb Staircase
+3549 10473 0	3549 10468 0	Climb Staircase
+3550 10481 0	1568 5061 0	Enter Broken Doors
+1568 5061 0	3550 10481 0	Enter Broken Doors
+1548 5089 0	1548 5087 0	Pass Barrier
+1548 5087 0	1548 5089 0	Pass Barrier
+1562 5074 0	1560 5074 0	Pass Barrier
+1560 5074 0	1562 5074 0	Pass Barrier
+1573 5074 0	1575 5074 0	Pass Barrier
+1575 5074 0	1573 5074 0	Pass Barrier
+1586 5089 0	1586 5087 0	Pass Barrier
+1586 5087 0	1586 5089 0	Pass Barrier
+# Ghorrock Dungeon: the heavy door in the north leads straight to Duke Sucellus' asylum once Desert Treasure II is done
+# Source: Heavy Door 49513 at 2926 10354 0 -> the asylum by Stairs 49101 at 3038 6415 0; wiki: Duke Sucellus/Strategies (the heavy door north-east in the Ghorrock Dungeon reaches the asylum entrance directly)
+2927 10353 0	3039 6417 0	Enter Heavy Door
+# Neypotzli: into each Moon's antechamber, and by its statue into the boss chamber
+# Source: Entrance 51377 at 1419 9631, 1439 9650, 1458 9631 0; Statue 51372/51373/51374 at 1410 9631, 1439 9659, 1467 9631 0 <-> Stairs 53003/53004 at 1407 9632, 1440 9665, 1473 9632 0; wiki: Neypotzli (its layout map), Moons of Peril
+1423 9632 0	1418 9632 0	Pass-through Entrance
+1418 9632 0	1423 9632 0	Pass-through Entrance
+1413 9632 0	1406 9632 0	Use Statue
+1406 9632 0	1413 9632 0	Escape Stairs
+1440 9648 0	1440 9653 0	Pass-through Entrance
+1440 9653 0	1440 9648 0	Pass-through Entrance
+1440 9658 0	1440 9666 0	Use Statue
+1440 9666 0	1440 9658 0	Escape Stairs
+1456 9632 0	1461 9632 0	Pass-through Entrance
+1461 9632 0	1456 9632 0	Pass-through Entrance
+1466 9632 0	1474 9632 0	Use Statue
+1474 9632 0	1466 9632 0	Escape Stairs
+# Puro-Puro: the crop circle in Zanaris, through the magical wheat around the centre, and the portal back
+# Source: Centre of crop circle 24991 at 2427 4446 0 <-> Portal 25014 at 2591 4319 0, Magical wheat 25029/25016 around the centre; wiki: Puro-Puro (teleport: crop circle in Zanaris; the labyrinth of wheat)
+2427 4445 0	2591 4318 0	Enter Centre of crop circle
+2591 4318 0	2427 4445 0	Exit Portal
+2591 4312 0	2591 4310 0	Push-through Magical wheat
+2591 4310 0	2591 4312 0	Push-through Magical wheat
+2591 4327 0	2591 4329 0	Push-through Magical wheat
+2591 4329 0	2591 4327 0	Push-through Magical wheat
+2584 4320 0	2582 4320 0	Push-through Magical wheat
+2582 4320 0	2584 4320 0	Push-through Magical wheat
+2599 4320 0	2601 4320 0	Push-through Magical wheat
+2601 4320 0	2599 4320 0	Push-through Magical wheat
+# Varrock Sewers: through the broken bars into Scurrius' lair, and across the sewage water out
+# Source: Broken bars 14203 at 3282 9867 0 <-> Sewage water 14204 at 3288 9867 0; wiki: Scurrius (enter by the broken bars, leave by the sewage water)
+3281 9867 0	3290 9867 0	Climb-through Broken bars
+3290 9867 0	3281 9867 0	Cross Sewage water
+# Rellekka: the Fremennik boat to the Island of Stone, whose cave leads into Jormungand's Prison
+# Source: Fremennik Boat 37432 at 2622 3690 0 <-> Fremennik Boat 37408 at 2468 3992 0; wiki: Island of Stone (Haskell's boat from Rellekka's westernmost dock)
+2621 3692 0	2472 3994 0	Travel Fremennik Boat (The Fremennik Exiles)
+2472 3994 0	2621 3692 0	Travel Fremennik Boat
+# Glarial's Tomb: Glarial's pebble used on her tombstone
+# Source: Glarial's Tombstone 1992 at 2558 3444 0 -> Ladder 17387 at 2556 9844 0; wiki: Glarial's Tomb (enter with Glarial's pebble at the tombstone)
+2557 3444 0	2555 9844 0	Use Glarial's Tombstone (needs Glarial's pebble)
+# Temple of Ikov: the wall that pushes open into the Guardians of Armadyl's room
+# Source: Wall 1597 (Push) at 2643 9892 0 (both sides of the one object); wiki: Temple of Ikov
+2643 9892 0	2643 9893 0	Push Wall
+2643 9893 0	2643 9892 0	Push Wall
+# Kebos Swamp: the cave into the Headless Beast's lair
+# Source: Cave 20852 (Enter) at 1211 3646 0 <-> Cave 20853 (Exit) at 1189 10029 0; wiki: Headless Beast's Lair (the cave west of the Kebos Swamp)
+1212 3648 0	1190 10028 0	Enter Cave
+1190 10028 0	1212 3648 0	Exit Cave
+# Black Knights' Fortress: the wall opposite the entrance pushes open, the ladder behind it leads down to the basement,
+# whose carved tile becomes a trapdoor into the Black Knight Catacombs (While Guthix Sleeps, a Charge Orb spell)
+# Source: Wall 2341 (Push) at 3016 3517 0, Ladder 25843 at 3016 3519 0 <-> Ladder 25844 at 1867 4244 0, Tile 54076 at 1870 4237 0 <-> Ladder 53358 at 4105 4674 1, Bridge 53512/53511 at 4112 4697/4702 1; wiki: Black Knights' Fortress/Quick guide (the wall pushed open), Black Knight Catacombs (Charge Orb on the carved tile opens the trapdoor)
+3016 3516 0	3016 3517 0	Push Wall
+3016 3517 0	3016 3516 0	Push Wall
+3016 3518 0	1867 4243 0	Climb-down Ladder
+1867 4243 0	3016 3518 0	Climb-up Ladder
+1869 4237 0	4105 4675 1	Climb-down Trapdoor (opened with a Charge Orb spell)
+4105 4675 1	1869 4237 0	Climb-up Ladder
+4112 4697 1	4112 4702 1	Jump-to Bridge
+4112 4702 1	4112 4697 1	Jump-to Bridge
+# Keldagrim: the stairs down to the Blast Furnace and up again
+# Source: Stairs 9084 at 2930 10196 0 <-> Stairs 9138 at 1939 4956 0; wiki: Blast Furnace (in Keldagrim, left by its stairs)
+2931 10196 0	1939 4958 0	Climb-down Stairs
+1939 4958 0	2931 10196 0	Climb-up Stairs
+# Varrock Museum: the stairs down to the natural history exhibit in the basement and up again
+# Source: Stairs 24428 (Walk-down) at 3255 3451 0 <-> Stairs 24427 (Walk-up) at 1758 4959 0; wiki: Varrock Museum#Natural history exhibit (the basement)
+3254 3451 0	1759 4958 0	Walk-down Stairs
+1759 4958 0	3254 3451 0	Walk-up Stairs
+# Falador Party Room: both staircases lead down into the Old School Museum, its old passageways back up
+# Source: Staircase 24248 at 3037 3383 0 / 24249 at 3053 3383 0 <-> Old passageway 31892 at 3013/3066 9951 0; wiki: Old School Museum (beneath the Falador Party Room, by its staircases)
+3037 3382 0	3014 9951 0	Climb-down Staircase
+3014 9951 0	3037 3382 0	Leave Old passageway
+3053 3382 0	3065 9951 0	Climb-down Staircase
+3065 9951 0	3053 3382 0	Leave Old passageway
+# Tarn's Lair: from the room where the Slayer ring lands, its passageway up to the floor above and the stairs down;
+# the pillars jumped from ledge to ledge; the passageway pair west of them (consecutive object ids, one each side of
+# the wall)
+# Source: Passageway 16132 at 3190 4598 0 <-> Stairs 17098 at 3193 4598 1; Ledge 20566/20564 and Pillar 20555/20549 at 3180-3190 4596 1; Passageway 20535/20536 at 3176/3178 4598 1; wiki: Lair of Tarn Razorlor (passageways lead to new areas; the pillar rooms)
+3189 4598 0	3194 4598 1	Enter Passageway
+3194 4598 1	3189 4598 0	Climb Stairs
+3190 4596 1	3180 4596 1	Jump-to Pillars
+3180 4596 1	3190 4596 1	Jump-to Pillars
+3175 4598 1	3179 4598 1	Enter Passageway
+3179 4598 1	3175 4598 1	Enter Passageway
+# Tonali Cavern: the passageway south of Kastori into it, and its exit back out
+# Source: Passageway 56636 (Enter) at 1305 3033 0 <-> Passageway 56637 (Exit) at 1311 9344 2; wiki: Tonali Cavern (its entrances by Kastori)
+1305 3036 0	1311 9346 2	Enter Passageway
+1311 9346 2	1305 3036 0	Exit Passageway
+# Tonali Cavern: the stepping stone across the stream west of the stairs from the entry (its agility shortcut icon)
+# Source: Stepping stone 56717 at 1315 9378 0 (both sides of the one object); wiki: Tonali Cavern
+1317 9378 0	1313 9378 0	Cross Stepping stone
+1313 9378 0	1317 9378 0	Cross Stepping stone
+# Tonali Cavern: the rope from the central section down to the eastern cavern below it
+# Source: Rope 56712 at 1315 9420 2 <-> Rope 56711 at 1315 9420 0 (the same spot, two floors); wiki: Tonali Cavern
+1314 9420 2	1315 9419 0	Climb Rope
+1315 9419 0	1314 9420 2	Climb Rope
+# Ruins of Mokhaiotl: the northern door of the cavern opens onto the ruins' central hall, whose south entrance leads
+# back; the hall's north entrance passes into the Doom of Mokhaiotl's lobby, whose exit leads back
+# Source: Door 56642 at 1310 9468 2 <-> Entrance 56645 at 1310 9473 1; Entrance 56613 at 1310 9533 1 <-> Exit 56618 at 1310 9539 0; wiki: Ruins of Mokhaiotl, Doom of Mokhaiotl
+1311 9467 2	1311 9474 1	Open Door
+1311 9474 1	1311 9467 2	Pass-through Entrance
+1311 9532 1	1311 9540 0	Pass-through Entrance
+1311 9540 0	1311 9532 1	Pass-through Exit
+# Jiggig Dungeon (Zogre Flesh Eaters): its stairs from the top floor down to the zombies' cave and up again
+# Source: Stairs 6841 at 2443 9417 2 <-> Stairs 6842 at 2443 9417 0 (the same spot, two floors); wiki: Zogre Flesh Eaters/Quick guide (the stairs down into the cave)
+2442 9417 2	2442 9417 0	Climb-down Stairs
+2442 9417 0	2442 9417 2	Climb-up Stairs
+# The portcullis between the grid and the zombies' room, opened by the lever beside it
+# Source: Portcullis 3303 at 2465 9676-9680 0 (no menu options; found with the AreaObjects tool); wiki: Underground Pass/Quick guide
+2466 9677 0	2464 9677 0	Pass Portcullis
+2464 9677 0	2466 9677 0	Pass Portcullis
+# Second area: the south-east slave cage's gate, the loose mud dug through inside it, and the ledges west of it
+# Source: Gate 3266 (Picklock) at 2393 9655 0, Cave 3217 at 2392 9647 0 (under the loose mud), Ledge 3238 at 2374 9644 / 9639 0; wiki: Underground Pass/Quick guide#Second area (picklock the south-east slave cage gate, dig the loose mud, cross the ledge)
+2393 9655 0	2393 9654 0	Picklock Gate
+2393 9654 0	2393 9655 0	Picklock Gate
+2393 9651 0	2392 9646 0	Enter Cave
+2375 9644 0	2373 9644 0	Cross Ledge
+2373 9644 0	2375 9644 0	Cross Ledge
+2373 9640 0	2373 9638 0	Cross Ledge
+2373 9638 0	2373 9640 0	Cross Ledge
+# Iban's lair: the cave in the south ("Stairs (to dwarves, tomb, & spiders)") and the one in the north-west (by the
+# half-soulless) to the level beneath, whose caves climb back up
+# Source: Cave 3222 (Descend) at 2150 4545 1 / 2112 4729 1 <-> Cave 3223 (Ascend) at 2336 9793 0 / 2304 9915 0; wiki: Underground Pass/Quick guide (Iban's lair)
+2150 4546 1	2336 9794 0	Descend Cave
+2336 9794 0	2150 4546 1	Ascend Cave
+2113 4729 1	2305 9915 0	Descend Cave
+2305 9915 0	2113 4729 1	Ascend Cave
+# Ruins of Tapoyauik: the stairs from the Twilight Temple down to the dungeon's top floor, and up again
+# Source: Stairs 54525 (Climb-down) at 1693 3230 0 <-> Stairs 54526 (Climb-up) at 1693 9630 2; wiki: Ruins of Tapoyauik (its map "Entrance to the dungeon" at 1693.5, 3232)
+1693 3231 0	1692 9631 2	Climb-down Stairs
+1692 9631 2	1693 3231 0	Climb-up Stairs
+# Jiggig: the stairs in the ogre burial grounds down to the Zogres' cave, and up again
+# Source: Stairs 6841 (Climb-down) at 2485 3042 0 <-> Stairs 6842 (Climb-up) at 2478 9437 2; wiki: Zogre Flesh Eaters/Quick guide (a set of stairs going downwards)
+2485 3043 0	2479 9437 2	Climb-down Stairs
+2479 9437 2	2485 3043 0	Climb-up Stairs
+# White Wolf Mountain: the three ladders past the rock slide down into the Ice Queen's Lair, and up again
+# Source: Ladder 16680 (Climb-down) at 2845 3516, 2848 3513, 2848 3519 0 <-> Ladder 17385 (Climb-up) at 2845 9916, 2848 9913, 2848 9919 0; wiki: Ice Queen's Lair (after the rock slide, the ladders down)
+2846 3516 0	2846 9916 0	Climb-down Ladder
+2846 9916 0	2846 3516 0	Climb-up Ladder
+2848 3514 0	2848 9914 0	Climb-down Ladder
+2848 9914 0	2848 3514 0	Climb-up Ladder
+2848 3518 0	2848 9918 0	Climb-down Ladder
+2848 9918 0	2848 3518 0	Climb-up Ladder
+# Temple of Ikov: the main entrance south of the Ranging Guild, down the ladder and up again
+# Source: Ladder 17384 (Climb-down) at 2677 3405 0 <-> Ladder 17385 (Climb-up) at 2677 9805 0; wiki: Temple of Ikov (dungeon) (the main entrance south of the Ranging Guild)
+2677 3404 0	2677 9804 0	Climb-down Ladder
+2677 9804 0	2677 3404 0	Climb-up Ladder
+# Wilderness Agility Course: its last obstacle, the rocks, climbed from the course down to its start (one way)
+# Source: Rocks 23640 (Climb) at 2993-2995 3936 0; wiki: Wilderness Agility Course (the rocks, the last obstacle)
+2993 3937 0	2993 3933 0	Climb Rocks
+2992 3936 0	2993 3933 0	Climb Rocks
+# White Wolf Mountain: from the ice cave up the ladder at the end of the south-west tunnel to the ledge, and down the
+# easternmost ladder there into the Ice Queen's Lair
+# Source: Ladder 17385 (Climb-up) at 2857 9917 0 <-> Ladder 16680 (Climb-down) at 2857 3517 0; Ladder 16680 at 2859 3519 0 <-> Ladder 17385 at 2859 9919 0; wiki: Ice Queen's Lair (go down the south-west tunnel and climb up the ladder at the end, climb down the easternmost ladder)
+2857 9918 0	2858 3517 0	Climb-up Ladder
+2858 3517 0	2857 9918 0	Climb-down Ladder
+2860 3519 0	2860 9919 0	Climb-down Ladder
+2860 9919 0	2860 3519 0	Climb-up Ladder
+# Temple of Ikov: the second entrance, the ladder inside the house in McGrubor's Wood (a shiny key opens the house)
+# Source: Ladder 17384 (Climb-down) at 2659 3492 0 <-> Ladder 17385 (Climb-up) at 2659 9892 0; wiki: Temple of Ikov (dungeon) (the second entrance inside the house in McGrubor's Wood requires a shiny key)
+2659 3491 0	2659 9891 0	Climb-down Ladder (needs a shiny key)
+2659 9891 0	2659 3491 0	Climb-up Ladder
+# White Wolf Mountain: the rock slide in front of the ladders down to the Ice Queen's Lair, mined through
+# Source: Rock slide 2634 (Investigate|Mine) at 2838 3517 0 (2x2); wiki: Ice Queen's Lair (the entrance is blocked by a rock slide requiring a pickaxe and 50 Mining)
+2837 3518 0	2840 3517 0	Mine Rock slide (needs 50 Mining and a pickaxe)
+2840 3517 0	2837 3518 0	Mine Rock slide
+# Ruins of Tapoyauik: the lift platform from the Tower of Ascension's ground floor down to the ice platform on the
+# ruins' bottom floor (by Amoxliatl's frozen door), and up again; activated once from below (The Heart of Darkness)
+# Source: Lift Platform 54524 at 1640 3221 0 <-> Lift Platform 54521 at 1632 9631 0; wiki: Lift Platform (Ruins of Tapoyauik) (maps at 1641,3221 and 1633,9631)
+1642 3221 0	1634 9631 0	Use Lift Platform
+1634 9631 0	1642 3221 0	Use Lift Platform
+# Smoke Devil Dungeon: the crevice in the north-west into the thermonuclear smoke devil's section, and out
+# Source: Crevice 535 (Use|Peek) at 2378 9452 0 <-> Crevice 536 (Use) at 2377 9452 0; wiki: Thermonuclear smoke devil/Strategies (north-west after entering, a crevice leads to its section)
+2379 9451 0	2376 9451 0	Use Crevice
+2376 9451 0	2379 9451 0	Use Crevice
+# Forthos Dungeon: the thick web into Sarachnis' burial tomb, and out
+# Source: Thick Web 34858 (Enter-crypt) at 1841 9912 0 (both sides of the one object); wiki: Sarachnis (the burial tomb in the south of the dungeon)
+1841 9913 0	1841 9911 0	Enter-crypt Thick Web
+1841 9911 0	1841 9913 0	Enter-crypt Thick Web
+# Falador Park: digging in the mole hills lands in the Mole Hole; its rope in the south climbs out to the well south of
+# the White Knights' Castle
+# Source: Mole hill 12202 at 2984 3387 / 2999 3375 0 and the cache's own passages there ("Enter Passage" at 2986 3387, 2998 3376 0 -> 1752 5238 0); Rope at 1752 5136 0 ("Climb Rope" -> 2985 3316 0); wiki: Mole Hole (dig in the mole hills with a spade; the exit rope leads to a well south of White Knights' Castle), Mole hill
+2986 3387 0	1752 5238 0	Dig Mole hill (needs a spade)
+2998 3376 0	1752 5238 0	Dig Mole hill (needs a spade)
+1752 5137 0	2985 3316 0	Climb Rope
+# White Wolf Mountain: at the end of the south-west tunnel up to the ice giants' ledge, and down its easternmost ladder
+# into the long tunnel north (steps 2 and 3 of the way to the Ice Queen's Lair)
+# Source: Ladder 17385 (Climb-up) at 2824 9907 0 <-> Ladder 16680 (Climb-down) at 2824 3507 0; Ladder 16680 at 2827 3510 0 <-> Ladder 17385 at 2827 9910 0; wiki: Ice Queen's Lair#Steps (go down the south-west tunnel and climb up the ladder at the end; climb down the easternmost ladder)
+2824 9908 0	2824 3508 0	Climb-up Ladder
+2824 3508 0	2824 9908 0	Climb-down Ladder
+2827 3511 0	2828 9910 0	Climb-down Ladder
+2828 9910 0	2827 3511 0	Climb-up Ladder

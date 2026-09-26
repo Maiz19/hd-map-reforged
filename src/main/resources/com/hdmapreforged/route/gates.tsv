@@ -1,0 +1,4 @@
+# Name	Origin	Destination	Skills	Items	Quests	Varbits	Wiki
+# Doors and gates that open only after a quest, added by hand (the cache marks them as solid objects); one row per direction. From the OSRS Wiki
+Ardougne Wall Door	2559 3300 0	2556 3300 0			Biohazard		Ardougne Wall Door
+Ardougne Wall Door	2556 3300 0	2559 3300 0			Biohazard		Ardougne Wall Door

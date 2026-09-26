@@ -1,0 +1,4 @@
+# Passages one can take in one direction only: from x y plane <tab> to x y plane <tab> radius (tiles) <tab> name.
+# Any passage going the other way between these areas (within radius of each end) is left out of routes.
+# The Wilderness Agility Course's last obstacle, the rocks, are climbed from the course down to its start (south).
+2993 3937 0	2994 3933 0	3	Climb Rocks (Wilderness Agility Course)

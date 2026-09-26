@@ -1,0 +1,25 @@
+# Sailing ports from OSRS cache 2720 (2026-09-23T14:00:06.608472Z) (database table 206), built by local-development/tools/collision
+# Id (value of the SAILING_BOAT_n_PORT varbits)	Name	Where the boat lies (x y plane)
+1	Brimhaven	2763 3238 1
+2	Catherby	2792 3417 1
+3	Mos Le'Harmless	3668 2931 1
+4	Musa Point	2957 3158 1
+5	Port Khazard	2674 3141 1
+6	Port Phasmatys	3705 3503 1
+7	Port Sarim	3038 3189 1
+8	Karamja Shipyard	2998 3032 1
+9	Port Tyras	2142 3125 1
+10	Corsair Cove	2592 2851 1
+11	Prifddinas	2157 3333 1
+12	Port Piscarilius	1811 3679 1
+13	Land's End	1493 3403 1
+14	Civitas illa Fortis	1747 3136 1
+15	Aldarin	1458 2968 1
+16	Sunset Coast	1514 2968 1
+17	Tempestus	1248 3232 0
+18	The Pandemonium	3060 3000 1
+19	The Summer Shore	3187 2365 1
+20	Red Rock	2808 2502 1
+21	Barracuda HQ	2290 2540 1
+22	Deepfin Point	1944 2751 1
+23	Port Roberts	1871 3314 1
