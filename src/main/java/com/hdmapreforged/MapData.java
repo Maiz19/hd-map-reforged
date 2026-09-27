@@ -110,7 +110,7 @@ final class MapData
             for (Poi other : pois)
             {
                 if (other != mine && other.type == mine.type && !covered.contains(other) && !hidden.contains(other)
-                    && near(other.location, mine.location, STATION) && sameStation(mine, other))
+                    && PoiLoader.near(other.location, mine.location, STATION) && sameStation(mine, other))
                 {
                     same.add(other);
                     if (other.links().size() > best.links().size())
@@ -182,17 +182,11 @@ final class MapData
     {
         for (Poi.Link link : from.links())
         {
-            if (near(link.point, to.location, 2))
+            if (PoiLoader.near(link.point, to.location, 2))
             {
                 return true;
             }
         }
         return false;
-    }
-
-    /** On the same floor and at most {@code tiles} apart either way. */
-    private static boolean near(WorldPoint a, WorldPoint b, int tiles)
-    {
-        return a.getPlane() == b.getPlane() && Math.max(Math.abs(a.getX() - b.getX()), Math.abs(a.getY() - b.getY())) <= tiles;
     }
 }

@@ -500,6 +500,11 @@ public final class PartyMap
             throttle.reset();
             myWorld = 0;
         }
+        else if (state == GameState.HOPPING)
+        {
+            // The same tile on another world: sent at once, not only with the next heartbeat.
+            throttle.force();
+        }
     }
 
     private void sendOffline()
@@ -626,7 +631,8 @@ public final class PartyMap
         for (ItemStack stack : items)
         {
             long value = (long) itemManager.getItemPrice(stack.getId()) * stack.getQuantity();
-            if (value >= config.partyDropValue())
+            // A lower value saved before the setting had its minimum still reads back as it was.
+            if (value >= Math.max(HdMapReforgedConfig.MIN_DROP_VALUE, config.partyDropValue()))
             {
                 valuable.add(new HdMapPartyDrop(stack.getId(), stack.getQuantity(), value));
             }

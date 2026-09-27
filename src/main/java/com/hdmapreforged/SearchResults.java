@@ -357,6 +357,7 @@ final class SearchResults implements MapView.Overlay
         tags.clear();
         centers.clear();
         groupBounds.clear();
+        groupMaps.clear();
         result = found;
         if (found.tab == null)
         {
@@ -425,6 +426,7 @@ final class SearchResults implements MapView.Overlay
         tags.clear();
         centers.clear();
         groupBounds.clear();
+        groupMaps.clear();
         card.show(null);
         view.repaint();
     }

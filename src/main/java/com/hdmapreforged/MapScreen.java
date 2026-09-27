@@ -575,7 +575,12 @@ final class MapScreen extends JPanel implements MapView.Listener
         view.select(previous == null ? null : pois.stream()
             .filter(poi -> poi.type == previous.type && poi.location.equals(previous.location)).findFirst().orElse(null));
         viewChanged();
-        prepareSearch();
+        // The old indexes point at replaced maps and icons: the next search waits for the new ones.
+        indexes = null;
+        if (isShowing())
+        {
+            prepareSearch();
+        }
     }
 
     void setUnlocks(Unlocks unlocks)
@@ -966,9 +971,10 @@ final class MapScreen extends JPanel implements MapView.Listener
     }
 
     /**
-     * The newest finished indexes. Waits (Swing thread) only when there are none yet, the build having started when
-     * the search field got focus; while a newer build runs, the older indexes answer. A failed build is never redone
-     * here: the older indexes (or none) answer, and the next search starts a new build in the background.
+     * The newest finished indexes. Waits (Swing thread) only when there are none for the current data, the build
+     * having started when the search field got focus; while a newer build runs, the older indexes answer. A failed
+     * build is never redone here: the older indexes (or none) answer, and the next search starts a new build in the
+     * background.
      */
     private Indexes indexes()
     {

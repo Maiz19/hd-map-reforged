@@ -65,6 +65,13 @@ final class WorldMapMoves
         return new WorldPoint(drawn.getX() + found.dx, drawn.getY() + found.dy, Math.min(3, plane));
     }
 
+    /** As the map of everything draws them: a moved part is drawn where its own map draws it. */
+    static WorldPoint fromDrawnAnywhere(WorldPoint drawn)
+    {
+        Move found = last(move -> inside(move, drawn.getX(), drawn.getY()));
+        return found == null ? drawn : toWorld(found.map, drawn);
+    }
+
     /** Whether map {@code mapId} draws a moved part of the game at this spot (the Dagannoth Kings' lair). */
     static boolean covers(int mapId, int x, int y)
     {

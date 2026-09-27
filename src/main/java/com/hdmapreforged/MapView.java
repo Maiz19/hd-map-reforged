@@ -306,7 +306,11 @@ final class MapView extends JComponent
 
     WorldPoint gamePoint(WorldPoint drawn)
     {
-        return map == null ? drawn : WorldMapMoves.toWorld(map.id, drawn);
+        if (map == null)
+        {
+            return drawn;
+        }
+        return map.id == BaseMap.FULL ? WorldMapMoves.fromDrawnAnywhere(drawn) : WorldMapMoves.toWorld(map.id, drawn);
     }
 
     WorldPoint shown(WorldPoint game)
@@ -463,6 +467,8 @@ final class MapView extends JComponent
                 {
                     hovered = null;
                     hoveredControl = null;
+                    // Else a control's tooltip would show anywhere over the map afterwards.
+                    setToolTipText(null);
                     repaint();
                 }
             }
@@ -690,11 +696,6 @@ final class MapView extends JComponent
     Unlocks unlocks()
     {
         return unlocks;
-    }
-
-    boolean visible(Poi poi)
-    {
-        return visible(poi, new Filter());
     }
 
     private static boolean visible(Poi poi, Filter filter)

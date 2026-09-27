@@ -14,6 +14,7 @@ import net.runelite.client.config.Units;
 public interface HdMapReforgedConfig extends Config
 {
     String GROUP = "hdmapreforged";
+    int MIN_DROP_VALUE = 1000;
 
     @ConfigSection(name = "Icons", description = "Which icons the map shows", position = 0)
     String icons = "icons";
@@ -281,7 +282,7 @@ public interface HdMapReforgedConfig extends Config
     }
 
     @ConfigItem(keyName = "checkMapNow", name = "Check for a new map now", position = 4, section = data,
-        description = "Tick to ask the wiki right away whether its map changed; it unticks itself")
+        description = "Each click asks the wiki right away whether its map changed")
     default boolean checkMapNow()
     {
         return false;
@@ -302,9 +303,9 @@ public interface HdMapReforgedConfig extends Config
     }
 
     @ConfigItem(keyName = "partyShareGear", name = "Share inventory, equipment and skills", position = 2,
-        section = friends, description = "While you are in a party, its members can see what you carry, wear and your "
-            + "skill levels in their friends tab (click your name there). Sent only when it changes, at most every "
-            + "6 seconds; nothing is sent outside a party")
+        section = friends, description = "While you are in a party, its members can see what you carry and wear, your "
+            + "skill levels and experience, and your run and special attack energy in their friends tab (click your "
+            + "name there). Sent only when it changes, at most every 6 seconds; nothing is sent outside a party")
     default boolean partyShareGear()
     {
         return true;
@@ -318,7 +319,7 @@ public interface HdMapReforgedConfig extends Config
         return true;
     }
 
-    @Range(min = 1000)
+    @Range(min = MIN_DROP_VALUE)
     @ConfigItem(keyName = "partyDropValue", name = "Valuable drop from", position = 4, section = friends,
         description = "The least a drop (one item stack) is worth to be shared, in coins; 100,000 is Ground Items' "
             + "medium value")

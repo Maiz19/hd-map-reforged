@@ -108,6 +108,8 @@ final class TileCache
     private boolean cleanupPending;
     /** Previous version on disk, shown while the new one downloads; each old tile is removed once replaced. */
     private volatile String fallbackVersion;
+    /** Only then are the fallback's tiles removed: a manual version or the start-up stand-in must not wear it down. */
+    private volatile boolean official;
 
     static String tileUrl(String version, Key key)
     {
@@ -146,7 +148,7 @@ final class TileCache
         }
         else if (diskCache && wasOn && diskLimitMb < oldLimit)
         {
-            execute(this::limitDiskUse);
+            requestTrim();
         }
     }
 
@@ -175,6 +177,7 @@ final class TileCache
             missing.clear();
             failed.clear();
             cleanupPending = official;
+            this.official = official;
             fallbackVersion = fallback;
         }
         if (official && fallback != null)
@@ -182,7 +185,7 @@ final class TileCache
             // Older versions merge into the fallback, so their tiles still show while this version's arrive.
             execute(() -> mergeOlder(version, fallback));
         }
-        execute(this::limitDiskUse);
+        requestTrim();
     }
 
     private String previousOnDisk(String current)
@@ -471,8 +474,9 @@ final class TileCache
                         {
                             // Not an image although found: a passing fault, asked again later.
                             image = keep(file(tileVersion, key), bytes);
-                            if (image != null && old != null && old.isFile())
+                            if (image != null && old != null && official && old.isFile())
                             {
+                                diskBytes.addAndGet(-old.length());
                                 delete(old);
                             }
                         }
@@ -620,32 +624,45 @@ final class TileCache
             {
                 return;
             }
-            // Own temp name: two threads may write the same tile at once.
-            Path temp = Files.createTempFile(parent.toPath(), file.getName() + ".", PART_SUFFIX);
-            try
-            {
-                Files.write(temp, bytes);
-                try
-                {
-                    Files.move(temp, file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                }
-                catch (AtomicMoveNotSupportedException e)
-                {
-                    Files.move(temp, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-            finally
-            {
-                Files.deleteIfExists(temp);
-            }
+            writeAtomically(file.toPath(), bytes);
         }
         catch (IOException | RuntimeException e)
         {
             log.debug("Could not cache tile {}", file, e);
             return;
         }
-        if (diskBytes.addAndGet(bytes.length) > diskLimitMb * MB && trimQueued.compareAndSet(false, true)
-            && !execute(this::limitDiskUse))
+        if (diskBytes.addAndGet(bytes.length) > diskLimitMb * MB)
+        {
+            requestTrim();
+        }
+    }
+
+    /** Through an own temp file (two threads may write the same file at once), then moved over the target. */
+    static void writeAtomically(Path target, byte[] bytes) throws IOException
+    {
+        Path temp = Files.createTempFile(target.toAbsolutePath().getParent(), target.getFileName() + ".", PART_SUFFIX);
+        try
+        {
+            Files.write(temp, bytes);
+            try
+            {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            }
+            catch (AtomicMoveNotSupportedException e)
+            {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        finally
+        {
+            Files.deleteIfExists(temp);
+        }
+    }
+
+    /** One trim at a time: the flag stays set until it ends, so writes meanwhile queue no second one. */
+    private void requestTrim()
+    {
+        if (trimQueued.compareAndSet(false, true) && !execute(this::limitDiskUse))
         {
             trimQueued.set(false);
         }
@@ -718,11 +735,23 @@ final class TileCache
     /** Background thread: removes oldest tiles past the limit and stale half-written files. */
     void limitDiskUse()
     {
-        trimQueued.set(false);
+        try
+        {
+            trimDisk();
+        }
+        finally
+        {
+            trimQueued.set(false);
+        }
+    }
+
+    private void trimDisk()
+    {
         if (!diskCache || !cacheRoot.isDirectory())
         {
             return;
         }
+        long counted = diskBytes.get();
         List<File> files = new ArrayList<>();
         collect(cacheRoot, files);
         List<Entry> entries = new ArrayList<>(files.size());
@@ -731,7 +760,10 @@ final class TileCache
         for (File file : files)
         {
             Entry entry = new Entry(file);
-            if (file.getName().endsWith(PART_SUFFIX) && now - entry.modified > PART_STALE_MS)
+            String name = file.getName();
+            // Also the markers of the removed whole-map download (*.none, complete-*): nothing reads them any more.
+            if (name.endsWith(PART_SUFFIX) && now - entry.modified > PART_STALE_MS || name.endsWith(".none")
+                || name.startsWith("complete-"))
             {
                 delete(file);
                 continue;
@@ -755,7 +787,8 @@ final class TileCache
                 }
             }
         }
-        diskBytes.set(total);
+        // Tiles written during the walk still count.
+        diskBytes.addAndGet(total - counted);
     }
 
     /** Background thread: the disk cache was switched off, so its tiles go. */

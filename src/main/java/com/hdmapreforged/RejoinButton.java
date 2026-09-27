@@ -47,6 +47,7 @@ final class RejoinButton extends Overlay
         {
             Point at = at(e);
             swallowClick = false;
+            pressed = false;
             if (at != null && (joinArea.contains(at) || closeArea.contains(at)))
             {
                 e.consume();
@@ -56,7 +57,7 @@ final class RejoinButton extends Overlay
             return e;
         }
 
-        /** The button hides on the press: its release and click are still ours. */
+        /** The button hides on the press: its release and click are still ours. Any other release is the game's. */
         @Override
         public MouseEvent mouseReleased(MouseEvent e)
         {
@@ -65,9 +66,8 @@ final class RejoinButton extends Overlay
                 pressed = false;
                 swallowClick = true;
                 e.consume();
-                return e;
             }
-            return onButton(e);
+            return e;
         }
 
         @Override

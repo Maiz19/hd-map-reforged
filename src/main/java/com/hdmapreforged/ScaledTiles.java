@@ -67,8 +67,7 @@ final class ScaledTiles
         {
             return;
         }
-        if (dw == source.getWidth() && dh == source.getHeight() || width == source.getWidth()
-            && height == source.getHeight() || (long) dw * dh > MAX_PIXELS
+        if (dw == source.getWidth() && dh == source.getHeight() || (long) dw * dh > MAX_PIXELS
             || transform.getShearX() != 0 || transform.getShearY() != 0)
         {
             g.drawImage(source, x, y, width, height, null);

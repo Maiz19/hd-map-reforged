@@ -143,7 +143,7 @@ public final class RouteFeature
     static final Color SEA = new Color(64, 200, 255);
     private static final Set<String> LOOK_KEYS = Set.of("routeColor", "routeJumpColor", "routeTileFill",
         "routeTileBorder", "routeTileWidth", "routeMinimap", "routeInGame", "routeHdTiles", "routeClearOnArrival",
-        "routeFollowPlugins", "routePlannerChosen");
+        "routeFollowPlugins");
 
     private static final Color[] LEG_COLORS = {
         new Color(90, 220, 130), new Color(255, 130, 200), new Color(255, 160, 70), new Color(120, 230, 255),
@@ -824,6 +824,11 @@ public final class RouteFeature
         // Work still on the extras thread finds it is not wanted.
         tour = null;
         orders.incrementAndGet();
+        if (handedOver != null)
+        {
+            // Else Shortest Path keeps drawing it, with no Clear path here after a restart.
+            clientThread.invokeLater(() -> eventBus.post(ShortestPathBridge.clear()));
+        }
         forgetHandOver();
         why = null;
         whyFor = null;
@@ -1037,7 +1042,8 @@ public final class RouteFeature
         }
         ahead = now;
         aheadWalkedOf = now;
-        aheadWalked = Collections.unmodifiableSet(walkedNow);
+        // Not wrapped again: on Java 11 the wrappers would nest every tick until the stack overflows.
+        aheadWalked = walkedNow == walkedBefore ? walkedBefore : Collections.unmodifiableSet(walkedNow);
         shown = config.routeInGame() ? now : null;
         int steps = now == null ? -1 : now.steps.size();
         int points = now == null || now.steps.isEmpty() ? -1 : now.steps.get(0).points.length;
@@ -1252,7 +1258,8 @@ public final class RouteFeature
             });
             return;
         }
-        if (!key.startsWith("route") || HOUSE_KEY.equals(key) || "routeLog".equals(key))
+        if (!key.startsWith("route") || HOUSE_KEY.equals(key) || "routeLog".equals(key)
+            || "routePlannerChosen".equals(key))
         {
             return;
         }
@@ -1310,14 +1317,11 @@ public final class RouteFeature
 
     private RouteRequest request(int target)
     {
-        return request(start, target, false, RouteRequest.DEFAULT_NODE_LIMIT);
+        return request(start, target, false);
     }
 
-    /** Node limit on the extras thread: lower, so two searches at once hold less memory. */
-    static final int EXTRAS_NODE_LIMIT = 1_500_000;
-
     /** With {@code anything}, every requirement counts as met. Swing or the extras thread. */
-    private RouteRequest request(int begin, int target, boolean anything, int nodeLimit)
+    private RouteRequest request(int begin, int target, boolean anything)
     {
         RouteSource from = source;
         MapScreen[] on = screens;
@@ -1332,10 +1336,10 @@ public final class RouteFeature
                 : new RouteSource.Saving(config.routeSaveTeleport(), config.routeSaveShortcut(),
                     config.routeSaveTransport(), config.routeSaveCanoe(), config.routeSaveCarpet(), config.routeSaveShip()));
         return from.request(begin, target, view.pois(), view.unlocks(), state, anything ? options.fallback() : options,
-            nodeLimit);
+            RouteRequest.DEFAULT_NODE_LIMIT);
     }
 
-    /** On the first route: Shortest Path becomes the planner if it is on and nothing was chosen. */
+    /** On the first map right-click: Shortest Path becomes the planner if it is on and nothing was chosen. */
     private void choosePlannerOnce()
     {
         if (get("routePlannerChosen") != null)
@@ -1353,7 +1357,6 @@ public final class RouteFeature
     void routeTo(WorldPoint point)
     {
         stopTour();
-        choosePlannerOnce();
         if (shortestPathPlanner())
         {
             handOver(point);
@@ -1377,6 +1380,8 @@ public final class RouteFeature
 
     private void contribute(JPopupMenu popup, WorldPoint point)
     {
+        // Before the entries are made, so they name the planner that will be used.
+        choosePlannerOnce();
         RouteController c = controller;
         popup.addSeparator();
         item(popup, "Add to custom route", () -> addStop(Tour.Stop.place(placeName(point), point)))
@@ -1597,7 +1602,7 @@ public final class RouteFeature
                 }
                 int from = running.points[i - 1];
                 int to = running.points[i];
-                RouteRequest request = from < 0 || to < 0 ? null : request(from, to, false, EXTRAS_NODE_LIMIT);
+                RouteRequest request = from < 0 || to < 0 ? null : request(from, to, false);
                 Route leg;
                 try
                 {
@@ -1885,6 +1890,11 @@ public final class RouteFeature
                             {
                                 applyOrder(name, stops, result);
                             }
+                            else if (orders.get() != order)
+                            {
+                                // Another panel's order or a cancel: said, not dropped without a word.
+                                toast("Stopped working out the fastest order of \"" + name + "\"");
+                            }
                         }
                         finally
                         {
@@ -1922,9 +1932,11 @@ public final class RouteFeature
                 sorted.add(now.stops.get(at - 1));
             }
             all.set(i, new Tour(name, sorted));
-            saveTours(all, name);
+            // The route edited now stays so, also when another was chosen meanwhile.
+            saveTours(all, editingName());
             return;
         }
+        toast("\"" + name + "\" was renamed or removed meanwhile: its order was not saved");
     }
 
     private static boolean sameStops(List<Tour.Stop> a, List<Tour.Stop> b)
@@ -1946,7 +1958,7 @@ public final class RouteFeature
         {
             return 0; // player's place unknown: every first stop is as good
         }
-        RouteRequest request = request(pack(a), pack(b), false, EXTRAS_NODE_LIMIT);
+        RouteRequest request = request(pack(a), pack(b), false);
         if (request == null)
         {
             return -1;
@@ -1987,7 +1999,7 @@ public final class RouteFeature
             why = null;
             return;
         }
-        RouteRequest request = request(start, c.target(), true, EXTRAS_NODE_LIMIT);
+        RouteRequest request = request(start, c.target(), true);
         if (request == null)
         {
             whyFor = null; // retry once the start is known
@@ -2024,7 +2036,7 @@ public final class RouteFeature
                 {
                     why = found;
                     explaining = false;
-                    RouteLog log = config.routeLog() ? routeLog : null;
+                    RouteLog log = routeLog;
                     if (log != null && found != null)
                     {
                         log.add("The way anyone could go", start, c.target(), state, found);
@@ -2107,7 +2119,7 @@ public final class RouteFeature
         RouteController c = controller;
         if (c != null)
         {
-            RouteLog log = config.routeLog() ? routeLog : null;
+            RouteLog log = routeLog;
             Route planned = c.route();
             if (log != null && planned != null && planned != logged)
             {

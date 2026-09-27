@@ -624,7 +624,7 @@ final class InfoCard extends JPanel implements Scrollable
         add(Box.createVerticalStrut(2));
     }
 
-    /** Wiki text as it is: a name starting with {@code <html>} must not render as HTML (remote images). */
+    /** Wiki text and party names as they are: a leading {@code <html>} must not render as HTML (remote images). */
     static JLabel plain(String text)
     {
         JLabel label = new JLabel();

@@ -11,8 +11,6 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,6 +30,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -167,7 +166,8 @@ public class HdMapReforgedPlugin extends Plugin
     private volatile List<Needs> allNeeds = Collections.emptyList();
     /** Regions being checked (value Long.MAX_VALUE) or failed, with when to retry. Cleared per map version. */
     private final Map<Integer, Long> regionsPending = new ConcurrentHashMap<>();
-    private static final long REGION_RETRY_MS = 60_000;
+    /** Before a failed region check or map list is asked for again. */
+    private static final long RETRY_MS = 60_000;
     /** Counts starts and stops, so late callbacks of an earlier run do nothing. */
     private final AtomicInteger life = new AtomicInteger();
     private volatile String wantedVersion;
@@ -183,29 +183,9 @@ public class HdMapReforgedPlugin extends Plugin
         return configManager.getConfig(HdMapReforgedConfig.class);
     }
 
+    /** When this throws, RuneLite calls shutDown, which undoes only what was made. */
     @Override
     protected void startUp() throws Exception
-    {
-        try
-        {
-            start();
-        }
-        catch (Throwable failed)
-        {
-            // RuneLite does not call shutDown when startUp throws: undo what was registered before the failure.
-            try
-            {
-                shutDown();
-            }
-            catch (RuntimeException cleanup)
-            {
-                failed.addSuppressed(cleanup);
-            }
-            throw failed;
-        }
-    }
-
-    private void start() throws Exception
     {
         int started = life.incrementAndGet();
         io = Executors.newFixedThreadPool(4, runnable -> daemon(runnable, "HD Map Reforged tiles"));
@@ -241,7 +221,7 @@ public class HdMapReforgedPlugin extends Plugin
         clientToolbar.addNavigation(button);
         party.start(screen.view(), fullScreen.view());
         route.start(screen, fullScreen);
-        route.setRouteLog(new RouteLog(new File(home, "routes.log"), io));
+        route.setRouteLog(new RouteLog(new File(home, "routes.log"), io, config::routeLog));
         route.setSidebar(panel::showRoute, this::showOnMap);
         panel.setTours(route.sidebarTours(panel::refreshTours));
         gameIcons = new MapIconLayer[]{gameIconLayer(screen), gameIconLayer(fullScreen)};
@@ -437,7 +417,7 @@ public class HdMapReforgedPlugin extends Plugin
                 }
                 else
                 {
-                    regionsPending.replace(region, Long.MAX_VALUE, System.currentTimeMillis() + REGION_RETRY_MS);
+                    regionsPending.replace(region, Long.MAX_VALUE, System.currentTimeMillis() + RETRY_MS);
                 }
             }
             if (found)
@@ -611,11 +591,7 @@ public class HdMapReforgedPlugin extends Plugin
                 resolveMapVersion(false);
                 break;
             case "checkMapNow":
-                if (!config.checkMapNow())
-                {
-                    return;
-                }
-                configManager.setConfiguration(HdMapReforgedConfig.GROUP, "checkMapNow", false);
+                // Every click: RuneLite's settings panel would not show the box unticking itself.
                 resolveMapVersion(true);
                 break;
             case "followPlayer":
@@ -736,6 +712,14 @@ public class HdMapReforgedPlugin extends Plugin
             {
                 log.warn("Could not get the map list of map version {}; showing version {} meanwhile", version,
                     currentVersion);
+                Timer retry = new Timer((int) RETRY_MS, e -> {
+                    if (started == life.get() && version.equals(wantedVersion))
+                    {
+                        useVersion(version, official);
+                    }
+                });
+                retry.setRepeats(false);
+                retry.start();
                 return;
             }
             saveBaseMaps(version, json);
@@ -802,20 +786,11 @@ public class HdMapReforgedPlugin extends Plugin
         try
         {
             File parent = file.getParentFile();
-            if (!parent.isDirectory() && !parent.mkdirs())
+            if (!parent.mkdirs() && !parent.isDirectory())
             {
                 return;
             }
-            Path temp = Files.createTempFile(parent.toPath(), file.getName() + ".", ".part");
-            try
-            {
-                Files.writeString(temp, json);
-                Files.move(temp, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            }
-            finally
-            {
-                Files.deleteIfExists(temp);
-            }
+            TileCache.writeAtomically(file.toPath(), json.getBytes(StandardCharsets.UTF_8));
         }
         catch (IOException e)
         {
@@ -876,12 +851,13 @@ public class HdMapReforgedPlugin extends Plugin
             SwingUtilities.invokeLater(() -> {
                 if (screen != null && generation == dataGeneration.get())
                 {
-                    screen.setData(maps, data.pois, data.hidden, data.labels);
-                    fullScreen.setData(maps, data.pois, data.hidden, data.labels);
+                    // Icons first: they add to what search finds, and setData starts the search index.
                     for (MapIconLayer layer : gameIcons)
                     {
                         layer.setIcons(data.icons);
                     }
+                    screen.setData(maps, data.pois, data.hidden, data.labels);
+                    fullScreen.setData(maps, data.pois, data.hidden, data.labels);
                 }
             });
             return data;

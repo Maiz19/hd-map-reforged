@@ -88,10 +88,10 @@ final class TourPanel
         show.accept(null);
     }
 
+    /** A search took the card: a fastest order being worked out goes on and is saved. */
     void replaced()
     {
         open = false;
-        cancelOrder();
     }
 
     private void cancelOrder()

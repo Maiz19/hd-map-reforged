@@ -190,9 +190,11 @@ public final class Pathfinder
         return y >= 6400 ? y - 6400 : y;
     }
 
+    /** Round the fold: one step from y 6399 to 6400 goes from the top of the folded range to its bottom. */
     private static int folded(int a, int b)
     {
-        return Math.max(Math.abs(Tiles.x(a) - Tiles.x(b)), Math.abs(fy(a) - fy(b)));
+        int dy = Math.abs(fy(a) - fy(b));
+        return Math.max(Math.abs(Tiles.x(a) - Tiles.x(b)), Math.min(dy, 6400 - dy));
     }
 
     /** Jumps the heuristic must know, else it would overestimate and A* could miss the best way. */

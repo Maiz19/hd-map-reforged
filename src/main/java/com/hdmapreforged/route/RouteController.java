@@ -115,14 +115,16 @@ public final class RouteController
     /** {@code player} packed or -1; starts a search when the player left the route. */
     public void playerMoved(int player, boolean automaticAllowed)
     {
-        if (target >= 0 && running == null && route == null && noStart && player >= 0)
+        if (target >= 0 && running == null && route == null && noStart && player >= 0 && automaticAllowed)
         {
             // Asked for where the position was unknown: retried now and then once it is known.
             long now = clock.getAsLong();
             if (now >= nextStartTry)
             {
                 nextStartTry = now + FIRST_BACKOFF_MS;
+                status = "Searching…";
                 start(true);
+                changed.accept(this);
             }
             return;
         }

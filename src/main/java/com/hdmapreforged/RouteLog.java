@@ -6,10 +6,8 @@ import com.hdmapreforged.route.Tiles;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
@@ -36,11 +34,6 @@ final class RouteLog
     private long added;
     private long written;
     private final Object writing = new Object();
-
-    RouteLog(File file, Executor io)
-    {
-        this(file, io, () -> true);
-    }
 
     /** Swing thread. */
     void add(String what, int start, int target, PlayerState state, Route route)
@@ -125,23 +118,7 @@ final class RouteLog
                     log.debug("Not writing through a symbolic link: {}", file);
                     return;
                 }
-                Path temp = Files.createTempFile(target.toAbsolutePath().getParent(), file.getName() + ".", ".part");
-                try
-                {
-                    Files.write(temp, all.getBytes(StandardCharsets.UTF_8));
-                    try
-                    {
-                        Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                    }
-                    catch (AtomicMoveNotSupportedException e)
-                    {
-                        Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
-                    }
-                }
-                finally
-                {
-                    Files.deleteIfExists(temp);
-                }
+                TileCache.writeAtomically(target, all.getBytes(StandardCharsets.UTF_8));
             }
             catch (IOException e)
             {

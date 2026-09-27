@@ -176,9 +176,9 @@ final class PoiIcons
         double y = y0;
         double s = s0;
         Path2D pen = new Path2D.Double();
-        for (String op : ops.split("; "))
+        for (String op : ops.split(";"))
         {
-            String[] t = op.split(" ");
+            String[] t = op.trim().split(" ");
             double[] a = new double[8];
             for (int i = 1; i < t.length; i++)
             {
@@ -278,8 +278,10 @@ final class PoiIcons
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
             PoiIcons.class.getResourceAsStream("poi_glyphs.txt"), StandardCharsets.UTF_8)))
         {
-            reader.lines().filter(line -> !line.startsWith("#"))
-                .forEach(line -> GLYPHS.put(line.split("\t")[0], line.split("\t")[1]));
+            // A blank line or one without its tab is skipped, not a class that fails to load.
+            reader.lines().map(line -> line.split("\t", 2))
+                .filter(cells -> cells.length == 2 && !cells[0].startsWith("#"))
+                .forEach(cells -> GLYPHS.put(cells[0], cells[1]));
         }
         catch (IOException e)
         {
