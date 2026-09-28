@@ -1,13 +1,8 @@
 package com.hdmapreforged;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.Reader;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
@@ -189,34 +184,20 @@ final class RegionTable
         return zoned.chars().allMatch(c -> MASKS.indexOf(c) >= 0);
     }
 
-    /** Leaves out regions from {@link #putUnsure}. */
-    void write(File file, String header) throws IOException
+    /** The table as {@link #read} takes it; {@code withUnsure}: also regions from {@link #putUnsure}. */
+    String text(String header, boolean withUnsure)
     {
-        write(file, header, false);
-    }
-
-    void write(File file, String header, boolean withUnsure) throws IOException
-    {
-        File parent = file.getParentFile();
-        if (!parent.isDirectory() && !parent.mkdirs())
+        StringBuilder out = new StringBuilder("# ").append(header).append('\n');
+        for (Map.Entry<Integer, int[]> entry : new TreeMap<>(owners).entrySet())
         {
-            throw new IOException("Cannot create " + parent);
-        }
-        File temp = new File(parent, file.getName() + ".part");
-        try (Writer out = Files.newBufferedWriter(temp.toPath(), StandardCharsets.UTF_8))
-        {
-            out.write("# " + header + "\n");
-            for (Map.Entry<Integer, int[]> entry : new TreeMap<>(owners).entrySet())
+            if (!withUnsure && unsure.contains(entry.getKey()))
             {
-                if (!withUnsure && unsure.contains(entry.getKey()))
-                {
-                    continue;
-                }
-                String ids = Arrays.stream(entry.getValue()).mapToObj(String::valueOf).collect(Collectors.joining(","));
-                String zoned = zones.get(entry.getKey());
-                out.write(entry.getKey() + "\t" + ids + (zoned != null ? "\t" + zoned : "") + "\n");
+                continue;
             }
+            String ids = Arrays.stream(entry.getValue()).mapToObj(String::valueOf).collect(Collectors.joining(","));
+            String zoned = zones.get(entry.getKey());
+            out.append(entry.getKey()).append('\t').append(ids).append(zoned != null ? "\t" + zoned : "").append('\n');
         }
-        Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        return out.toString();
     }
 }

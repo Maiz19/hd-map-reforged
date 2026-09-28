@@ -171,6 +171,7 @@ final class TourPanel
         JPanel naming = row();
         JTextField name = new JTextField(current.name, 14);
         name.setToolTipText("The route's name: type and press Enter");
+        FullMapWindow.typable(name);
         name.addActionListener(e -> {
             String typed = name.getText().trim();
             if (!typed.isEmpty() && !typed.equals(current.name))

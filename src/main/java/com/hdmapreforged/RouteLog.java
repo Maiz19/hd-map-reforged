@@ -3,11 +3,8 @@ package com.hdmapreforged;
 import com.hdmapreforged.route.PlayerState;
 import com.hdmapreforged.route.Route;
 import com.hdmapreforged.route.Tiles;
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
@@ -17,6 +14,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.function.BooleanSupplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.client.util.Filepath;
 
 /** The last routes planned, in a local {@code routes.log} for looking at wrong routes; only with the setting on. */
 @Slf4j
@@ -26,7 +24,7 @@ final class RouteLog
     static final int KEEP = 30;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final File file;
+    private final Filepath file;
     private final Executor io;
     private final BooleanSupplier enabled;
     private final Deque<String> entries = new ArrayDeque<>();
@@ -107,20 +105,9 @@ final class RouteLog
             written = number;
             try
             {
-                File dir = file.getParentFile();
-                if (dir != null && !dir.isDirectory() && !dir.mkdirs())
-                {
-                    return;
-                }
-                Path target = file.toPath();
-                if (Files.isSymbolicLink(target))
-                {
-                    log.debug("Not writing through a symbolic link: {}", file);
-                    return;
-                }
-                TileCache.writeAtomically(target, all.getBytes(StandardCharsets.UTF_8));
+                TileCache.writeAtomically(file, all.getBytes(StandardCharsets.UTF_8));
             }
-            catch (IOException e)
+            catch (IOException | RuntimeException e)
             {
                 log.debug("Could not write {}", file, e);
             }

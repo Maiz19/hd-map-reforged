@@ -3,16 +3,14 @@ package com.hdmapreforged;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileFilter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.Iterator;
@@ -26,6 +24,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
@@ -33,6 +34,7 @@ import javax.imageio.stream.MemoryCacheImageInputStream;
 import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.client.util.Filepath;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.OkHttpClient;
@@ -60,7 +62,6 @@ final class TileCache
     private static final long PART_STALE_MS = 10 * 60 * 1000L;
     private static final long RETRY_AFTER_MS = 30_000;
     private static final long MB = 1024 * 1024;
-    private static final long DAY_MS = 24L * 60 * 60 * 1000;
 
     @RequiredArgsConstructor
     @EqualsAndHashCode
@@ -80,7 +81,7 @@ final class TileCache
 
     private final OkHttpClient http;
     private final ExecutorService io;
-    private final File cacheRoot;
+    private final Filepath cacheRoot;
     private final Runnable onLoaded;
 
     private final LinkedHashMap<Key, BufferedImage> memory = new LinkedHashMap<>(256, 0.75f, true);
@@ -190,16 +191,16 @@ final class TileCache
 
     private String previousOnDisk(String current)
     {
-        File best = null;
-        for (File dir : versionDirs())
+        Filepath best = null;
+        for (Filepath dir : versionDirs())
         {
-            if (!dir.getName().equals(current) && WikiClient.isSafeVersion(dir.getName())
-                && !Files.isSymbolicLink(dir.toPath()) && (best == null || dir.lastModified() > best.lastModified()))
+            if (!dir.getFileName().equals(current) && WikiClient.isSafeVersion(dir.getFileName())
+                && (best == null || modified(dir) > modified(best)))
             {
                 best = dir;
             }
         }
-        return best == null ? null : best.getName();
+        return best == null ? null : best.getFileName();
     }
 
     String fallbackVersion()
@@ -249,7 +250,7 @@ final class TileCache
                 return image;
             }
         }
-        File file = file(tileVersion, key);
+        Filepath file = file(tileVersion, key);
         BufferedImage cached = readCached(file);
         if (cached != null)
         {
@@ -260,7 +261,7 @@ final class TileCache
     }
 
     /** Decoded, and on disk when that is on. */
-    private BufferedImage keep(File file, byte[] bytes) throws IOException
+    private BufferedImage keep(Filepath file, byte[] bytes) throws IOException
     {
         BufferedImage image = decode(bytes);
         if (image != null && diskCache)
@@ -341,9 +342,9 @@ final class TileCache
         }
     }
 
-    private File file(String tileVersion, Key key)
+    private Filepath file(String tileVersion, Key key)
     {
-        return new File(versionFolder(tileVersion), key.path());
+        return versionFolder(tileVersion).join(key.path());
     }
 
     private static final String PART_SUFFIX = ".part";
@@ -367,9 +368,9 @@ final class TileCache
         }
     }
 
-    File versionFolder(String tileVersion)
+    Filepath versionFolder(String tileVersion)
     {
-        return new File(cacheRoot, tileVersion);
+        return cacheRoot.joinSegment(tileVersion);
     }
 
     /** For a map's first frame, which would otherwise show icons on black before tiles pop in. */
@@ -392,7 +393,7 @@ final class TileCache
     }
 
     /** Files that are no tile are removed so they download again; a failed read leaves the file. */
-    private BufferedImage readCached(File file)
+    private BufferedImage readCached(Filepath file)
     {
         if (!diskCache || !file.isFile())
         {
@@ -401,7 +402,7 @@ final class TileCache
         byte[] bytes;
         try
         {
-            bytes = file.length() > MAX_TILE_BYTES ? null : Files.readAllBytes(file.toPath());
+            bytes = file.size() > MAX_TILE_BYTES ? null : read(file);
         }
         catch (IOException | RuntimeException e)
         {
@@ -413,12 +414,6 @@ final class TileCache
             BufferedImage image = bytes == null ? null : decode(bytes);
             if (image != null)
             {
-                // Trimming removes the least recently touched first.
-                long now = System.currentTimeMillis();
-                if (now - file.lastModified() > DAY_MS && !file.setLastModified(now))
-                {
-                    log.debug("Could not touch {}", file);
-                }
                 return image;
             }
         }
@@ -441,7 +436,7 @@ final class TileCache
                 return;
             }
             String previous = fallbackVersion;
-            File old = previous == null ? null : file(previous, key);
+            Filepath old = previous == null ? null : file(previous, key);
             BufferedImage stale = old == null ? null : readCached(old);
             if (stale != null)
             {
@@ -476,7 +471,7 @@ final class TileCache
                             image = keep(file(tileVersion, key), bytes);
                             if (image != null && old != null && official && old.isFile())
                             {
-                                diskBytes.addAndGet(-old.length());
+                                diskBytes.addAndGet(-old.size());
                                 delete(old);
                             }
                         }
@@ -614,17 +609,11 @@ final class TileCache
         return image;
     }
 
-    private void write(File file, byte[] bytes)
+    private void write(Filepath file, byte[] bytes)
     {
         try
         {
-            File parent = file.getParentFile();
-            // Another thread may create the folder at the same moment.
-            if (!parent.mkdirs() && !parent.isDirectory())
-            {
-                return;
-            }
-            writeAtomically(file.toPath(), bytes);
+            writeAtomically(file, bytes);
         }
         catch (IOException | RuntimeException e)
         {
@@ -637,25 +626,38 @@ final class TileCache
         }
     }
 
-    /** Through an own temp file (two threads may write the same file at once), then moved over the target. */
-    static void writeAtomically(Path target, byte[] bytes) throws IOException
+    /**
+     * Through an own temp file (two threads may write the same file at once), then moved over the target; makes the
+     * folder, which another thread may make at the same moment.
+     */
+    static void writeAtomically(Filepath target, byte[] bytes) throws IOException
     {
-        Path temp = Files.createTempFile(target.toAbsolutePath().getParent(), target.getFileName() + ".", PART_SUFFIX);
+        Filepath folder = target.getParent();
+        folder.createDirectories();
+        Filepath temp = folder.createTempFile(target.getFileName() + ".", PART_SUFFIX);
         try
         {
-            Files.write(temp, bytes);
+            temp.write(bytes);
             try
             {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                temp.moveTo(target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             }
             catch (AtomicMoveNotSupportedException e)
             {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+                temp.moveTo(target, StandardCopyOption.REPLACE_EXISTING);
             }
         }
         finally
         {
-            Files.deleteIfExists(temp);
+            temp.deleteIfExists();
+        }
+    }
+
+    static byte[] read(Filepath file) throws IOException
+    {
+        try (InputStream in = file.openInputStream())
+        {
+            return in.readAllBytes();
         }
     }
 
@@ -671,33 +673,29 @@ final class TileCache
     /** Moves tiles of other versions that {@code fallback} lacks into it, then removes those versions. */
     private void mergeOlder(String current, String fallback)
     {
-        File into = versionFolder(fallback);
-        for (File dir : versionDirs())
+        Filepath into = versionFolder(fallback);
+        for (Filepath dir : versionDirs())
         {
-            if (dir.getName().equals(current) || dir.getName().equals(fallback) || !WikiClient.isSafeVersion(dir.getName())
-                || Files.isSymbolicLink(dir.toPath()))
+            String name = dir.getFileName();
+            if (name.equals(current) || name.equals(fallback) || !WikiClient.isSafeVersion(name))
             {
                 continue;
             }
-            List<File> files = new ArrayList<>();
-            collect(dir, files);
-            Path base = dir.toPath();
-            for (File file : files)
+            for (Filepath file : files(dir))
             {
-                File target = new File(into, base.relativize(file.toPath()).toString());
-                if (target.exists())
-                {
-                    continue;
-                }
                 try
                 {
-                    File parent = target.getParentFile();
-                    if (parent.isDirectory() || parent.mkdirs())
+                    // Tiles lie in version/map/zoom.
+                    Filepath zoom = file.getParent();
+                    Filepath map = zoom.getParent();
+                    Filepath target = into.join(map.getFileName(), zoom.getFileName(), file.getFileName());
+                    if (dir.equals(map.getParent()) && !target.exists())
                     {
-                        Files.move(file.toPath(), target.toPath());
+                        target.getParent().createDirectories();
+                        file.moveTo(target);
                     }
                 }
-                catch (IOException e)
+                catch (IOException | RuntimeException e)
                 {
                     log.debug("Could not keep {}", file, e);
                 }
@@ -708,9 +706,9 @@ final class TileCache
 
     private void removeOtherVersions(String keep, String fallback)
     {
-        for (File dir : versionDirs())
+        for (Filepath dir : versionDirs())
         {
-            if (!dir.getName().equals(keep) && !dir.getName().equals(fallback))
+            if (!dir.getFileName().equals(keep) && !dir.getFileName().equals(fallback))
             {
                 deleteTree(dir);
             }
@@ -718,17 +716,17 @@ final class TileCache
     }
 
     /** Snapshot: the disk may change while trimming. */
-    private static final class Entry
+    static final class Entry
     {
-        final File file;
+        final Filepath file;
         final long modified;
         final long size;
 
-        Entry(File file)
+        Entry(Filepath file) throws IOException
         {
             this.file = file;
-            modified = file.lastModified();
-            size = file.length();
+            modified = file.getLastModifiedTime().toMillis();
+            size = file.size();
         }
     }
 
@@ -747,60 +745,72 @@ final class TileCache
 
     private void trimDisk()
     {
-        if (!diskCache || !cacheRoot.isDirectory())
+        if (!diskCache)
         {
             return;
         }
         long counted = diskBytes.get();
-        List<File> files = new ArrayList<>();
-        collect(cacheRoot, files);
-        List<Entry> entries = new ArrayList<>(files.size());
-        long total = 0;
         long now = System.currentTimeMillis();
-        for (File file : files)
+        List<Entry> entries = new ArrayList<>();
+        long total = 0;
+        for (Filepath file : files(cacheRoot))
         {
-            Entry entry = new Entry(file);
-            String name = file.getName();
-            // Also the markers of the removed whole-map download (*.none, complete-*): nothing reads them any more.
-            if (name.endsWith(PART_SUFFIX) && now - entry.modified > PART_STALE_MS || name.endsWith(".none")
-                || name.startsWith("complete-"))
+            String name = file.getFileName();
+            try
             {
-                delete(file);
-                continue;
+                Entry entry = new Entry(file);
+                // Also the markers of the removed whole-map download (*.none, complete-*): nothing reads them any more.
+                if (name.endsWith(PART_SUFFIX) && now - entry.modified > PART_STALE_MS || name.endsWith(".none")
+                    || name.startsWith("complete-"))
+                {
+                    delete(file);
+                    continue;
+                }
+                entries.add(entry);
+                total += entry.size;
             }
-            entries.add(entry);
-            total += entry.size;
+            catch (IOException e)
+            {
+                // Removed meanwhile.
+            }
         }
-        long limit = diskLimitMb * MB;
+        total -= trimOldest(entries, total, diskLimitMb * MB);
+        // Tiles written during the walk still count.
+        diskBytes.addAndGet(total - counted);
+    }
+
+    /** Removes the oldest files until 80% of {@code limit} is left, if over it; returns the bytes removed. */
+    static long trimOldest(List<Entry> entries, long total, long limit)
+    {
+        long removed = 0;
         if (total > limit)
         {
             entries.sort(Comparator.comparingLong((Entry e) -> e.modified));
             for (Entry entry : entries)
             {
-                if (total <= limit * 8 / 10)
+                if (total - removed <= limit * 8 / 10)
                 {
                     break;
                 }
-                if (entry.file.delete())
+                if (delete(entry.file))
                 {
-                    total -= entry.size;
+                    removed += entry.size;
                 }
             }
         }
-        // Tiles written during the walk still count.
-        diskBytes.addAndGet(total - counted);
+        return removed;
     }
 
     /** Background thread: the disk cache was switched off, so its tiles go. */
     private void deleteCachedTiles()
     {
-        if (diskCache || Files.isSymbolicLink(cacheRoot.toPath()))
+        if (diskCache)
         {
             return;
         }
-        for (File dir : versionDirs())
+        for (Filepath dir : versionDirs())
         {
-            if (WikiClient.isSafeVersion(dir.getName()))
+            if (WikiClient.isSafeVersion(dir.getFileName()))
             {
                 deleteTree(dir);
             }
@@ -808,51 +818,65 @@ final class TileCache
         diskBytes.set(0);
     }
 
-    private File[] versionDirs()
+    private List<Filepath> versionDirs()
     {
-        return list(cacheRoot, File::isDirectory);
+        return walk(cacheRoot, 1, dir -> !dir.equals(cacheRoot) && dir.isDirectory());
     }
 
-    private static File[] list(File dir, FileFilter filter)
+    /** Files below {@code dir}; symbolic links are not followed. */
+    static List<Filepath> files(Filepath dir)
     {
-        File[] files = dir.listFiles(filter);
-        return files == null ? new File[0] : files;
+        return walk(dir, Integer.MAX_VALUE, Filepath::isFile);
     }
 
-    private static void collect(File dir, List<File> into)
+    private static List<Filepath> walk(Filepath dir, int depth, Predicate<Filepath> filter)
     {
-        for (File child : list(dir, null))
+        try (Stream<Filepath> found = dir.walk(depth))
         {
-            if (Files.isSymbolicLink(child.toPath()))
-            {
-                continue;
-            }
-            if (child.isDirectory())
-            {
-                collect(child, into);
-            }
-            else
-            {
-                into.add(child);
-            }
+            return found.filter(filter).collect(Collectors.toList());
+        }
+        catch (IOException | UncheckedIOException e)
+        {
+            return Collections.emptyList();
+        }
+    }
+
+    static long modified(Filepath file)
+    {
+        try
+        {
+            return file.getLastModifiedTime().toMillis();
+        }
+        catch (IOException e)
+        {
+            return 0;
         }
     }
 
     /** Never follows symbolic links. */
-    private static void deleteTree(File file)
+    private static void deleteTree(Filepath file)
     {
-        for (File child : Files.isSymbolicLink(file.toPath()) ? new File[0] : list(file, null))
+        try
         {
-            deleteTree(child);
+            file.deleteRecursively();
         }
-        delete(file);
+        catch (IOException e)
+        {
+            log.debug("Could not remove {}", file, e);
+        }
     }
 
-    private static void delete(File file)
+    static boolean delete(Filepath file)
     {
-        if (!file.delete())
+        try
         {
-            log.debug("Could not remove {}", file);
+            file.deleteIfExists();
+            return true;
+        }
+        catch (IOException e)
+        {
+            log.debug("Could not remove {}", file, e);
+            return false;
         }
     }
 }

@@ -3,14 +3,11 @@ package com.hdmapreforged;
 import com.google.gson.Gson;
 import com.google.inject.Provides;
 import java.awt.event.KeyEvent;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -48,7 +45,6 @@ import net.runelite.api.events.PostMenuSort;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
-import net.runelite.client.RuneLite;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -60,6 +56,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.util.Filepath;
 import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.util.Text;
 import okhttp3.OkHttpClient;
@@ -67,6 +64,7 @@ import okhttp3.OkHttpClient;
 @Slf4j
 @PluginDescriptor(
     name = "HD Map Reforged",
+    internalName = "hd-map-reforged",
     description = "A zoomable world map from the OSRS Wiki with teleport, transport, dungeon and Sailing icons, wiki info and links",
     tags = {"map", "world", "worldmap", "wiki", "teleport", "dungeon", "fairy", "spirit", "tree", "sailing"}
 )
@@ -117,7 +115,7 @@ public class HdMapReforgedPlugin extends Plugin
     private ExecutorService dataIo;
     private final AtomicInteger dataGeneration = new AtomicInteger();
     private final AtomicBoolean repaintPending = new AtomicBoolean();
-    private File home;
+    private Filepath home;
     private TileCache tiles;
     private WikiClient wiki;
     private RegionResolver regionResolver;
@@ -190,10 +188,12 @@ public class HdMapReforgedPlugin extends Plugin
         int started = life.incrementAndGet();
         io = Executors.newFixedThreadPool(4, runnable -> daemon(runnable, "HD Map Reforged tiles"));
         dataIo = Executors.newSingleThreadExecutor(runnable -> daemon(runnable, "HD Map Reforged data"));
-        home = new File(RuneLite.RUNELITE_DIR, "hd-map-reforged");
-        tiles = new TileCache(okHttpClient, io, new File(home, "tiles"), this::tileLoaded);
+        home = getPluginDirectory();
+        tiles = new TileCache(okHttpClient, io, home.joinSegment("tiles"), this::tileLoaded);
         configureTiles();
-        wiki = new WikiClient(okHttpClient, gson);
+        WikiCache wikiCache = new WikiCache(home.joinSegment("wiki"));
+        io.execute(wikiCache::trim);
+        wiki = new WikiClient(okHttpClient, gson, wikiCache, io);
         regionResolver = new RegionResolver(tiles);
         try (Reader reader = resource("basemaps.json"))
         {
@@ -221,7 +221,7 @@ public class HdMapReforgedPlugin extends Plugin
         clientToolbar.addNavigation(button);
         party.start(screen.view(), fullScreen.view());
         route.start(screen, fullScreen);
-        route.setRouteLog(new RouteLog(new File(home, "routes.log"), io, config::routeLog));
+        route.setRouteLog(new RouteLog(home.joinSegment("routes.log"), io, config::routeLog));
         route.setSidebar(panel::showRoute, this::showOnMap);
         panel.setTours(route.sidebarTours(panel::refreshTours));
         gameIcons = new MapIconLayer[]{gameIconLayer(screen), gameIconLayer(fullScreen)};
@@ -653,7 +653,7 @@ public class HdMapReforgedPlugin extends Plugin
             }
             log.warn("Ignoring map version setting \"{}\"", configured);
         }
-        KnownVersion known = KnownVersion.read(new File(home, KnownVersion.FILE));
+        KnownVersion known = KnownVersion.read(home.joinSegment(KnownVersion.FILE));
         if (known != null)
         {
             useVersion(known.version, true);
@@ -671,7 +671,7 @@ public class HdMapReforgedPlugin extends Plugin
             }
             if (version != null)
             {
-                KnownVersion.write(new File(home, KnownVersion.FILE), version, System.currentTimeMillis());
+                KnownVersion.write(home.joinSegment(KnownVersion.FILE), version, System.currentTimeMillis());
                 useVersion(version, true);
             }
             else if (known == null)
@@ -752,19 +752,19 @@ public class HdMapReforgedPlugin extends Plugin
         refreshLater();
     }
 
-    private File baseMapsFile(String version)
+    private Filepath baseMapsFile(String version)
     {
-        return WikiClient.isSafeVersion(version) ? new File(new File(home, "basemaps"), version + ".json") : null;
+        return WikiClient.isSafeVersion(version) ? home.join("basemaps", version + ".json") : null;
     }
 
     private BaseMaps readBaseMaps(String version)
     {
-        File file = baseMapsFile(version);
-        if (file == null || !file.isFile() || Files.isSymbolicLink(file.toPath()))
+        Filepath file = baseMapsFile(version);
+        if (file == null || !file.isFile())
         {
             return null;
         }
-        try (Reader reader = utf8(new FileInputStream(file)))
+        try (Reader reader = utf8(file.openInputStream()))
         {
             BaseMaps maps = BaseMaps.parse(gson, reader);
             return maps.isUsable() ? maps : null;
@@ -778,21 +778,16 @@ public class HdMapReforgedPlugin extends Plugin
 
     private void saveBaseMaps(String version, String json)
     {
-        File file = baseMapsFile(version);
+        Filepath file = baseMapsFile(version);
         if (file == null || json == null)
         {
             return;
         }
         try
         {
-            File parent = file.getParentFile();
-            if (!parent.mkdirs() && !parent.isDirectory())
-            {
-                return;
-            }
-            TileCache.writeAtomically(file.toPath(), json.getBytes(StandardCharsets.UTF_8));
+            TileCache.writeAtomically(file, json.getBytes(StandardCharsets.UTF_8));
         }
-        catch (IOException e)
+        catch (IOException | RuntimeException e)
         {
             log.debug("Could not keep the map list of version {}", version, e);
         }
@@ -879,10 +874,10 @@ public class HdMapReforgedPlugin extends Plugin
                 table.read(reader);
             }
         }
-        File cached = regionFile(version);
+        Filepath cached = regionFile(version);
         if (cached.isFile())
         {
-            try (Reader reader = utf8(new FileInputStream(cached)))
+            try (Reader reader = utf8(cached.openInputStream()))
             {
                 table.read(reader);
             }
@@ -894,18 +889,19 @@ public class HdMapReforgedPlugin extends Plugin
         return table;
     }
 
-    private File regionFile(String version)
+    private Filepath regionFile(String version)
     {
-        return new File(new File(home, "regions"), version + ".tsv");
+        return home.join("regions", version + ".tsv");
     }
 
     private void saveRegions(String version, RegionTable table)
     {
         try
         {
-            table.write(regionFile(version), "Wiki map ids showing each overlapping region, map version " + version);
+            TileCache.writeAtomically(regionFile(version), table.text("Wiki map ids showing each overlapping region, "
+                + "map version " + version, false).getBytes(StandardCharsets.UTF_8));
         }
-        catch (IOException e)
+        catch (IOException | RuntimeException e)
         {
             log.debug("Could not save region table", e);
         }

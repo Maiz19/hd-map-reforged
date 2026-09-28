@@ -1,7 +1,6 @@
 package com.hdmapreforged;
 
 import java.awt.Component;
-import java.awt.KeyboardFocusManager;
 import java.awt.Point;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -296,7 +295,7 @@ public final class PartyMap
             if (refused != null)
             {
                 // Dangerous or special worlds are left to the game's own world switcher.
-                SwingUtilities.invokeLater(() -> tell(KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow(),
+                SwingUtilities.invokeLater(() -> tell(client.getCanvas(),
                     "World " + worldId + " " + refused + ". Hop there with the game's world switcher if you mean to."));
                 return;
             }

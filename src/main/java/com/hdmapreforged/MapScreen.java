@@ -17,7 +17,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
@@ -186,6 +186,7 @@ final class MapScreen extends JPanel implements MapView.Listener
         }
 
         search.setToolTipText("Type and press Enter. The button next to it switches between places, monsters and items");
+        FullMapWindow.typable(search);
         search.addActionListener(e -> chooseFirst());
         // Build the search indexes in the background while the user starts typing.
         search.addFocusListener(new java.awt.event.FocusAdapter()
@@ -928,7 +929,7 @@ final class MapScreen extends JPanel implements MapView.Listener
     /** Swing thread only. */
     private Indexes indexes;
     private List<Object> indexesFrom;
-    private Future<Indexes> building;
+    private CompletableFuture<Indexes> building;
     private List<Object> buildingFrom;
 
     private List<Object> indexSources()
@@ -951,7 +952,7 @@ final class MapScreen extends JPanel implements MapView.Listener
         }
         buildingFrom = from;
         Supplier<Indexes> build = builder();
-        building = INDEXER.submit(build::get);
+        building = CompletableFuture.supplyAsync(build, INDEXER);
     }
 
     /** Reads on the Swing thread; the lists are replaced, never changed. */
@@ -984,7 +985,7 @@ final class MapScreen extends JPanel implements MapView.Listener
             return indexes;
         }
         prepareSearch();
-        Future<Indexes> pending = building;
+        CompletableFuture<Indexes> pending = building;
         if (indexes != null && !pending.isDone())
         {
             return indexes;
@@ -994,14 +995,10 @@ final class MapScreen extends JPanel implements MapView.Listener
         buildingFrom = null;
         try
         {
-            indexes = pending.get();
+            indexes = pending.join();
             indexesFrom = pendingFrom;
         }
-        catch (InterruptedException e)
-        {
-            Thread.currentThread().interrupt();
-        }
-        catch (java.util.concurrent.ExecutionException | java.util.concurrent.CancellationException e)
+        catch (java.util.concurrent.CompletionException | java.util.concurrent.CancellationException e)
         {
             log.warn("Could not build the search indexes", e);
         }

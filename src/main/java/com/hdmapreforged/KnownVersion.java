@@ -1,13 +1,10 @@
 package com.hdmapreforged;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.client.util.Filepath;
 
 /** The wiki's map version as last seen, and when it was checked, kept on disk between sessions. */
 @Slf4j
@@ -28,7 +25,7 @@ final class KnownVersion
 
     /** Null when missing or unusable. */
 
-    static KnownVersion read(File file)
+    static KnownVersion read(Filepath file)
     {
         if (!file.isFile())
         {
@@ -36,10 +33,10 @@ final class KnownVersion
         }
         try
         {
-            List<String> lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
-            String version = lines.isEmpty() ? "" : lines.get(0).trim();
-            return lines.size() < 2 || !WikiClient.isSafeVersion(version) ? null
-                : new KnownVersion(version, Long.parseLong(lines.get(1).trim()));
+            String[] lines = new String(TileCache.read(file), StandardCharsets.UTF_8).split("\n");
+            String version = lines[0].trim();
+            return lines.length < 2 || !WikiClient.isSafeVersion(version) ? null
+                : new KnownVersion(version, Long.parseLong(lines[1].trim()));
         }
         catch (IOException | NumberFormatException e)
         {
@@ -48,18 +45,11 @@ final class KnownVersion
         }
     }
 
-    static void write(File file, String version, long checkedAt)
+    static void write(Filepath file, String version, long checkedAt)
     {
         try
         {
-            File parent = file.getParentFile();
-            if (!parent.isDirectory() && !parent.mkdirs())
-            {
-                return;
-            }
-            File temp = new File(parent, file.getName() + ".part");
-            Files.write(temp.toPath(), (version + "\n" + checkedAt + "\n").getBytes(StandardCharsets.UTF_8));
-            Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            TileCache.writeAtomically(file, (version + "\n" + checkedAt + "\n").getBytes(StandardCharsets.UTF_8));
         }
         catch (IOException e)
         {

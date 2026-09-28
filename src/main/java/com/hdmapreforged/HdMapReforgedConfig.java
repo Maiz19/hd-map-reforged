@@ -240,7 +240,8 @@ public interface HdMapReforgedConfig extends Config
     }
 
     @ConfigItem(keyName = "diskCache", name = "Cache tiles on disk", position = 1, section = data,
-        description = "Keep downloaded map tiles in .runelite/hd-map-reforged so they load instantly next time")
+        description = "Keep downloaded map tiles in .runelite/plugin-data/hd-map-reforged so they load instantly next "
+            + "time")
     default boolean diskCache()
     {
         return true;
@@ -590,8 +591,8 @@ public interface HdMapReforgedConfig extends Config
     }
 
     @ConfigItem(keyName = "routeLog", name = "Write routes.log", position = 26, section = route,
-        description = "Keeps the last 30 planned routes in routes.log in the plugin folder (.runelite/hd-map-reforged), "
-            + "for bug reports. Nothing is sent anywhere")
+        description = "Keeps the last 30 planned routes in routes.log in the plugin folder "
+            + "(.runelite/plugin-data/hd-map-reforged), for bug reports. Nothing is sent anywhere")
     default boolean routeLog()
     {
         return false;

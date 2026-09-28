@@ -26,6 +26,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -34,6 +36,7 @@ import java.util.stream.Collectors;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -43,14 +46,17 @@ import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 
-/** Read-only requests to the Old School RuneScape Wiki. Callbacks run on OkHttp threads. */
+/**
+ * Read-only requests to the Old School RuneScape Wiki, answered from {@link WikiCache} when it can. Callbacks run on
+ * background threads.
+ */
 @Slf4j
 final class WikiClient
 {
     static final String WIKI = "https://oldschool.runescape.wiki";
     private static final String API = WIKI + "/api.php";
-    /** Versions are used as folder names: never "." or "..". */
-    private static final Pattern SAFE_VERSION = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]{0,39}");
+    /** Versions are used as folder names: never "." or "..", nor ending in a dot. */
+    private static final Pattern SAFE_VERSION = Pattern.compile("[A-Za-z0-9]([A-Za-z0-9_.-]{0,38}[A-Za-z0-9_-])?");
 
     private static final int MAX_PAGES = 500;
     /** Stands for "the wiki found nothing" in {@link #pages}. */
@@ -61,6 +67,9 @@ final class WikiClient
 
     private final OkHttpClient http;
     private final Gson gson;
+    /** None: every request asks the wiki. */
+    private final WikiCache cache;
+    private final Executor io;
     /** Page titles by query, least recently used first. Synchronized on itself. */
     private final Map<String, String> pages = new LinkedHashMap<String, String>(64, 0.75f, true)
     {
@@ -71,10 +80,12 @@ final class WikiClient
         }
     };
 
-    WikiClient(OkHttpClient http, Gson gson)
+    WikiClient(OkHttpClient http, Gson gson, WikiCache cache, Executor io)
     {
         this.http = http;
         this.gson = gson;
+        this.cache = cache;
+        this.io = io;
     }
 
     static String pageUrl(String title)
@@ -109,7 +120,7 @@ final class WikiClient
     void mapVersion(Consumer<String> callback)
     {
         query(api("action", "query", "meta", "allmessages", "ammessages", "kartographer-map-version",
-            "format", "json", "formatversion", "2"), body -> {
+            "format", "json", "formatversion", "2"), false, body -> {
                 JsonArray messages = gson.fromJson(body, JsonObject.class)
                     .getAsJsonObject("query").getAsJsonArray("allmessages");
                 JsonObject message = messages.get(0).getAsJsonObject();
@@ -127,7 +138,7 @@ final class WikiClient
             none.run();
             return;
         }
-        query(HttpUrl.get("https://maps.runescape.wiki/osrs/versions/" + version + "/basemaps.json"), body -> {
+        query(HttpUrl.get("https://maps.runescape.wiki/osrs/versions/" + version + "/basemaps.json"), false, body -> {
             BaseMaps maps = BaseMaps.parse(gson, new StringReader(body));
             return maps.isUsable() ? () -> callback.accept(maps, body) : none;
         }, Runnable::run, none);
@@ -402,7 +413,7 @@ final class WikiClient
             callback.accept(known);
             return;
         }
-        Runnable load = () -> get(url, MAX_PICTURE_BYTES, bytes -> {
+        Runnable load = () -> get(url, MAX_PICTURE_BYTES, true, bytes -> {
             BufferedImage image = null;
             try
             {
@@ -442,10 +453,11 @@ final class WikiClient
     /** Null for anything but a picture of sane size, checked before decoding. */
     static BufferedImage decode(byte[] bytes) throws IOException
     {
-        try (ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes)))
+        // In memory, as TileCache: ImageIO's default stream may cache to a temporary file.
+        try (ImageInputStream in = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes)))
         {
-            Iterator<ImageReader> readers = in == null ? null : ImageIO.getImageReaders(in);
-            if (readers == null || !readers.hasNext())
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
+            if (!readers.hasNext())
             {
                 return null;
             }
@@ -608,12 +620,17 @@ final class WikiClient
         });
     }
 
-    /** Calls back with the parsed answer, or once with {@code fallback} when there is none. */
     private <T> void query(HttpUrl url, Function<String, T> parse, Consumer<T> callback, T fallback)
     {
+        query(url, true, parse, callback, fallback);
+    }
+
+    /** Calls back with the parsed answer, or once with {@code fallback} when there is none; {@code keep}: cached. */
+    private <T> void query(HttpUrl url, boolean keep, Function<String, T> parse, Consumer<T> callback, T fallback)
+    {
         boolean[] answered = new boolean[1];
-        get(url, body -> {
-            T value = parse.apply(body);
+        get(url, MAX_BODY_BYTES, keep, bytes -> {
+            T value = parse.apply(new String(bytes, StandardCharsets.UTF_8));
             answered[0] = true;
             callback.accept(value);
         }, () -> {
@@ -626,11 +643,72 @@ final class WikiClient
 
     private void get(HttpUrl url, Consumer<String> onBody, Runnable onFailure)
     {
-        get(url, MAX_BODY_BYTES, bytes -> onBody.accept(new String(bytes, StandardCharsets.UTF_8)), onFailure);
+        get(url, MAX_BODY_BYTES, true, bytes -> onBody.accept(new String(bytes, StandardCharsets.UTF_8)), onFailure);
     }
 
-    /** {@code onFailure} runs when no body comes (failure, an error answer, too large) or {@code onBody} throws. */
-    private void get(HttpUrl url, int limit, Consumer<byte[]> onBody, Runnable onFailure)
+    /**
+     * A fresh kept answer, else the wiki's (then kept), else a stale kept one. {@code onFailure} runs when no body
+     * comes (failure, an error answer, too large) or {@code onBody} throws.
+     */
+    private void get(HttpUrl url, int limit, boolean keep, Consumer<byte[]> onBody, Runnable onFailure)
+    {
+        WikiCache kept = keep ? cache : null;
+        if (kept == null)
+        {
+            fetch(url, limit, onBody, onFailure);
+            return;
+        }
+        try
+        {
+            io.execute(() -> {
+                byte[] fresh = kept.get(url, false);
+                if (fresh != null)
+                {
+                    deliver(fresh, onBody, onFailure);
+                    return;
+                }
+                fetch(url, limit, bytes -> {
+                    if (deliver(bytes, onBody, onFailure))
+                    {
+                        kept.put(url, bytes);
+                    }
+                }, () -> {
+                    byte[] stale = kept.get(url, true);
+                    if (stale == null)
+                    {
+                        onFailure.run();
+                    }
+                    else
+                    {
+                        deliver(stale, onBody, onFailure);
+                    }
+                });
+            });
+        }
+        catch (RejectedExecutionException e)
+        {
+            // Shutting down.
+            onFailure.run();
+        }
+    }
+
+    /** False when {@code onBody} threw; {@code onFailure} has run then. */
+    private static boolean deliver(byte[] bytes, Consumer<byte[]> onBody, Runnable onFailure)
+    {
+        try
+        {
+            onBody.accept(bytes);
+            return true;
+        }
+        catch (RuntimeException e)
+        {
+            log.debug("Unusable wiki answer", e);
+            onFailure.run();
+            return false;
+        }
+    }
+
+    private void fetch(HttpUrl url, int limit, Consumer<byte[]> onBody, Runnable onFailure)
     {
         http.newCall(new Request.Builder().url(url).build()).enqueue(new Callback()
         {

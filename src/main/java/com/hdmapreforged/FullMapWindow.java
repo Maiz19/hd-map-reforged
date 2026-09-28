@@ -9,11 +9,9 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.KeyboardFocusManager;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
-import java.awt.Toolkit;
 import java.awt.Window;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -31,6 +29,7 @@ import javax.swing.JComponent;
 import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JWindow;
+import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import javax.swing.text.JTextComponent;
 import lombok.RequiredArgsConstructor;
@@ -74,7 +73,6 @@ final class FullMapWindow implements MapView.WindowControls
     /** Fractions of the game view, or null for the default. */
     private Rectangle2D relative;
     private boolean maximised;
-    private boolean keysWatched;
     private final ComponentListener follower = new ComponentAdapter()
     {
         @Override
@@ -112,6 +110,14 @@ final class FullMapWindow implements MapView.WindowControls
             maximised = (Boolean) decoded[1];
         }
         screen.setScreenLayout(MapScreen.Layout.FULL);
+        screen.view().addMouseListener(new MouseAdapter()
+        {
+            @Override
+            public void mouseReleased(MouseEvent e)
+            {
+                SwingUtilities.invokeLater(FullMapWindow.this::giveKeysBack);
+            }
+        });
     }
 
     @Override
@@ -166,13 +172,14 @@ final class FullMapWindow implements MapView.WindowControls
     private boolean hasKeys()
     {
         Component owner = focusOwner();
-        return panel != null ? owner != null && SwingUtilities.isDescendingFrom(owner, panel)
-            : window != null && window.isFocused();
+        return owner != null && inside(owner);
     }
 
-    private static Component focusOwner()
+    /** Null unless the window the map is in has the keyboard. */
+    private Component focusOwner()
     {
-        return KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        Window host = panel != null ? SwingUtilities.getWindowAncestor(panel) : window;
+        return host == null ? null : host.getFocusOwner();
     }
 
     private static boolean menuOpen()
@@ -204,7 +211,6 @@ final class FullMapWindow implements MapView.WindowControls
         {
             panel = frame();
             panel.setVisible(false);
-            closeKeys();
         }
         if (panel.getParent() != root.getLayeredPane())
         {
@@ -277,7 +283,6 @@ final class FullMapWindow implements MapView.WindowControls
                 }
             });
             window.setContentPane(frame());
-            closeKeys();
         }
         watch(canvas);
         place();
@@ -295,31 +300,27 @@ final class FullMapWindow implements MapView.WindowControls
     {
         removeOutline();
         pending = null;
-        boolean hadKeys;
         if (panel != null && panel.isVisible())
         {
-            hadKeys = hasKeys();
+            boolean hadKeys = hasKeys();
             panel.setVisible(false);
             Container parent = panel.getParent();
             if (parent != null)
             {
                 parent.repaint();
             }
+            Canvas canvas = watchedCanvas;
+            if (hadKeys && canvas != null && canvas.isShowing())
+            {
+                // Within the one window, as RuneLite gives the game the keyboard.
+                canvas.requestFocusInWindow();
+            }
         }
         else if (window != null && window.isVisible())
         {
-            hadKeys = window.isFocused();
-            window.setVisible(false);
+            // No longer focusable, a focused window hands the keyboard back to the game's (setFocusableWindowState).
             window.setFocusableWindowState(false);
-        }
-        else
-        {
-            return;
-        }
-        Canvas canvas = watchedCanvas;
-        if (hadKeys && canvas != null && canvas.isShowing())
-        {
-            canvas.requestFocus();
+            window.setVisible(false);
         }
     }
 
@@ -332,76 +333,59 @@ final class FullMapWindow implements MapView.WindowControls
         screen.refresh();
     }
 
-    /** Escape and the map key close the map while it has the keyboard. Added once (the focus manager keeps every copy). */
-    private void closeKeys()
+    /**
+     * Escape and the map key close the map while one of its parts has the keyboard (the game sees no keys then). While
+     * typing or in a menu, keys are theirs: Escape closes the menu, letters type.
+     */
+    private boolean closeKey(KeyEvent e)
     {
-        if (keysWatched)
-        {
-            return;
-        }
-        keysWatched = true;
-        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(keys);
-        Toolkit.getDefaultToolkit().addAWTEventListener(clicks, java.awt.AWTEvent.MOUSE_EVENT_MASK);
-    }
-
-    private final java.awt.KeyEventDispatcher keys = e -> {
-        if (!isOpen() || !hasKeys() || e.getID() != KeyEvent.KEY_PRESSED)
-        {
-            return false;
-        }
-        Component owner = focusOwner();
-        // While typing or in a menu, keys are theirs: Escape closes the menu, letters type.
-        if (menuOpen() || owner instanceof JTextComponent && (e.getKeyCode() != KeyEvent.VK_ESCAPE
+        Object owner = e.getSource();
+        if (!isOpen() || menuOpen() || owner instanceof JTextComponent && (e.getKeyCode() != KeyEvent.VK_ESCAPE
             || !((JTextComponent) owner).getText().isEmpty()))
         {
             return false;
         }
-        if (e.getKeyCode() == KeyEvent.VK_ESCAPE || FullMapWindow.this.isMapKey.test(e))
+        if (e.getKeyCode() == KeyEvent.VK_ESCAPE || isMapKey.test(e))
         {
             close();
             return true;
         }
         return false;
-    };
-
-    /** After a click on the map outside a text field or menu, the keyboard goes back to the game. */
-    private final java.awt.event.AWTEventListener clicks = event -> {
-        if (!(event instanceof MouseEvent) || !(event.getSource() instanceof Component) || !isOpen())
-        {
-            return;
-        }
-        Component source = (Component) event.getSource();
-        boolean field = source instanceof JTextComponent;
-        if (event.getID() == MouseEvent.MOUSE_PRESSED && field && inside(source))
-        {
-            typeHere((JTextComponent) source);
-        }
-        else if (event.getID() == MouseEvent.MOUSE_RELEASED && hasKeys() && !field && inside(source))
-        {
-            SwingUtilities.invokeLater(this::giveKeysBack);
-        }
-    };
-
-    /** A click in a text field: the window takes the keyboard for typing there. */
-    private void typeHere(JTextComponent field)
-    {
-        if (window != null && !window.getFocusableWindowState())
-        {
-            window.setFocusableWindowState(true);
-        }
-        SwingUtilities.invokeLater(field::requestFocus);
     }
 
+    /** In a window kept unfocusable (see open), a click in {@code field} lets the window take the keyboard to type. */
+    static void typable(JTextComponent field)
+    {
+        field.addMouseListener(new MouseAdapter()
+        {
+            @Override
+            public void mousePressed(MouseEvent e)
+            {
+                Window host = SwingUtilities.getWindowAncestor(field);
+                if (host != null && !host.getFocusableWindowState())
+                {
+                    host.setFocusableWindowState(true);
+                    SwingUtilities.invokeLater(field::requestFocus);
+                }
+            }
+        });
+    }
+
+    /** After a click on the map itself, the keyboard goes back to the game. */
     private void giveKeysBack()
     {
         Canvas canvas = watchedCanvas;
-        if (isOpen() && hasKeys() && canvas != null && canvas.isShowing() && !menuOpen())
+        if (!isOpen() || !hasKeys() || menuOpen() || canvas == null || !canvas.isShowing())
         {
-            canvas.requestFocus();
-            if (window != null)
-            {
-                window.setFocusableWindowState(false);
-            }
+            return;
+        }
+        if (window != null)
+        {
+            window.setFocusableWindowState(false);
+        }
+        else
+        {
+            canvas.requestFocusInWindow();
         }
     }
 
@@ -409,6 +393,12 @@ final class FullMapWindow implements MapView.WindowControls
     {
         JPanel root = new JPanel(new BorderLayout())
         {
+            @Override
+            protected boolean processKeyBinding(KeyStroke ks, KeyEvent e, int condition, boolean pressed)
+            {
+                return pressed && closeKey(e) || super.processKeyBinding(ks, e, condition, pressed);
+            }
+
             @Override
             protected void paintComponent(Graphics graphics)
             {
@@ -660,12 +650,6 @@ final class FullMapWindow implements MapView.WindowControls
 
     void dispose()
     {
-        if (keysWatched)
-        {
-            keysWatched = false;
-            KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(keys);
-            Toolkit.getDefaultToolkit().removeAWTEventListener(clicks);
-        }
         close();
         unwatch();
         if (window != null)
