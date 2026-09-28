@@ -94,13 +94,11 @@ final class FriendsWidget implements MapView.Widget
         return open ? selected : -1;
     }
 
-    private java.util.function.IntConsumer hop = world -> { };
     private BooleanSupplier canJoin = () -> false;
     private Runnable join = () -> { };
 
-    void setActions(java.util.function.IntConsumer hop, BooleanSupplier canJoin, Runnable join)
+    void setActions(BooleanSupplier canJoin, Runnable join)
     {
-        this.hop = hop;
         this.canJoin = canJoin;
         this.join = join;
     }
@@ -332,18 +330,6 @@ final class FriendsWidget implements MapView.Widget
             int mine = myWorld.getAsInt();
             boolean elsewhere = mine > 0 && row.world != mine;
             double right = x0 + panelW - (cramped ? 34 : 56);
-            if (elsewhere)
-            {
-                double bw = rowMetrics.stringWidth("Hop") + 14;
-                RoundRectangle2D button = new RoundRectangle2D.Double(right - bw, top + 6, bw, 19, 8, 8);
-                g.setColor(clicks.hovered(button) ? new Color(90, 140, 80) : new Color(60, 100, 55));
-                g.fill(button);
-                g.setColor(Color.WHITE);
-                g.drawString("Hop", (float) (button.getX() + 7), (float) (top + 20));
-                int target = row.world;
-                clicks.add(button, () -> hop.accept(target), "Hop to world " + row.world);
-                right -= bw + 6;
-            }
             g.setColor(elsewhere ? OTHER_WORLD : WORLD);
             g.drawString(world, (float) (right - rowMetrics.stringWidth(world)), (float) (top + 20));
         }

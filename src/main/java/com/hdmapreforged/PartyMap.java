@@ -31,14 +31,11 @@ import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.Player;
 import net.runelite.api.Skill;
-import net.runelite.api.World;
-import net.runelite.api.WorldType;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.StatChanged;
-import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.client.callback.ClientThread;
@@ -54,7 +51,6 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
 import net.runelite.client.game.SkillIconManager;
 import net.runelite.client.game.SpriteManager;
-import net.runelite.client.game.WorldService;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.party.PartyMember;
 import net.runelite.client.party.PartyService;
@@ -67,8 +63,6 @@ import net.runelite.client.plugins.party.messages.LocationUpdate;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.AsyncBufferedImage;
 import net.runelite.client.util.Text;
-import net.runelite.client.util.WorldUtil;
-import net.runelite.http.api.worlds.WorldResult;
 
 /**
  * Party members on the map through RuneLite's party service. Nothing is sent outside a party, and a party is never
@@ -91,7 +85,6 @@ public final class PartyMap
     private final HdMapReforgedConfig config;
     private final ItemManager itemManager;
     private final SkillIconManager skillIcons;
-    private final WorldService worldService;
     private final ClientThread clientThread;
     private final SpriteManager spriteManager;
     private final OverlayManager overlays;
@@ -153,7 +146,7 @@ public final class PartyMap
                 FriendsWidget widget = new FriendsWidget(this::markers, this::groupMembers, party::isInParty,
                     () -> myWorld, config::partyFriendsTab, view::focus, view::repaint);
                 widget.setDrops(id -> members.drops(id, System.currentTimeMillis()));
-                widget.setActions(this::hop, () -> !party.isInParty() && lastParty() != null, () -> join(view));
+                widget.setActions(() -> !party.isInParty() && lastParty() != null, () -> join(view));
                 MapView.ClickCatcher catcher = (at, projection) -> clickedMember(widget, at, projection);
                 view.addClickCatcher(catcher);
                 MouseAdapter pointing = new MouseAdapter()
@@ -209,7 +202,6 @@ public final class PartyMap
         MESSAGES.forEach(wsClient::unregisterMessage);
         members.clear();
         throttle.reset();
-        clientThread.invoke(() -> hopTarget = null);
         SwingUtilities.invokeLater(() -> {
             if (idleCheck != null)
             {
@@ -232,7 +224,6 @@ public final class PartyMap
     public void onGameTick(GameTick event)
     {
         myWorld = client.getWorld();
-        continueHop();
     }
 
     private volatile long hoveredMember = -1;
@@ -272,67 +263,6 @@ public final class PartyMap
     }
 
     private final Map<Integer, BufferedImage> sprites = new ConcurrentHashMap<>();
-    private World hopTarget;
-    private int hopAttempts;
-
-    /** Only on a user click, as RuneLite's World Hopper: opens the world switcher, then hops on a later tick. */
-    void hop(int worldId)
-    {
-        clientThread.invoke(() -> {
-            if (client.getGameState() != GameState.LOGGED_IN || client.getWorld() == worldId)
-            {
-                return;
-            }
-            WorldResult result = worldService.getWorlds();
-            net.runelite.http.api.worlds.World world = result == null ? null : result.findWorld(worldId);
-            if (world == null)
-            {
-                return;
-            }
-            boolean member = client.getWorldType().contains(WorldType.MEMBERS)
-                || client.getVarpValue(VarPlayerID.ACCOUNT_CREDIT) > 0;
-            String refused = PartyMapRules.hopRefusal(world.getTypes(), member);
-            if (refused != null)
-            {
-                // Dangerous or special worlds are left to the game's own world switcher.
-                SwingUtilities.invokeLater(() -> tell(client.getCanvas(),
-                    "World " + worldId + " " + refused + ". Hop there with the game's world switcher if you mean to."));
-                return;
-            }
-            World target = client.createWorld();
-            target.setActivity(world.getActivity());
-            target.setAddress(world.getAddress());
-            target.setId(world.getId());
-            target.setPlayerCount(world.getPlayers());
-            target.setLocation(world.getLocation());
-            target.setTypes(WorldUtil.toWorldTypes(world.getTypes()));
-            hopTarget = target;
-            hopAttempts = 0;
-        });
-    }
-
-    private void continueHop()
-    {
-        World target = hopTarget;
-        if (target == null)
-        {
-            return;
-        }
-        // Expires a few ticks after the click.
-        if (++hopAttempts > 5)
-        {
-            hopTarget = null;
-            return;
-        }
-        if (client.getWidget(InterfaceID.Worldswitcher.BUTTONS) == null)
-        {
-            client.openWorldHopper();
-            return;
-        }
-        client.hopToWorld(target);
-        hopTarget = null;
-    }
-
     private final FriendsWidget.Images sidebarImages = new FriendsWidget.Images()
     {
         @Override
@@ -388,12 +318,6 @@ public final class PartyMap
             public FriendsWidget.Images images()
             {
                 return sidebarImages;
-            }
-
-            @Override
-            public void hop(int world)
-            {
-                PartyMap.this.hop(world);
             }
 
             @Override
@@ -478,10 +402,6 @@ public final class PartyMap
     public void onGameStateChanged(GameStateChanged event)
     {
         GameState state = event.getGameState();
-        if (state != GameState.LOGGED_IN && state != GameState.LOADING)
-        {
-            hopTarget = null;
-        }
         if (state == GameState.LOGGED_IN)
         {
             loggedOutSince = null;

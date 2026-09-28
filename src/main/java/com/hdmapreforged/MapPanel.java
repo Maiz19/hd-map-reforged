@@ -54,7 +54,6 @@ final class MapPanel extends PluginPanel
 
         FriendsWidget.Images images();
 
-        void hop(int world);
 
         boolean canRejoin();
 
@@ -304,7 +303,7 @@ final class MapPanel extends PluginPanel
 
     private static final String[] PAGES = {"Items", "Worn", "Skills"};
 
-    /** A member's details: on map / hop buttons, their orbs and one page of what they share. */
+    /** A member's details: an on-map button and their world, their orbs and one page of what they share. */
     private JComponent details(FriendsWidget.Row row, int me)
     {
         JPanel box = column();
@@ -315,7 +314,9 @@ final class MapPanel extends PluginPanel
         actions.add(show);
         if (row.world > 0 && me > 0 && row.world != me)
         {
-            actions.add(button("Hop W" + row.world, () -> friends.hop(row.world), "Hop to their world, " + row.world));
+            JLabel world = new JLabel("World " + row.world, JLabel.CENTER);
+            world.setToolTipText("On another world: hop there with the game's world switcher");
+            actions.add(world);
         }
         box.add(fitted(actions));
         box.add(Box.createVerticalStrut(6));

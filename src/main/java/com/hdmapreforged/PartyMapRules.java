@@ -1,9 +1,7 @@
 package com.hdmapreforged;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Objects;
-import net.runelite.http.api.worlds.WorldType;
 import net.runelite.api.coords.WorldPoint;
 
 /**
@@ -61,37 +59,6 @@ final class PartyMapRules
     static boolean leaveOnShutdown(String joinedCode, String currentPassphrase)
     {
         return joinedCode != null && joinedCode.equals(currentPassphrase);
-    }
-
-    /** Why "Hop" refuses a world, or null; risky or special worlds are left to the game's own world switcher. */
-    static String hopRefusal(Collection<WorldType> types, boolean member)
-    {
-        types = types == null ? Collections.emptyList() : types;
-        for (WorldType type : types)
-        {
-            switch (type)
-            {
-                case PVP:
-                case HIGH_RISK:
-                case BOUNTY:
-                    return "is a PvP or high-risk world";
-                case DEADMAN:
-                    return "is a Deadman world";
-                case SEASONAL:
-                case FRESH_START_WORLD:
-                case BETA_WORLD:
-                case TOURNAMENT:
-                case NOSAVE_MODE:
-                    return "is a special world (seasonal, beta or tournament)";
-                case PVP_ARENA:
-                case LAST_MAN_STANDING:
-                case QUEST_SPEEDRUNNING:
-                    return "is a minigame world";
-                default:
-                    break;
-            }
-        }
-        return !member && types.contains(WorldType.MEMBERS) ? "is a members world" : null;
     }
 
     /** {@link #shouldSend} runs on the client thread; party events reset and force it from other threads. */

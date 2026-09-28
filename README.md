@@ -8,7 +8,7 @@ Open it from the sidebar or a configured hotkey. You can also enable it on the w
 
 Map tiles and searches use `maps.runescape.wiki` and `oldschool.runescape.wiki`. These sites receive your IP address. Tiles and wiki answers are cached locally (wiki answers are asked again after a week), and the plugin checks for map updates.
 
-While you are in a RuneLite party, the plugin can share your character name, location and world, inventory, equipment, skill levels and experience, run and special attack energy, and valuable drops with its members. Sharing can be turned off in the settings. Joining a party and hopping worlds require your click.
+While you are in a RuneLite party, the plugin can share your character name, location and world, inventory, equipment, skill levels and experience, run and special attack energy, and valuable drops with its members. Sharing can be turned off in the settings. Joining a party requires your click.
 
 Map tiles and wiki content: © [OSRS Wiki](https://oldschool.runescape.wiki) / Weird Gloop, [CC BY-NC-SA 3.0](https://weirdgloop.org/licensing/). World map lists: RuneLite contributors. Game data: Jagex, via OpenRS2.
 
