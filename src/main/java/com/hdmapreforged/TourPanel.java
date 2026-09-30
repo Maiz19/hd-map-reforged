@@ -252,6 +252,16 @@ final class TourPanel
             });
             fastest.setEnabled(!ordering);
             go.add(SearchResults.tip(fastest, "Let the route planner put the stops in the quickest order from where you are"));
+            go.add(Box.createHorizontalStrut(4));
+            JCheckBox loop = new JCheckBox("Loop", current.loop);
+            loop.setOpaque(false);
+            loop.setToolTipText("After the last stop, start again at the first");
+            loop.addActionListener(e -> {
+                tours.set(tours.indexOf(current), current.looping(loop.isSelected()));
+                actions.save(tours, current.name);
+                refresh();
+            });
+            go.add(loop);
         }
         panel.add(go);
         return panel;
@@ -280,7 +290,7 @@ final class TourPanel
     private JButton small(String text, Runnable action, String tip, boolean usable)
     {
         JButton button = SearchResults.tip(SearchResults.button(text, action), tip);
-        button.setMargin(new java.awt.Insets(0, 4, 0, 4));
+        button.setMargin(new Insets(0, 4, 0, 4));
         button.setEnabled(usable && !ordering);
         return button;
     }

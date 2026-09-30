@@ -55,8 +55,6 @@ public final class PartyMap
     private final SkillIconManager skillIcons;
     private final ClientThread clientThread;
     private final SpriteManager spriteManager;
-    private final OverlayManager overlays;
-    private final MouseManager mouse;
 
     private final PartyMapMembers members = new PartyMapMembers();
     private final PartyMapRules.Throttle throttle = new PartyMapRules.Throttle();
@@ -77,8 +75,6 @@ public final class PartyMap
     /** The party this plugin joined for the user, or null. */
     private volatile String joinedCode;
     private volatile long lastChange = Long.MIN_VALUE / 2;
-    /** The user left themselves: no rejoin reminder until the client restarts. */
-    private volatile boolean leftByUser;
     private Timer idleCheck;
     private volatile boolean sentOnline;
     private volatile Long loggedOutSince;
@@ -92,10 +88,7 @@ public final class PartyMap
     void start(MapView... maps)
     {
         MESSAGES.forEach(wsClient::registerMessage);
-        migrateLegacyCode();
         eventBus.register(this);
-        overlays.add(rejoin);
-        mouse.registerMouseListener(rejoin.clicks);
         for (int id : Orbs.SPRITES)
         {
             spriteManager.getSpriteAsync(id, 0, image -> {
@@ -164,9 +157,6 @@ public final class PartyMap
     {
         sendOffline();
         eventBus.unregister(this);
-        removeReminder();
-        overlays.remove(rejoin);
-        mouse.unregisterMouseListener(rejoin.clicks);
         MESSAGES.forEach(wsClient::unregisterMessage);
         members.clear();
         throttle.reset();
@@ -340,9 +330,9 @@ public final class PartyMap
 
     void tick(WorldPoint location, int tick)
     {
-        if (!members.isEmpty())
+        if (!members.isEmpty() && tick % 5 == 0)
         {
-            // Fading follows the clock.
+            // Markers fade over minutes: every few seconds is enough (animations have their own ticker).
             repaint();
         }
         // Run and special attack energy alone are no reason to send.
@@ -373,12 +363,9 @@ public final class PartyMap
         if (state == GameState.LOGGED_IN)
         {
             loggedOutSince = null;
-            askToJoin();
         }
         else if (state == GameState.LOGIN_SCREEN)
         {
-            askedThisLogin = false;
-            removeReminder();
             if (loggedOutSince == null)
             {
                 loggedOutSince = System.currentTimeMillis();
@@ -618,7 +605,6 @@ public final class PartyMap
     {
         if (event.getPartyId() != null)
         {
-            removeReminder();
             if (event.getPassphrase() != null && !event.getPassphrase().isEmpty())
             {
                 // Whoever joined it (this plugin or RuneLite's Party panel).
@@ -626,12 +612,6 @@ public final class PartyMap
             }
         }
         String ours = joinedCode;
-        if (event.getPartyId() == null && ours != null
-            && System.currentTimeMillis() - lastChange >= PartyMapRules.CHANGE_COOLDOWN_MILLIS)
-        {
-            // Left in RuneLite's Party panel: no reminder either.
-            leftByUser = true;
-        }
         if (ours != null && !ours.equals(event.getPassphrase()))
         {
             // A party joined by hand is the user's own and never left for them.
@@ -707,10 +687,7 @@ public final class PartyMap
         }
         if (current != null)
         {
-            friends.add("Leave party").addActionListener(a -> {
-                leftByUser = true;
-                leave();
-            });
+            friends.add("Leave party").addActionListener(a -> leave());
         }
         if (friends.getMenuComponentCount() == 0)
         {
@@ -720,27 +697,10 @@ public final class PartyMap
         popup.add(friends);
     }
 
-    /** An earlier version's group code (a passphrase too), moved to {@link #LAST_KEY}. */
-    static final String LEGACY_KEY = "partyGroupCode";
-
     String lastParty()
     {
         String last = configManager.getConfiguration(HdMapReforgedConfig.GROUP, LAST_KEY);
         return last == null || last.trim().isEmpty() ? null : last.trim();
-    }
-
-    void migrateLegacyCode()
-    {
-        String legacy = configManager.getConfiguration(HdMapReforgedConfig.GROUP, LEGACY_KEY);
-        if (legacy == null)
-        {
-            return;
-        }
-        if (!legacy.trim().isEmpty() && lastParty() == null)
-        {
-            configManager.setConfiguration(HdMapReforgedConfig.GROUP, LAST_KEY, legacy.trim());
-        }
-        configManager.unsetConfiguration(HdMapReforgedConfig.GROUP, LEGACY_KEY);
     }
 
     void join(Component view)
@@ -784,38 +744,9 @@ public final class PartyMap
         return true;
     }
 
-    private boolean askedThisLogin;
-    private final RejoinButton rejoin = new RejoinButton(() -> {
-        String code = lastParty();
-        removeReminder();
-        if (code != null)
-        {
-            SwingUtilities.invokeLater(() -> joinCode(null, code));
-        }
-    }, this::removeReminder);
-
-    /** After login, out of any party: a "Rejoin party" button; nothing is joined without its click. */
-    private void askToJoin()
-    {
-        String code = lastParty();
-        if (askedThisLogin || !config.partyAskOnLogin() || !PartyMapRules.askToJoin(code,
-            client.getGameState() == GameState.LOGGED_IN, party.getPartyPassphrase(), leftByUser, lastChange,
-            System.currentTimeMillis()))
-        {
-            return;
-        }
-        askedThisLogin = true;
-        rejoin.setShowing(true);
-    }
-
     private static void tell(Component to, String message)
     {
         JOptionPane.showMessageDialog(to, message, "HD Map Reforged", JOptionPane.INFORMATION_MESSAGE);
-    }
-
-    private void removeReminder()
-    {
-        rejoin.setShowing(false);
     }
 
     private void leave()

@@ -12,9 +12,9 @@ import lombok.*;
 import net.runelite.api.*;
 
 /**
- * The map over the game view: a panel in the game window's layered pane, or a window of its own. Not drawn in the
- * game because Stretched Mode would blur it. Takes the keyboard only while its search is typed in; never moves,
- * resizes or focuses the client window. Swing thread only.
+ * The map over the game view: a window of its own, owned by the client's (RuneLite's own window is never changed).
+ * Not drawn in the game because Stretched Mode would blur it. Takes the keyboard only while its search is typed in;
+ * never moves, resizes or focuses the client window. Swing thread only.
  */
 final class FullMapWindow implements MapView.WindowControls
 {
@@ -23,8 +23,6 @@ final class FullMapWindow implements MapView.WindowControls
     private static final int EDGE = 8;
     /** Thicker than the sides: easy to take hold of. */
     private static final int BOTTOM = 12;
-    private static final Color OUTLINE = new Color(220, 190, 110);
-    private static final int OUTLINE_WIDTH = 2;
     private static final int MIN_WIDTH = 320;
     private static final int MIN_HEIGHT = 240;
     private static final Color FRAME = new Color(30, 32, 37);
@@ -39,11 +37,6 @@ final class FullMapWindow implements MapView.WindowControls
     private final Consumer<String> saveBounds;
     private final Predicate<KeyEvent> isMapKey;
     private JWindow window;
-    private JPanel panel;
-    /** While dragging over the game: the outline's edges, and where the map goes once let go. */
-    private JComponent[] outline;
-    private Rectangle pending;
-    private final BooleanSupplier inGameWindow;
     private Canvas watchedCanvas;
     private Window watchedFrame;
     /** Fractions of the game view, or null for the default. */
@@ -71,9 +64,8 @@ final class FullMapWindow implements MapView.WindowControls
     };
 
     FullMapWindow(Client client, MapScreen screen, String savedBounds, Consumer<String> saveBounds,
-        Predicate<KeyEvent> isMapKey, BooleanSupplier inGameWindow)
+        Predicate<KeyEvent> isMapKey)
     {
-        this.inGameWindow = inGameWindow;
         this.client = client;
         this.screen = screen;
         this.saveBounds = saveBounds;
@@ -104,102 +96,29 @@ final class FullMapWindow implements MapView.WindowControls
 
     boolean isOpen()
     {
-        return panel != null ? panel.isVisible() : window != null && window.isVisible();
-    }
-
-    private Rectangle hostBounds()
-    {
-        return panel == null ? window.getBounds() : panel.isShowing() ? onScreen(panel) : panel.getBounds();
+        return window != null && window.isVisible();
     }
 
     private void setHostBounds(Rectangle screenBounds)
     {
-        if (panel != null)
-        {
-            Container parent = panel.getParent();
-            Point at = screenBounds.getLocation();
-            SwingUtilities.convertPointFromScreen(at, parent);
-            // The game is a native surface with a hole cut where the map is; moving does not refill the old hole but
-            // hiding does, so hide, move, show.
-            boolean shown = panel.isVisible();
-            Component typing = focusOwner();
-            panel.setVisible(false);
-            panel.setBounds(at.x, at.y, screenBounds.width, screenBounds.height);
-            panel.setVisible(shown);
-            if (shown && typing != null && inside(typing))
-            {
-                typing.requestFocusInWindow();
-            }
-            parent.invalidate();
-            parent.validate();
-            parent.repaint();
-            return;
-        }
         window.setBounds(screenBounds);
         window.validate();
     }
 
-    private boolean inside(Component c)
-    {
-        return panel != null ? SwingUtilities.isDescendingFrom(c, panel)
-            : window != null && SwingUtilities.getWindowAncestor(c) == window;
-    }
-
+    /** Whether the map's window has the keyboard. */
     private boolean hasKeys()
     {
-        Component owner = focusOwner();
-        return owner != null && inside(owner);
-    }
-
-    /** Null unless the window the map is in has the keyboard. */
-    private Component focusOwner()
-    {
-        Window host = panel != null ? SwingUtilities.getWindowAncestor(panel) : window;
-        return host == null ? null : host.getFocusOwner();
+        return window != null && window.getFocusOwner() != null;
     }
 
     private static boolean menuOpen()
     {
-        return javax.swing.MenuSelectionManager.defaultManager().getSelectedPath().length > 0;
+        return MenuSelectionManager.defaultManager().getSelectedPath().length > 0;
     }
 
     private static Rectangle onScreen(Component c)
     {
         return new Rectangle(c.getLocationOnScreen(), c.getSize());
-    }
-
-    /** A panel in the game window's layered pane, so the desktop sees one window. */
-    private void openInGameWindow(Canvas canvas)
-    {
-        if (window != null)
-        {
-            // Hidden first, which hands the keyboard back to the game.
-            close();
-            window.dispose();
-            window = null;
-        }
-        javax.swing.JRootPane root = SwingUtilities.getRootPane(canvas);
-        if (root == null)
-        {
-            return;
-        }
-        if (panel == null)
-        {
-            panel = frame();
-            panel.setVisible(false);
-        }
-        if (panel.getParent() != root.getLayeredPane())
-        {
-            root.getLayeredPane().add(panel, JLayeredPane.PALETTE_LAYER);
-        }
-        watch(canvas);
-        place();
-        if (!panel.isVisible())
-        {
-            panel.setVisible(true);
-            panel.revalidate();
-            screen.opened();
-        }
     }
 
     void toggle()
@@ -221,26 +140,6 @@ final class FullMapWindow implements MapView.WindowControls
         {
             return;
         }
-        if (inGameWindow.getAsBoolean())
-        {
-            openInGameWindow(canvas);
-            return;
-        }
-        if (panel != null)
-        {
-            // Switched to a window of its own while open in the game window: close it there properly first.
-            if (panel.isVisible())
-            {
-                close();
-            }
-            Container parent = panel.getParent();
-            if (parent != null)
-            {
-                parent.remove(panel);
-                parent.repaint();
-            }
-        }
-        panel = null;
         if (window == null)
         {
             window = new JWindow(SwingUtilities.getWindowAncestor(canvas));
@@ -250,10 +149,10 @@ final class FullMapWindow implements MapView.WindowControls
             window.setAutoRequestFocus(false);
             // Never focusable, so the desktop (KWin) keeps the game active; only while typing (see typeHere).
             window.setFocusableWindowState(false);
-            window.addWindowFocusListener(new java.awt.event.WindowAdapter()
+            window.addWindowFocusListener(new WindowAdapter()
             {
                 @Override
-                public void windowLostFocus(java.awt.event.WindowEvent e)
+                public void windowLostFocus(WindowEvent e)
                 {
                     window.setFocusableWindowState(false);
                 }
@@ -274,25 +173,7 @@ final class FullMapWindow implements MapView.WindowControls
     @Override
     public void close()
     {
-        removeOutline();
-        pending = null;
-        if (panel != null && panel.isVisible())
-        {
-            boolean hadKeys = hasKeys();
-            panel.setVisible(false);
-            Container parent = panel.getParent();
-            if (parent != null)
-            {
-                parent.repaint();
-            }
-            Canvas canvas = watchedCanvas;
-            if (hadKeys && canvas != null && canvas.isShowing())
-            {
-                // Within the one window, as RuneLite gives the game the keyboard.
-                canvas.requestFocusInWindow();
-            }
-        }
-        else if (window != null && window.isVisible())
+        if (window != null && window.isVisible())
         {
             // No longer focusable, a focused window hands the keyboard back to the game's (setFocusableWindowState).
             window.setFocusableWindowState(false);
@@ -351,17 +232,9 @@ final class FullMapWindow implements MapView.WindowControls
     private void giveKeysBack()
     {
         Canvas canvas = watchedCanvas;
-        if (!isOpen() || !hasKeys() || menuOpen() || canvas == null || !canvas.isShowing())
-        {
-            return;
-        }
-        if (window != null)
+        if (isOpen() && hasKeys() && !menuOpen() && canvas != null && canvas.isShowing())
         {
             window.setFocusableWindowState(false);
-        }
-        else
-        {
-            canvas.requestFocusInWindow();
         }
     }
 
@@ -408,7 +281,7 @@ final class FullMapWindow implements MapView.WindowControls
     private void place()
     {
         Canvas canvas = watchedCanvas;
-        if (window == null && panel == null || canvas == null)
+        if (window == null || canvas == null)
         {
             return;
         }
@@ -419,7 +292,7 @@ final class FullMapWindow implements MapView.WindowControls
         }
         Rectangle view = onScreen(canvas);
         Rectangle bounds = maximised ? view : fit(relative, view);
-        if (!hostBounds().equals(bounds))
+        if (!window.getBounds().equals(bounds))
         {
             setHostBounds(bounds);
         }
@@ -443,84 +316,6 @@ final class FullMapWindow implements MapView.WindowControls
         return new Rectangle(x, y, width, height);
     }
 
-    /**
-     * Over the game only an outline follows the mouse and the map moves once let go: moving it every step leaves black
-     * where it was, as the game does not redraw that quickly enough.
-     */
-    private void dragTo(Rectangle bounds)
-    {
-        if (panel != null && !panel.isVisible())
-        {
-            return;
-        }
-        if (panel == null || panel.getParent() == null)
-        {
-            setFromScreen(bounds);
-            return;
-        }
-        pending = bounds;
-        Container parent = panel.getParent();
-        if (outline == null)
-        {
-            outline = new JComponent[4];
-            for (int i = 0; i < outline.length; i++)
-            {
-                JPanel edge = new JPanel();
-                edge.setBackground(OUTLINE);
-                outline[i] = edge;
-                parent.add(edge, JLayeredPane.DRAG_LAYER);
-            }
-        }
-        Point at = bounds.getLocation();
-        SwingUtilities.convertPointFromScreen(at, parent);
-        int w = bounds.width;
-        int h = bounds.height;
-        Rectangle[] edges = {
-            new Rectangle(at.x, at.y, w, OUTLINE_WIDTH),
-            new Rectangle(at.x, at.y + h - OUTLINE_WIDTH, w, OUTLINE_WIDTH),
-            new Rectangle(at.x, at.y, OUTLINE_WIDTH, h),
-            new Rectangle(at.x + w - OUTLINE_WIDTH, at.y, OUTLINE_WIDTH, h)};
-        for (int i = 0; i < outline.length; i++)
-        {
-            if (!outline[i].getBounds().equals(edges[i]))
-            {
-                // An edge only shows where showing it cuts a hole (see setHostBounds).
-                outline[i].setVisible(false);
-                outline[i].setBounds(edges[i]);
-                outline[i].setVisible(true);
-            }
-        }
-    }
-
-    private void dragDone()
-    {
-        removeOutline();
-        if (pending != null)
-        {
-            Rectangle to = pending;
-            pending = null;
-            setFromScreen(to);
-        }
-    }
-
-    private void removeOutline()
-    {
-        if (outline != null)
-        {
-            for (JComponent edge : outline)
-            {
-                Container parent = edge.getParent();
-                if (parent != null)
-                {
-                    edge.setVisible(false);
-                    parent.remove(edge);
-                    parent.repaint(edge.getX(), edge.getY(), edge.getWidth(), edge.getHeight());
-                }
-            }
-            outline = null;
-        }
-    }
-
     private void setFromScreen(Rectangle bounds)
     {
         Canvas canvas = watchedCanvas;
@@ -532,7 +327,7 @@ final class FullMapWindow implements MapView.WindowControls
         Rectangle fitted = fit(fraction(bounds, view), view);
         relative = fraction(fitted, view);
         maximised = false;
-        if (!hostBounds().equals(fitted))
+        if (!window.getBounds().equals(fitted))
         {
             setHostBounds(fitted);
         }
@@ -633,13 +428,6 @@ final class FullMapWindow implements MapView.WindowControls
             window.dispose();
             window = null;
         }
-        if (panel != null && panel.getParent() != null)
-        {
-            Container parent = panel.getParent();
-            parent.remove(panel);
-            parent.repaint();
-        }
-        panel = null;
     }
 
     /** A mouse drag that moves or resizes the map; saved once let go. */
@@ -651,7 +439,7 @@ final class FullMapWindow implements MapView.WindowControls
         void grab(MouseEvent e)
         {
             grab = e.getLocationOnScreen();
-            start = hostBounds();
+            start = window.getBounds();
         }
 
         @Override
@@ -660,7 +448,6 @@ final class FullMapWindow implements MapView.WindowControls
             if (grab != null)
             {
                 grab = null;
-                dragDone();
                 save();
             }
         }
@@ -705,7 +492,7 @@ final class FullMapWindow implements MapView.WindowControls
                         maximised = false;
                     }
                     Point now = e.getLocationOnScreen();
-                    dragTo(new Rectangle(start.x + now.x - grab.x, start.y + now.y - grab.y, start.width, start.height));
+                    setFromScreen(new Rectangle(start.x + now.x - grab.x, start.y + now.y - grab.y, start.width, start.height));
                 }
 
                 @Override
@@ -733,7 +520,7 @@ final class FullMapWindow implements MapView.WindowControls
             double cy = getHeight() / 2.0;
             for (int i = -3; i <= 3; i++)
             {
-                g.fill(new java.awt.geom.Ellipse2D.Double(cx + i * 7 - 1.5, cy - 1.5, 3, 3));
+                g.fill(new Ellipse2D.Double(cx + i * 7 - 1.5, cy - 1.5, 3, 3));
             }
             g.dispose();
         }
@@ -814,7 +601,7 @@ final class FullMapWindow implements MapView.WindowControls
             {
                 r.height = Math.max(MIN_HEIGHT, start.height + dy);
             }
-            dragTo(r);
+            setFromScreen(r);
         }
     }
 }

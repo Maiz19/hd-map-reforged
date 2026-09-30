@@ -277,7 +277,7 @@ final class InfoCard extends JPanel implements Scrollable
 
     private void buildNearest()
     {
-        add(text("Nearest teleports to " + nearestTo.getX() + ", " + nearestTo.getY(), Color.WHITE, true));
+        add(text("Nearest teleports to this spot", Color.WHITE, true));
         add(grey("As the crow flies, from where each one lands. Walking routes may differ."));
         if (nearest.isEmpty())
         {
@@ -297,8 +297,8 @@ final class InfoCard extends JPanel implements Scrollable
         title.setIcon(new ImageIcon(PoiIcons.image(poi.type, 16)));
         title.setIconTextGap(6);
         add(title);
-        String where = poi.type.displayName + (poi.map != null ? " · " + poi.map.name : "") + " · "
-            + poi.location.getX() + ", " + poi.location.getY() + (poi.location.getPlane() > 0 ? ", floor " + poi.location.getPlane() : "");
+        String where = poi.type.displayName + (poi.map != null ? " · " + poi.map.name : "")
+            + (poi.location.getPlane() > 0 ? " · floor " + poi.location.getPlane() : "");
         add(grey(where));
 
         // Laid out by wrap.

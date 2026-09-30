@@ -50,11 +50,6 @@ final class Floating extends JPanel
         revalidate();
     }
 
-    boolean isFolded()
-    {
-        return folded;
-    }
-
     void setFolded(boolean fold)
     {
         folded = fold;

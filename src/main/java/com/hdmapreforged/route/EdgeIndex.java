@@ -1,18 +1,15 @@
 package com.hdmapreforged.route;
 
+import lombok.*;
 import java.util.*;
 
 /** The jumps starting at each node, as indices into a list of edges; looked up without boxing. Immutable once made. */
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 final class EdgeIndex
 {
     private final IntMap slots;
     private final int[][] lists;
 
-    private EdgeIndex(IntMap slots, int[][] lists)
-    {
-        this.slots = slots;
-        this.lists = lists;
-    }
 
     /** By where they start (not {@link Edge#ANYWHERE}), each index plus {@code offset}. */
     static EdgeIndex of(List<Edge> edges, int offset)

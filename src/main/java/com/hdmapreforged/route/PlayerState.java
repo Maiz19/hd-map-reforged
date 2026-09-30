@@ -15,12 +15,21 @@ public final class PlayerState
     public final int[] boats;
     public final boolean running;
     public final boolean inHouse;
+    /** In a house: where its portal leads out; outside: one's own house portal. -1 when not known. */
     public final int houseExit;
     public final boolean ownHouse;
     public final Set<String> houseFeatures;
+    /** House teleports land inside (the house option Teleport Inside, as it is at first); else at the house portal. */
+    public final boolean landsInside;
 
     public PlayerState(ItemSnapshot items, int sailingLevel, boolean sailing, int[] boats, boolean running, boolean inHouse,
         int houseExit, boolean ownHouse, Set<String> houseFeatures)
+    {
+        this(items, sailingLevel, sailing, boats, running, inHouse, houseExit, ownHouse, houseFeatures, true);
+    }
+
+    public PlayerState(ItemSnapshot items, int sailingLevel, boolean sailing, int[] boats, boolean running, boolean inHouse,
+        int houseExit, boolean ownHouse, Set<String> houseFeatures, boolean landsInside)
     {
         this.items = items;
         this.sailingLevel = sailingLevel;
@@ -31,11 +40,13 @@ public final class PlayerState
         this.houseExit = houseExit;
         this.ownHouse = ownHouse;
         this.houseFeatures = Collections.unmodifiableSet(new LinkedHashSet<>(houseFeatures));
+        this.landsInside = landsInside;
     }
 
     /** The same, with other items or Sailing. */
     public PlayerState with(ItemSnapshot items, int sailingLevel, boolean sailing)
     {
-        return new PlayerState(items, sailingLevel, sailing, boats, running, inHouse, houseExit, ownHouse, houseFeatures);
+        return new PlayerState(items, sailingLevel, sailing, boats, running, inHouse, houseExit, ownHouse, houseFeatures,
+            landsInside);
     }
 }

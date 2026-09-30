@@ -40,14 +40,6 @@ final class PartyMapRules
             : currentPassphrase != null ? Join.CONFIRM_LEAVE_OTHER : Join.JOIN;
     }
 
-    /** Only reminds; joining always waits for the user's click. */
-    static boolean askToJoin(String code, boolean loggedIn, String currentPassphrase, boolean leftByUser,
-        long lastChange, long now)
-    {
-        return code != null && loggedIn && currentPassphrase == null && !leftByUser
-            && now - lastChange >= CHANGE_COOLDOWN_MILLIS;
-    }
-
     /** Only a party this plugin joined; parties the user joined elsewhere are never left. */
     static boolean leaveIdle(String joinedCode, String currentPassphrase, Long loggedOutSince, long now)
     {

@@ -46,7 +46,7 @@ final class MapScreen extends JPanel implements MapView.Listener
     private final JTextField search = new JTextField()
     {
         @Override
-        protected void paintComponent(java.awt.Graphics g)
+        protected void paintComponent(Graphics g)
         {
             super.paintComponent(g);
             if (getText().isEmpty() && !isFocusOwner())
@@ -147,7 +147,7 @@ final class MapScreen extends JPanel implements MapView.Listener
         });
         card.setItemSearch(npcs::findItem);
         cardScroll = scroll(card);
-        for (Floating floating : new Floating[]{cardFloat, npcFloat, toursFloat})
+        for (Floating floating : new Floating[]{cardFloat, npcFloat, toursFloat, houseFloat})
         {
             floating.addPropertyChangeListener("folded", e -> placeFloatingCard());
         }
@@ -155,16 +155,28 @@ final class MapScreen extends JPanel implements MapView.Listener
         search.setToolTipText("Type and press Enter. The button next to it switches between places, monsters and items");
         FullMapWindow.typable(search);
         search.addActionListener(e -> chooseFirst());
-        // Build the search indexes in the background while the user starts typing.
-        search.addFocusListener(new java.awt.event.FocusAdapter()
+        // Clicked again: what the field holds shows at once, not only after more typing.
+        search.addMouseListener(new MouseAdapter()
         {
             @Override
-            public void focusGained(java.awt.event.FocusEvent e)
+            public void mousePressed(MouseEvent e)
+            {
+                if (results == null || !results.isVisible())
+                {
+                    showResults();
+                }
+            }
+        });
+        // Build the search indexes in the background while the user starts typing.
+        search.addFocusListener(new FocusAdapter()
+        {
+            @Override
+            public void focusGained(FocusEvent e)
             {
                 prepareSearch();
             }
         });
-        search.getDocument().addDocumentListener(new javax.swing.event.DocumentListener()
+        search.getDocument().addDocumentListener(new DocumentListener()
         {
             @Override
             public void insertUpdate(DocumentEvent e)
@@ -387,6 +399,33 @@ final class MapScreen extends JPanel implements MapView.Listener
     }
 
     private final JPanel npcPanel = new JPanel(new BorderLayout());
+    private final JPanel housePanel = new JPanel(new BorderLayout());
+    private final Floating houseFloat = new Floating("Your house", () -> showHouse(null));
+
+    /** The "Your house" panel: over the game in a panel of its own, elsewhere in the card; null closes it. */
+    void showHouse(IntFunction<JComponent> section)
+    {
+        if (layout == Layout.FULL)
+        {
+            showFloating(housePanel, houseFloat, section, JLayeredPane.PALETTE_LAYER + 1);
+            return;
+        }
+        showSection(section);
+    }
+
+    /** The "Your house" panel built again, only where it shows. */
+    void updateHouse(IntFunction<JComponent> section)
+    {
+        if (layout != Layout.FULL)
+        {
+            card.updateExtra(section, section);
+        }
+        else if (houseFloat.getParent() != null && houseFloat.isVisible())
+        {
+            // Only one the user opened: a panel never shown yet counts as visible in Swing.
+            showHouse(section);
+        }
+    }
 
     /** A panel of its own over the game, in a scroll pane made on first use. */
     private void showFloating(JPanel panel, Floating floating, IntFunction<JComponent> section, Integer layer)
@@ -444,10 +483,14 @@ final class MapScreen extends JPanel implements MapView.Listener
                 bottomY - toursHeight, FLOATING_WIDTH, toursHeight);
             toursFloat.revalidate();
         }
-        if (npcFloat.isVisible())
+        for (Floating floating : new Floating[]{npcFloat, houseFloat})
         {
-            npcFloat.setBounds(12, 90, FLOATING_WIDTH, fit(npcFloat, npcPanel, h - 90 - 70));
-            npcFloat.revalidate();
+            if (floating.isVisible())
+            {
+                floating.setBounds(12, 90, FLOATING_WIDTH, fit(floating, floating == npcFloat ? npcPanel : housePanel,
+                    h - 90 - 70));
+                floating.revalidate();
+            }
         }
         cardFloat.revalidate();
     }
@@ -527,12 +570,13 @@ final class MapScreen extends JPanel implements MapView.Listener
 
     void setData(BaseMaps baseMaps, List<Poi> pois, List<PoiLoader.Place> labels)
     {
-        setData(baseMaps, pois, java.util.Collections.emptySet(), labels);
+        setData(baseMaps, pois, Collections.emptySet(), labels);
     }
 
     /** {@code hidden}: icons kept for the planner but not drawn. */
-    void setData(BaseMaps baseMaps, List<Poi> pois, Set<Poi> hidden, List<PoiLoader.Place> labels)
+    void setData(BaseMaps wikiMaps, List<Poi> pois, Set<Poi> hidden, List<PoiLoader.Place> labels)
     {
+        BaseMaps baseMaps = wikiMaps;
         Poi previous = view.selected();
         syncing = true;
         maps.setModel(new DefaultComboBoxModel<>(baseMaps.all().toArray(new BaseMap[0])));
@@ -589,7 +633,7 @@ final class MapScreen extends JPanel implements MapView.Listener
         view.focus(poi);
     }
 
-    void setRegionCheck(java.util.function.BiConsumer<List<WorldPoint>, Consumer<java.util.Map<WorldPoint, BaseMap>>> regionCheck)
+    void setRegionCheck(BiConsumer<List<WorldPoint>, Consumer<Map<WorldPoint, BaseMap>>> regionCheck)
     {
         npcs.setRegionCheck(regionCheck);
     }
@@ -605,11 +649,6 @@ final class MapScreen extends JPanel implements MapView.Listener
         npcs.setStopAdder(adder);
     }
 
-    void findNpc(String name)
-    {
-        npcs.findMonster(name);
-    }
-
     void findItem(String name)
     {
         npcs.findItem(name);
@@ -623,28 +662,6 @@ final class MapScreen extends JPanel implements MapView.Listener
     KindIndex.Kind kind(String label)
     {
         return indexes().kinds.all().stream().filter(kind -> kind.label.equalsIgnoreCase(label)).findFirst().orElse(null);
-    }
-
-    /** Development previews. */
-    void lookAtResult(int index)
-    {
-        npcs.lookAt(index);
-    }
-
-    void searchTab(String tab)
-    {
-        npcs.showTab(tab);
-    }
-
-    boolean findKind(String query)
-    {
-        List<KindIndex.Kind> found = indexes().kinds.find(query, 1);
-        if (found.isEmpty())
-        {
-            return false;
-        }
-        npcs.showKind(found.get(0), this::placeName);
-        return true;
     }
 
     void setWindowControls(MapView.WindowControls controls)
@@ -786,7 +803,7 @@ final class MapScreen extends JPanel implements MapView.Listener
         {
             return;
         }
-        for (java.awt.Component item : menu.getComponents())
+        for (Component item : menu.getComponents())
         {
             if (item instanceof JMenuItem && item.isEnabled())
             {
@@ -882,7 +899,7 @@ final class MapScreen extends JPanel implements MapView.Listener
 
     /** Builds search indexes off the Swing thread (slow on the first key otherwise). */
     private static final ThreadPoolExecutor INDEXER = new ThreadPoolExecutor(
-        1, 1, 30, java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.LinkedBlockingQueue<>(), r -> {
+        1, 1, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), r -> {
             Thread thread = new Thread(r, "HD Map search index");
             thread.setDaemon(true);
             return thread;
@@ -901,7 +918,7 @@ final class MapScreen extends JPanel implements MapView.Listener
 
     private List<Object> indexSources()
     {
-        return java.util.Arrays.asList(view.pois(), view.searchExtras(), MapIconLoader.skillSpots(), view.labels(),
+        return Arrays.asList(view.pois(), view.searchExtras(), MapIconLoader.skillSpots(), view.labels(),
             view.maps());
     }
 
@@ -965,7 +982,7 @@ final class MapScreen extends JPanel implements MapView.Listener
             indexes = pending.join();
             indexesFrom = pendingFrom;
         }
-        catch (java.util.concurrent.CompletionException | java.util.concurrent.CancellationException e)
+        catch (CompletionException | CancellationException e)
         {
             log.warn("Could not build the search indexes", e);
         }
@@ -975,10 +992,10 @@ final class MapScreen extends JPanel implements MapView.Listener
     /** No hits: while the first build failed. */
     private static Indexes emptyIndexes()
     {
-        KindIndex kinds = KindIndex.build(java.util.Collections.emptyList(), java.util.Collections.emptyList(),
-            java.util.Collections.emptyList());
-        return new Indexes(kinds, SearchIndex.build(java.util.Collections.emptyList(), java.util.Collections.emptyList(),
-            java.util.Collections.emptyList(), java.util.Collections.emptyList(), kinds, point -> null));
+        KindIndex kinds = KindIndex.build(Collections.emptyList(), Collections.emptyList(),
+            Collections.emptyList());
+        return new Indexes(kinds, SearchIndex.build(Collections.emptyList(), Collections.emptyList(),
+            Collections.emptyList(), Collections.emptyList(), kinds, point -> null));
     }
 
     private JPopupMenu wikiResults(String typed, boolean items)
@@ -986,7 +1003,7 @@ final class MapScreen extends JPanel implements MapView.Listener
         JPopupMenu menu = new JPopupMenu();
         JMenuItem pending = menu.add(disabled("Searching the wiki…"));
         Consumer<String> find = items ? npcs::findItem : npcs::findMonster;
-        Consumer<List<String>> show = titles -> javax.swing.SwingUtilities.invokeLater(() -> {
+        Consumer<List<String>> show = titles -> SwingUtilities.invokeLater(() -> {
             if (menu != results)
             {
                 return;

@@ -1,5 +1,7 @@
 package com.hdmapreforged;
 
+import java.text.*;
+import net.runelite.api.*;
 import java.awt.*;
 import java.awt.geom.*;
 import java.awt.image.*;
@@ -53,7 +55,7 @@ final class FriendsWidget implements MapView.Widget
     private static final int WIDTH = 256;
     static final int LEFT = 12;
     private static final int ROW_HEIGHT = 22;
-    private static final java.text.NumberFormat AMOUNT = java.text.NumberFormat.getIntegerInstance();
+    private static final NumberFormat AMOUNT = NumberFormat.getIntegerInstance();
 
     private final Supplier<List<PartyMapMembers.Marker>> party;
     private final Supplier<List<Member>> group;
@@ -71,7 +73,7 @@ final class FriendsWidget implements MapView.Widget
     private LongFunction<PartyMapMembers.Gear> gear = id -> null;
     private Images images;
 
-    private LongFunction<List<PartyMapMembers.Drop>> drops = id -> java.util.Collections.emptyList();
+    private LongFunction<List<PartyMapMembers.Drop>> drops = id -> Collections.emptyList();
 
     void setDrops(LongFunction<List<PartyMapMembers.Drop>> drops)
     {
@@ -173,10 +175,10 @@ final class FriendsWidget implements MapView.Widget
         {
             return group.get();
         }
-        catch (java.util.ConcurrentModificationException e)
+        catch (ConcurrentModificationException e)
         {
             // Changed on another thread while read; the next frame has them.
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
         }
     }
 
@@ -435,10 +437,10 @@ final class FriendsWidget implements MapView.Widget
         {
             return;
         }
-        int hp = net.runelite.api.Skill.HITPOINTS.ordinal();
-        int prayer = net.runelite.api.Skill.PRAYER.ordinal();
+        int hp = Skill.HITPOINTS.ordinal();
+        int prayer = Skill.PRAYER.ordinal();
         double gap = (width - 4 * Orbs.WIDTH) / 3.0;
-        java.util.function.IntFunction<BufferedImage> sprites = images == null ? id -> null : images::sprite;
+        IntFunction<BufferedImage> sprites = images == null ? id -> null : images::sprite;
         // Hitpoints, prayer, run energy, special attack: value and most.
         int[][] orbs = {{shared.boosted[hp], shared.levels[hp]}, {shared.boosted[prayer], shared.levels[prayer]},
             {shared.run, 100}, {shared.special, 100}};
@@ -468,8 +470,8 @@ final class FriendsWidget implements MapView.Widget
             String text = "+" + AMOUNT.format(drop.amount);
             double tx = x0 + panelW - 14 - metrics.stringWidth(text);
             double ty = start + (showing.size() - 1 - k) * 18 - rise * 60;
-            java.awt.Composite old = g.getComposite();
-            g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, Math.max(0, alpha)));
+            Composite old = g.getComposite();
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0, alpha)));
             BufferedImage icon = images == null ? null : images.skill(drop.skill);
             if (icon != null)
             {

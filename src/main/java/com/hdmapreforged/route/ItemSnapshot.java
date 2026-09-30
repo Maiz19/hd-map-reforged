@@ -1,8 +1,10 @@
 package com.hdmapreforged.route;
 
+import lombok.*;
 import java.util.*;
 
 /** Items carried, runes a worn staff gives without limit, and the bank as last seen (null if unseen). Immutable. */
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ItemSnapshot
 {
     private static final Map<String, Integer> NAMES = new HashMap<>();
@@ -35,12 +37,6 @@ public final class ItemSnapshot
     private final Set<Integer> unlimited;
     private final Map<Integer, Long> bank;
 
-    private ItemSnapshot(Map<Integer, Long> carried, Set<Integer> unlimited, Map<Integer, Long> bank)
-    {
-        this.carried = carried;
-        this.unlimited = unlimited;
-        this.bank = bank;
-    }
 
     public static ItemSnapshot of(Map<Integer, Long> carried, Set<Integer> unlimited, Map<Integer, Long> bank)
     {

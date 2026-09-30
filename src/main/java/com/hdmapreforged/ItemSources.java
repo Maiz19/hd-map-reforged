@@ -1,5 +1,6 @@
 package com.hdmapreforged;
 
+import lombok.*;
 import com.google.gson.*;
 import java.util.*;
 import java.util.regex.*;
@@ -9,6 +10,7 @@ import net.runelite.api.coords.*;
 /** Where an item can be had (spawns, shops with stock, drops), parsed from wiki answers; {@link WikiClient#item} asks. */
 final class ItemSources
 {
+    @RequiredArgsConstructor
     static final class Store
     {
         final String shop;
@@ -19,14 +21,9 @@ final class ItemSources
         WorldPoint point;
         int mapId = -1;
 
-        Store(String shop, String stock, String price)
-        {
-            this.shop = shop;
-            this.stock = stock;
-            this.price = price;
-        }
     }
 
+    @RequiredArgsConstructor
     static final class Drop
     {
         final String monster;
@@ -38,12 +35,6 @@ final class ItemSources
         final List<String> lines = new ArrayList<>();
         double chance;
 
-        Drop(String monster, String how, boolean npc)
-        {
-            this.monster = monster;
-            this.how = how;
-            this.npc = npc;
-        }
     }
 
     static final int LIMIT = 1000;
@@ -121,6 +112,7 @@ final class ItemSources
         return new ArrayList<>(shops.values());
     }
 
+    @RequiredArgsConstructor
     static final class Ware
     {
         final String item;
@@ -129,13 +121,6 @@ final class ItemSources
         /** "Pot.png", or empty. */
         final String image;
 
-        Ware(String item, String stock, String price, String image)
-        {
-            this.item = item;
-            this.stock = stock;
-            this.price = price;
-            this.image = image;
-        }
     }
 
     static String shopQuery(String shop)

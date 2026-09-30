@@ -1,5 +1,6 @@
 package com.hdmapreforged;
 
+import lombok.*;
 import java.io.*;
 import java.util.*;
 import java.util.regex.*;
@@ -12,6 +13,7 @@ import net.runelite.api.coords.*;
  * from the game's map_icons.tsv; ours only where the game has none. Our entrances and passages are the planner's only.
  */
 @Slf4j
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 final class MapData
 {
     /** In order of layers, with the planner's passages among them. */
@@ -22,15 +24,6 @@ final class MapData
     final List<MapIconLoader.Icon> icons;
     final List<MapIconLoader.Entry> iconEntries;
 
-    private MapData(List<Poi> pois, Set<Poi> hidden, List<PoiLoader.Place> labels, List<MapIconLoader.Icon> icons,
-        List<MapIconLoader.Entry> iconEntries)
-    {
-        this.pois = pois;
-        this.hidden = hidden;
-        this.labels = labels;
-        this.icons = icons;
-        this.iconEntries = iconEntries;
-    }
 
     /** Every place the map must know the right wiki map for. */
     List<WorldPoint> points()

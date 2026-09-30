@@ -1,5 +1,6 @@
 package com.hdmapreforged;
 
+import lombok.*;
 import com.google.gson.*;
 import java.awt.image.*;
 import java.io.*;
@@ -19,6 +20,7 @@ import okhttp3.*;
  * background threads.
  */
 @Slf4j
+@RequiredArgsConstructor
 final class WikiClient
 {
     static final String WIKI = "https://oldschool.runescape.wiki";
@@ -48,13 +50,6 @@ final class WikiClient
         }
     };
 
-    WikiClient(OkHttpClient http, Gson gson, WikiCache cache, Executor io)
-    {
-        this.http = http;
-        this.gson = gson;
-        this.cache = cache;
-        this.io = io;
-    }
 
     static String pageUrl(String title)
     {
@@ -219,12 +214,12 @@ final class WikiClient
         return query == null || !query.has("pages") ? new JsonArray() : query.getAsJsonArray("pages");
     }
 
-    /** The page's thumbnail if it is one of the wiki's own images, else null. */
-    private static HttpUrl thumbnail(JsonObject page)
+    /** The page's picture at {@code size}: the address is built here, only the file's name comes from the answer. */
+    private static HttpUrl thumbnail(JsonObject page, int size)
     {
-        HttpUrl image = page.has("thumbnail") ? HttpUrl.parse(text(page.getAsJsonObject("thumbnail"), "source"))
-            : null;
-        return image != null && image.host().equals(HttpUrl.get(WIKI).host()) ? image : null;
+        String name = page.has("pageimage") ? ItemSources.imageFile(text(page, "pageimage")) : "";
+        return name.isEmpty() ? null : HttpUrl.get(WIKI).newBuilder().addPathSegments("images/thumb")
+            .addPathSegment(name).addPathSegment(size + "px-" + name).build();
     }
 
     private static String text(JsonElement object, String key)
@@ -342,9 +337,8 @@ final class WikiClient
         {
             return;
         }
-        HttpUrl url = api("action", "query", "prop", "pageimages", "piprop", "thumbnail",
-            "pithumbsize", Integer.toString(size), "pilimit", "50", "format", "json", "formatversion", "2",
-            "titles", String.join("|", wanted));
+        HttpUrl url = api("action", "query", "prop", "pageimages", "piprop", "name", "pilimit", "50", "format", "json",
+            "formatversion", "2", "titles", String.join("|", wanted));
         get(url, body -> {
             JsonObject query = answer(body);
             if (query == null || !query.has("pages"))
@@ -363,7 +357,7 @@ final class WikiClient
             for (JsonElement element : query.getAsJsonArray("pages"))
             {
                 JsonObject page = element.getAsJsonObject();
-                HttpUrl image = thumbnail(page);
+                HttpUrl image = thumbnail(page, size);
                 if (image != null && page.has("title"))
                 {
                     String key = asked.getOrDefault(text(page, "title"), text(page, "title"));
@@ -463,13 +457,12 @@ final class WikiClient
 
     void pageImage(String title, int size, Consumer<BufferedImage> callback)
     {
-        HttpUrl url = api("action", "query", "prop", "pageimages", "piprop", "thumbnail",
-            "pithumbsize", Integer.toString(size), "redirects", "1", "format", "json", "formatversion", "2",
-            "titles", title);
+        HttpUrl url = api("action", "query", "prop", "pageimages", "piprop", "name", "redirects", "1", "format", "json",
+            "formatversion", "2", "titles", title);
         boolean[] answered = new boolean[1];
         get(url, body -> {
             JsonObject page = firstPage(body);
-            HttpUrl image = page == null ? null : thumbnail(page);
+            HttpUrl image = page == null ? null : thumbnail(page, size);
             answered[0] = true;
             if (image == null)
             {

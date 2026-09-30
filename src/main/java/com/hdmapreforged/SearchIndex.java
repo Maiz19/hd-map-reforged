@@ -1,11 +1,13 @@
 package com.hdmapreforged;
 
+import lombok.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.regex.*;
 import net.runelite.api.coords.*;
 
 /** The place search: every typed word must fit the name or its place, in any order, a small typo forgiven. */
+@RequiredArgsConstructor
 final class SearchIndex
 {
     enum Type
@@ -56,10 +58,6 @@ final class SearchIndex
 
     private final List<Hit> hits;
 
-    SearchIndex(List<Hit> hits)
-    {
-        this.hits = hits;
-    }
 
     static SearchIndex build(List<PoiLoader.Place> labels, List<BaseMap> maps, List<Poi> pois, List<Poi> gameIcons,
         KindIndex kinds, Function<WorldPoint, String> placeName)

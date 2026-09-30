@@ -1,5 +1,6 @@
 package com.hdmapreforged;
 
+import lombok.*;
 import java.io.*;
 import java.util.*;
 import net.runelite.api.coords.*;
@@ -7,16 +8,12 @@ import net.runelite.api.coords.*;
 /** A bundled table: a {@code #}-prefixed header of tab-separated column names, then rows and {@code #} comments. */
 final class Tsv
 {
+    @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
     static final class Row
     {
         final String comment;
         private final Map<String, String> columns;
 
-        private Row(String comment, Map<String, String> columns)
-        {
-            this.comment = comment;
-            this.columns = columns;
-        }
 
         boolean isComment()
         {

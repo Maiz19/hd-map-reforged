@@ -36,13 +36,6 @@ final class Tour
         {
             return isKind() ? kind.equals(other.kind) : !other.isKind() && point.equals(other.point);
         }
-
-        @Override
-        public String toString()
-        {
-            return isKind() ? name : name + "  (" + point.getX() + ", " + point.getY()
-                + (point.getPlane() > 0 ? ", floor " + point.getPlane() : "") + ")";
-        }
     }
 
     /** The fastest order is solved exactly over all of them. */
@@ -52,11 +45,19 @@ final class Tour
 
     final String name;
     final List<Stop> stops;
+    /** After the last stop, the first again. */
+    final boolean loop;
 
     Tour(String name, List<Stop> stops)
     {
+        this(name, stops, false);
+    }
+
+    Tour(String name, List<Stop> stops, boolean loop)
+    {
         this.name = name;
         this.stops = new ArrayList<>(stops);
+        this.loop = loop;
     }
 
     static String unique(List<Tour> tours, String name)
@@ -82,12 +83,17 @@ final class Tour
     Tour withoutRepeats()
     {
         return new Tour(name, IntStream.range(0, stops.size()).filter(i -> !repeats(i)).mapToObj(stops::get)
-            .collect(Collectors.toList()));
+            .collect(Collectors.toList()), loop);
     }
 
     Tour renamed(String newName)
     {
-        return new Tour(newName, stops);
+        return new Tour(newName, stops, loop);
+    }
+
+    Tour looping(boolean again)
+    {
+        return new Tour(name, stops, again);
     }
 
     /** As the crow flies, same floor first; the first place when {@code near} is unknown. */
@@ -117,13 +123,13 @@ final class Tour
         return best;
     }
 
-    /** Per route "# route\tname", then per stop "x y plane\tname" or "-\tname\tkind". */
+    /** Per route "# route\tname" ("\tloop" when it loops), then per stop "x y plane\tname" or "-\tname\tkind". */
     static String encode(List<Tour> tours)
     {
         StringBuilder text = new StringBuilder();
         for (Tour tour : tours)
         {
-            text.append(HEADER).append(clean(tour.name)).append('\n');
+            text.append(HEADER).append(clean(tour.name)).append(tour.loop ? "\tloop\n" : "\n");
             for (Stop stop : tour.stops)
             {
                 if (stop.isKind())
@@ -151,6 +157,7 @@ final class Tour
             return tours;
         }
         String name = null;
+        boolean loop = false;
         List<Stop> stops = new ArrayList<>();
         for (String line : text.split("\n"))
         {
@@ -158,9 +165,11 @@ final class Tour
             {
                 if (name != null)
                 {
-                    tours.add(new Tour(name, stops));
+                    tours.add(new Tour(name, stops, loop));
                 }
-                name = line.substring(HEADER.length()).trim();
+                String[] head = line.substring(HEADER.length()).split("\t");
+                name = head[0].trim();
+                loop = head.length > 1 && head[1].trim().equals("loop");
                 stops = new ArrayList<>();
                 continue;
             }
@@ -185,7 +194,7 @@ final class Tour
         }
         if (name != null)
         {
-            tours.add(new Tour(name, stops));
+            tours.add(new Tour(name, stops, loop));
         }
         return tours.size() > MAX_TOURS ? new ArrayList<>(tours.subList(0, MAX_TOURS)) : tours;
     }

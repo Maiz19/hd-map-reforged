@@ -132,7 +132,7 @@ final class PartyMapMembers
         // A big pile shows its most valuable few.
         if (list.size() > 4)
         {
-            list.sort(java.util.Comparator.comparingLong((Loot l) -> -l.value));
+            list.sort(Comparator.comparingLong((Loot l) -> -l.value));
             list.subList(4, list.size()).clear();
         }
     }
@@ -151,20 +151,6 @@ final class PartyMapMembers
         }
         list.removeIf(old);
         return new ArrayList<>(list);
-    }
-
-    /** The map keeps drawing while drops rise. */
-    synchronized boolean anyLoot(long now)
-    {
-        for (List<Loot> list : loot.values())
-        {
-            list.removeIf(l -> now - l.at > LOOT_MS);
-            if (!list.isEmpty())
-            {
-                return true;
-            }
-        }
-        return false;
     }
 
     synchronized List<Drop> drops(long id, long now)

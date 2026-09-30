@@ -1,5 +1,8 @@
 package com.hdmapreforged;
 
+import java.io.*;
+import java.nio.charset.*;
+import java.util.stream.*;
 import com.hdmapreforged.route.*;
 import java.util.*;
 import java.util.regex.*;
@@ -68,11 +71,6 @@ final class RouteSource
         {
             fallback = true;
             return this;
-        }
-
-        Options fallbackIf(boolean anything)
-        {
-            return anything ? fallback() : this;
         }
     }
 
@@ -165,9 +163,9 @@ final class RouteSource
         {
             teleportToBoat(state, options, startEdges);
         }
-        if (state.inHouse)
+        if (state.inHouse || options.teleports)
         {
-            house(pois, unlocks, state, teleportsByName, startEdges);
+            house(call, pois, unlocks, state, teleportsByName, startEdges, edges);
         }
         if (start < 0 && startEdges.isEmpty())
         {
@@ -218,12 +216,12 @@ final class RouteSource
 
     private static List<Gate> readGates()
     {
-        java.io.InputStream in = RouteSource.class.getResourceAsStream("/com/hdmapreforged/route/gates.tsv");
+        InputStream in = RouteSource.class.getResourceAsStream("/com/hdmapreforged/route/gates.tsv");
         if (in == null)
         {
             return Collections.emptyList();
         }
-        try (java.io.Reader reader = new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8))
+        try (Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8))
         {
             List<Gate> gates = new ArrayList<>();
             for (Tsv.Row row : Tsv.parse(reader))
@@ -237,7 +235,7 @@ final class RouteSource
             }
             return Collections.unmodifiableList(gates);
         }
-        catch (java.io.IOException e)
+        catch (IOException e)
         {
             return Collections.emptyList();
         }
@@ -263,7 +261,7 @@ final class RouteSource
     private void shortcuts(Call call, Unlocks unlocks, List<Edge> into)
     {
         List<ShortcutPassage> passages =
-            com.hdmapreforged.route.Pathfinder.shortcutPassages(map);
+            Pathfinder.shortcutPassages(map);
         List<Needs> needs = shortcutNeeds(passages);
         for (int i = 0; i < passages.size(); i++)
         {
@@ -306,7 +304,7 @@ final class RouteSource
     }
 
     // Not obelisks (they lead to a random other obelisk) nor entrances (map links, in Pathfinder, not our icons).
-    private static final Set<PoiType> TRANSPORTS = java.util.EnumSet.of(PoiType.FAIRY_RING, PoiType.SPIRIT_TREE,
+    private static final Set<PoiType> TRANSPORTS = EnumSet.of(PoiType.FAIRY_RING, PoiType.SPIRIT_TREE,
         PoiType.GNOME_GLIDER, PoiType.BALLOON, PoiType.QUETZAL, PoiType.MUSHTREE, PoiType.BOAT, PoiType.CHARTER,
         PoiType.CANOE, PoiType.CARPET, PoiType.MINECART, PoiType.PORTAL, PoiType.LEVER, PoiType.TRANSPORT,
         PoiType.AGILITY_SHORTCUT);
@@ -333,17 +331,16 @@ final class RouteSource
 
     private void teleport(Call call, Poi member, Unlocks unlocks, PlayerState state, List<Edge> into)
     {
-        if (com.hdmapreforged.route.HouseTracker.isTemplate(member.location.getX(), member.location.getY())
+        if (HouseTracker.isTemplate(member.location.getX(), member.location.getY())
             || !usable(unlocks, member.needs) || !state.items.has(member.needs.items, false))
         {
             return;
         }
-        // The fallback takes a teleport whose item the player lacks only as a last resort: otherwise the whole route
-        // turned red from its first step.
-        int lacking = call.fallback && call.missingItems != null && !member.needs.items.isEmpty()
-            && !call.missingItems.has(member.needs.items, false) ? LACKING_ITEM : 0;
+        int lacking = lacking(call, member.needs);
         int to = snap(member.location);
-        if (to < 0)
+        // Outside one's own house only (a friend's house tells nothing of it).
+        if (to < 0 || member.name.contains("(Outside)") && (state.houseExit < 0 || state.inHouse && !state.ownHouse
+            || Tiles.distance(to, state.houseExit) > PORT_RADIUS))
         {
             return;
         }
@@ -414,8 +411,14 @@ final class RouteSource
             case PORTAL:
                 return poi.name + (label != null && !poi.name.contains(label) ? " → " + label : "");
             default:
-                return poi.type.displayName + ": " + (label != null ? label : poi.name);
+                return poi.type.displayName + ": " + code(poi.type, label != null ? label : poi.name);
         }
+    }
+
+    /** A fairy ring by the code one dials ("BIP"), not its whole title. */
+    private static String code(PoiType type, String name)
+    {
+        return type == PoiType.FAIRY_RING ? name.split(" – ")[0] : name;
     }
 
     static Edge.Kind kind(PoiType type)
@@ -496,7 +499,7 @@ final class RouteSource
         String name = "Board your boat at " + poi.name;
         String hint = null;
         int cost = 10;
-        if (java.util.Arrays.stream(state.boats).anyMatch(boat -> Tiles.distance(boat, land) <= PORT_RADIUS))
+        if (Arrays.stream(state.boats).anyMatch(boat -> Tiles.distance(boat, land) <= PORT_RADIUS))
         {
             name += dockLevel(poi);
         }
@@ -506,7 +509,7 @@ final class RouteSource
             hint = "Summon Boat (needs the teleport focus on your boat)";
             cost = 16;
         }
-        else if (java.util.Arrays.stream(options.shipwrights).anyMatch(s -> Tiles.distance(s, land) <= SHIPWRIGHT_REACH))
+        else if (Arrays.stream(options.shipwrights).anyMatch(s -> Tiles.distance(s, land) <= SHIPWRIGHT_REACH))
         {
             hint = "Ask the shipwright here to bring your boat (fee)";
             cost = 60;
@@ -552,68 +555,216 @@ final class RouteSource
         return m.find() ? Integer.parseInt(m.group(1)) : 1;
     }
 
-    private void house(List<Poi> pois, Unlocks unlocks, PlayerState state, Map<String, Poi> teleports, List<Edge> into)
+    /** The fallback takes a teleport whose item the player lacks only as a last resort (else all of it was red). */
+    private static int lacking(Call call, Needs needs)
     {
-        if (state.houseExit >= 0)
+        return call.fallback && call.missingItems != null && !needs.items.isEmpty()
+            && !call.missingItems.has(needs.items, false) ? LACKING_ITEM : 0;
+    }
+
+    private static boolean stairs(String thing)
+    {
+        return HouseTracker.feature(thing) == null && !thing.equals("Portal") && !thing.startsWith(NEXUS);
+    }
+
+    /** Into one's own house, best first: the capes cost nothing. */
+    private static final String[] INTO_HOUSE = {"Construction cape: Tele to POH", "Max cape: Home", "Teleport to House",
+        "Teleport to house tablet"};
+    private static final Needs[] INTO_HOUSE_NEEDS = {new Needs("", "9789||9790", "", ""),
+        new Needs("", "13280||13342", "", ""), new Needs("40 Magic", "563=1&&556=1&&557=1", "", "4070=0"),
+        new Needs("", "8013", "", "")};
+
+    /**
+     * The house's ways out. With its plan seen (own house) they stand where they are on it, routes walk to them and
+     * teleport in to its arrival; else, in the house, the route starts with them, and from outside a teleport in or
+     * its portal leads to them at once.
+     */
+    private void house(Call call, List<Poi> pois, Unlocks unlocks, PlayerState state, Map<String, Poi> teleports,
+        List<Edge> starts, List<Edge> edges)
+    {
+        HousePlan plan = state.inHouse && !state.ownHouse ? null : map.house();
+        List<Edge> into = new ArrayList<>();
+        WorldPoint portal = state.houseExit < 0 ? null
+            : new WorldPoint(Tiles.x(state.houseExit), Tiles.y(state.houseExit), 0);
+        if (state.inHouse && portal != null && (plan == null || !plan.things.containsValue("Portal")))
         {
-            addHouse(into, new WorldPoint(Tiles.x(state.houseExit), Tiles.y(state.houseExit), 0),
-                "Leave the house by its portal", 6);
+            addHouse(into, portal, "Leave the house by its portal", 6);
         }
-        if (!state.ownHouse)
+        Set<String> placed = new HashSet<>();
+        if (plan != null)
         {
+            plan.things.forEach((node, name) -> {
+                int x = Tiles.x(node);
+                int y = Tiles.y(node);
+                int z = Tiles.z(node);
+                int at = plan.approach(node);
+                List<Edge> out = new ArrayList<>();
+                List<String> features = name.startsWith(NEXUS) ? new ArrayList<>()
+                    : new ArrayList<>(Collections.singletonList(HouseTracker.feature(name)));
+                for (String place : name.startsWith(NEXUS + ": ") ? name.substring(NEXUS.length() + 2).split(", ")
+                    : new String[0])
+                {
+                    features.add("nexus:" + place);
+                }
+                // As set for the account (the panel may have taken one off); one not reachable is used from the arrival.
+                for (String feature : features)
+                {
+                    if (feature != null && at >= 0 && state.houseFeatures.contains(feature) && placed.add(feature))
+                    {
+                        ways(feature, pois, unlocks, teleports, out);
+                    }
+                }
+                if (name.equals("Portal") && portal != null)
+                {
+                    addHouse(out, portal, "Leave the house by its portal", 6);
+                }
+                for (int dz = -1; stairs(name) && dz <= 1; dz += 2)
+                {
+                    int other = z + dz;
+                    // Only to a floor with stairs where these stand: they go up or down, seldom both.
+                    if (plan.things.entrySet().stream().anyMatch(t -> Tiles.z(t.getKey()) == other
+                        && Tiles.distance(t.getKey(), node) <= 3 && stairs(t.getValue())))
+                    {
+                        out.add(new Edge(Edge.ANYWHERE, map.nearestWalkable(x, y, other, 3), Edge.Kind.STAIRS, name, null, 5));
+                    }
+                }
+                for (Edge e : out)
+                {
+                    if (at >= 0 && e.to >= 0)
+                    {
+                        edges.add(new Edge(at, e.to, e.kind, e.name, e.detail, e.cost));
+                    }
+                }
+            });
+        }
+        // Not seen on the plan (typed in by hand), or no plan: usable at once in the house.
+        for (String feature : state.inHouse && !state.ownHouse ? Set.<String>of() : state.houseFeatures)
+        {
+            if (!placed.contains(feature))
+            {
+                ways(feature, pois, unlocks, teleports, into);
+            }
+        }
+        if (plan != null)
+        {
+            into.forEach(e -> edges.add(new Edge(plan.arrival, e.to, e.kind, e.name, e.detail, e.cost)));
+            into.clear();
+        }
+        if (state.inHouse)
+        {
+            starts.addAll(into);
             return;
         }
-        for (String feature : state.houseFeatures)
+        int best = -1;
+        int lacking = 0;
+        for (int i = 0; i < INTO_HOUSE.length; i++)
         {
-            if (feature.startsWith("portal:"))
+            Needs needs = INTO_HOUSE_NEEDS[i];
+            int lack = lacking(call, needs);
+            // Set to land outside, the capes do so; the spell and the tablet keep an option to land inside.
+            if ((state.landsInside || i >= 2) && usable(unlocks, needs) && state.items.has(needs.items, false)
+                && (best < 0 || lack < lacking)
+                && !call.avoiding.contains(INTO_HOUSE[i].toLowerCase(Locale.ROOT) + (state.landsInside ? "" : " (inside)"))
+                && !call.avoiding.contains(typeKey("Teleports")))
             {
-                Poi teleport = portalTeleport(feature.substring("portal:".length()), teleports);
-                if (teleport != null)
+                best = i;
+                lacking = lack;
+            }
+        }
+        int door = portal == null ? -1 : snap(portal);
+        String teleport = best < 0 ? null : INTO_HOUSE[best] + (state.landsInside ? "" : " (Inside)");
+        if (plan != null)
+        {
+            if (best >= 0)
+            {
+                starts.add(new Edge(Edge.ANYWHERE, plan.arrival, Edge.Kind.TELEPORT, teleport,
+                    needsText(call, INTO_HOUSE_NEEDS[best], false), 10, "Teleports")
+                    .weighed(call.saving.teleport * PER_TILE + lacking));
+            }
+            if (door >= 0)
+            {
+                edges.add(new Edge(door, plan.arrival, Edge.Kind.ENTRANCE, "Enter your house", null, 6));
+            }
+            return;
+        }
+        for (Edge e : into)
+        {
+            if (best >= 0)
+            {
+                starts.add(new Edge(Edge.ANYWHERE, e.to, Edge.Kind.HOUSE, teleport + " → " + e.name,
+                    needsText(call, INTO_HOUSE_NEEDS[best], false), 10 + e.cost)
+                    .weighed(call.saving.teleport * PER_TILE + lacking));
+            }
+            if (door >= 0)
+            {
+                edges.add(new Edge(door, e.to, Edge.Kind.HOUSE, "Enter your house → " + e.name, null, 6 + e.cost));
+            }
+        }
+    }
+
+    static final String NEXUS = "Portal Nexus";
+
+    /** Where a feature of the house ("portal:Varrock", "box:ornate", "glory", "fairy ring") leads, from anywhere. */
+    private void ways(String feature, List<Poi> pois, Unlocks unlocks, Map<String, Poi> teleports, List<Edge> into)
+    {
+        if (feature.startsWith("portal:") || feature.startsWith("nexus:"))
+        {
+            Poi teleport = portalTeleport(feature.substring(feature.indexOf(':') + 1), teleports);
+            if (teleport != null)
+            {
+                addHouse(into, teleport.location, (feature.startsWith("nexus:") ? "Portal nexus: " : "House portal: ")
+                    + teleport.name, 6);
+            }
+        }
+        else if (feature.startsWith("box:") || feature.equals("glory"))
+        {
+            boolean glory = feature.equals("glory");
+            List<String> groups = glory ? List.of("Amulet of glory") : new ArrayList<>(List.of("Ring of dueling",
+                "Games necklace", "Combat bracelet", "Skills necklace", "Ring of wealth", "Amulet of glory"))
+                .subList(0, feature.equals("box:basic") ? 2 : feature.equals("box:ornate") ? 6 : 4);
+            for (Poi teleport : teleports.values())
+            {
+                if (teleport.group != null && groups.contains(teleport.group) && usable(unlocks, teleport.needs))
                 {
-                    addHouse(into, teleport.location, "House portal: " + teleport.name, 6);
+                    addHouse(into, teleport.location, (glory ? "Mounted glory: " : "Jewellery box: ")
+                        + teleport.name, 8);
                 }
             }
-            else if (feature.startsWith("box:") || feature.equals("glory"))
+        }
+        if (feature.contains("fairy ring") || feature.contains("spirit tree"))
+        {
+            for (Poi poi : pois)
             {
-                boolean glory = feature.equals("glory");
-                List<String> groups = glory ? List.of("Amulet of glory") : new ArrayList<>(List.of("Ring of dueling",
-                    "Games necklace", "Combat bracelet", "Skills necklace", "Ring of wealth", "Amulet of glory"))
-                    .subList(0, feature.equals("box:basic") ? 2 : feature.equals("box:ornate") ? 6 : 4);
-                for (Poi teleport : teleports.values())
+                boolean ring = poi.type == PoiType.FAIRY_RING && feature.contains("fairy ring");
+                boolean tree = poi.type == PoiType.SPIRIT_TREE && feature.contains("spirit tree");
+                if ((ring || tree) && usable(unlocks, poi.needs))
                 {
-                    if (teleport.group != null && groups.contains(teleport.group) && usable(unlocks, teleport.needs))
-                    {
-                        addHouse(into, teleport.location, (glory ? "Mounted glory: " : "Jewellery box: ")
-                            + teleport.name, 8);
-                    }
-                }
-            }
-            if (feature.contains("fairy ring") || feature.contains("spirit tree"))
-            {
-                for (Poi poi : pois)
-                {
-                    boolean ring = poi.type == PoiType.FAIRY_RING && feature.contains("fairy ring");
-                    boolean tree = poi.type == PoiType.SPIRIT_TREE && feature.contains("spirit tree");
-                    if ((ring || tree) && usable(unlocks, poi.needs))
-                    {
-                        addHouse(into, poi.location, "House " + poi.type.displayName.toLowerCase(Locale.ROOT) + ": "
-                            + poi.name, 10);
-                    }
+                    addHouse(into, poi.location, "House " + poi.type.displayName.toLowerCase(Locale.ROOT) + ": "
+                        + code(poi.type, poi.name), 10);
                 }
             }
         }
     }
 
+    /** Portal and nexus places the spellbooks name otherwise. */
+    private static final Map<String, String> PORTAL_NAMES = Map.of("lunar isle", "moonclan", "marim",
+        "ape atoll teleport (standard)", "ape atoll dungeon", "ape atoll teleport (arceuus)", "waterbirth island",
+        "waterbirth", "carrallangar", "carrallanger");
+
+    /** A spell starting with the place's name first, else a teleport to it by name ("Stony basalt: Troll Stronghold"). */
     static Poi portalTeleport(String place, Map<String, Poi> teleports)
     {
-        String wanted = place.trim().toLowerCase(Locale.ROOT);
+        String given = place.trim().toLowerCase(Locale.ROOT);
+        String wanted = PORTAL_NAMES.getOrDefault(given, given);
+        int bestRank = 0;
         String bestName = null;
         Poi best = null;
         for (Map.Entry<String, Poi> entry : teleports.entrySet())
         {
             String name = entry.getKey();
             Poi teleport = entry.getValue();
-            if (!name.startsWith(wanted) || teleport.group == null || !teleport.group.contains("Spellbook"))
+            boolean spell = name.startsWith(wanted) && teleport.group != null && teleport.group.contains("Spellbook");
+            if (!spell && !name.contains(": " + wanted))
             {
                 continue;
             }
@@ -621,9 +772,11 @@ final class RouteSource
             {
                 return teleport;
             }
-            if (bestName == null || name.length() < bestName.length()
-                || name.length() == bestName.length() && name.compareTo(bestName) < 0)
+            // Spells first, then the shortest name, then the first alphabetically.
+            int rank = (spell ? 0 : 1 << 16) + name.length();
+            if (best == null || rank < bestRank || rank == bestRank && name.compareTo(bestName) < 0)
             {
+                bestRank = rank;
                 bestName = name;
                 best = teleport;
             }
@@ -676,13 +829,13 @@ final class RouteSource
         List<Requirements.Line> lines = levelLines(needs);
         boolean unchecked = lines.stream().anyMatch(line -> realUnlocks == null || realUnlocks.met(line) == null);
         // Items named rather than numbered (keys, tools) are not checked.
-        boolean namedItems = java.util.Arrays.stream(needs.items.split("&&|\\|\\|"))
+        boolean namedItems = Arrays.stream(needs.items.split("&&|\\|\\|"))
             .map(token -> token.split("=")[0].trim()).anyMatch(t -> !t.isEmpty() && !t.chars().allMatch(Character::isDigit));
         if (!unchecked && !namedItems)
         {
             return null;
         }
-        List<String> parts = lines.stream().map(line -> line.text).collect(java.util.stream.Collectors.toList());
+        List<String> parts = lines.stream().map(line -> line.text).collect(Collectors.toList());
         if (namedItems || !needs.items.trim().isEmpty() && realUnlocks == null)
         {
             parts.add("items");

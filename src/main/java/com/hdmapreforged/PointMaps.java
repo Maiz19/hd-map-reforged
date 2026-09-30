@@ -1,5 +1,7 @@
 package com.hdmapreforged;
 
+import java.util.concurrent.*;
+import java.util.function.*;
 import java.awt.image.*;
 import java.io.*;
 import java.util.*;
@@ -24,7 +26,7 @@ final class PointMaps
 
     /** As above, stopping between points once {@code stop} says the answer is no longer wanted (a newer search). */
     static Map<WorldPoint, BaseMap> resolve(TileCache tiles, String version, BaseMaps maps, List<WorldPoint> points,
-        java.util.function.BooleanSupplier stop)
+        BooleanSupplier stop)
     {
         Map<WorldPoint, BaseMap> found = new HashMap<>();
         for (WorldPoint point : points)
@@ -77,28 +79,12 @@ final class PointMaps
         return found;
     }
 
-    static boolean drawnAnywhere(TileCache tiles, String version, BaseMaps maps, WorldPoint point)
-    {
-        return drawn(tiles, version, maps, point, true);
-    }
-
-    static boolean drawnOnAMap(TileCache tiles, String version, BaseMaps maps, WorldPoint point)
-    {
-        return drawn(tiles, version, maps, point, false);
-    }
-
-    private static boolean drawn(TileCache tiles, String version, BaseMaps maps, WorldPoint point, boolean full)
-    {
-        return maps.all().stream().anyMatch(map -> (full || map.id != BaseMap.FULL)
-            && map.contains(point.getX(), point.getY()) && check(tiles, version, map, point) > 0);
-    }
-
     static boolean shows(TileCache tiles, String version, BaseMap map, WorldPoint point)
     {
         return check(tiles, version, map, point) == 2;
     }
 
-    private static final Map<String, Integer> CHECKED = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, Integer> CHECKED = new ConcurrentHashMap<>();
 
     static void clear()
     {

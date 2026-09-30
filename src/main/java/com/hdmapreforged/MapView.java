@@ -1,5 +1,7 @@
 package com.hdmapreforged;
 
+import com.hdmapreforged.route.HousePlan;
+import java.util.concurrent.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.*;
@@ -186,6 +188,9 @@ final class MapView extends JComponent
     private Poi selected;
     private Poi hovered;
     private WorldPoint player;
+    private WorldPoint outside;
+    /** The player is in a house, shown where it stands. */
+    private boolean home;
     private boolean following;
 
     private double centerX = 3222;
@@ -201,10 +206,10 @@ final class MapView extends JComponent
     private List<Drawn> drawn = new ArrayList<>();
     private Chrome chrome;
     private List<Control> controls = new ArrayList<>();
-    private final List<Widget> widgets = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<Widget> widgets = new CopyOnWriteArrayList<>();
     /** Kinds whose destination lines are hidden. */
     private Set<PoiType> linesOff = EnumSet.noneOf(PoiType.class);
-    private java.util.function.Consumer<String> linesChoice = value -> { };
+    private Consumer<String> linesChoice = value -> { };
     private Control pressedControl;
     private Control hoveredControl;
     private Point pressed;
@@ -266,7 +271,9 @@ final class MapView extends JComponent
         @Override
         public boolean shows(WorldPoint point)
         {
-            return point != null && maps != null && map != null && (map.id == BaseMap.FULL
+            // One's house: on the surface map, at its edge.
+            return point != null && maps != null && map != null && (HousePlan.contains(point.getX(), point.getY())
+                ? map.id == BaseMap.SURFACE || map.id == BaseMap.FULL : map.id == BaseMap.FULL
                 ? maps.find(point.getX(), point.getY()) != null || WorldMapMoves.drawn(point) != null
                 : WorldMapMoves.toDrawn(map.id, point) != null || maps.drawsGame(map, point));
         }
@@ -284,6 +291,10 @@ final class MapView extends JComponent
         {
             return drawn;
         }
+        if (HousePlan.contains(drawn.getX() - HousePlan.DRAWN_X + HousePlan.X, drawn.getY() - HousePlan.DRAWN_Y + HousePlan.Y))
+        {
+            return drawn.dx(HousePlan.X - HousePlan.DRAWN_X).dy(HousePlan.Y - HousePlan.DRAWN_Y);
+        }
         return map.id == BaseMap.FULL ? WorldMapMoves.fromDrawnAnywhere(drawn) : WorldMapMoves.toWorld(map.id, drawn);
     }
 
@@ -297,6 +308,10 @@ final class MapView extends JComponent
         if (game == null || on == null)
         {
             return game;
+        }
+        if (HousePlan.contains(game.getX(), game.getY()))
+        {
+            return game.dx(HousePlan.DRAWN_X - HousePlan.X).dy(HousePlan.DRAWN_Y - HousePlan.Y);
         }
         if (on.id == BaseMap.FULL)
         {
@@ -456,10 +471,10 @@ final class MapView extends JComponent
         addMouseListener(mouse);
         addMouseMotionListener(mouse);
         addMouseWheelListener(mouse);
-        addComponentListener(new java.awt.event.ComponentAdapter()
+        addComponentListener(new ComponentAdapter()
         {
             @Override
-            public void componentResized(java.awt.event.ComponentEvent e)
+            public void componentResized(ComponentEvent e)
             {
                 double z = clampZoom(targetZoom);
                 if (z != targetZoom)
@@ -528,12 +543,12 @@ final class MapView extends JComponent
         repaint();
     }
 
-    void setLinesChoice(java.util.function.Consumer<String> choice)
+    void setLinesChoice(Consumer<String> choice)
     {
         linesChoice = choice;
     }
 
-    private final List<ClickCatcher> clickCatchers = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<ClickCatcher> clickCatchers = new CopyOnWriteArrayList<>();
 
     void addClickCatcher(ClickCatcher catcher)
     {
@@ -731,11 +746,6 @@ final class MapView extends JComponent
         return targetZoom;
     }
 
-    Point2D.Double targetCenter()
-    {
-        return new Point2D.Double(targetX, targetY);
-    }
-
     Poi selected()
     {
         return selected;
@@ -849,6 +859,23 @@ final class MapView extends JComponent
     WorldPoint player()
     {
         return player;
+    }
+
+    /** Where "nearest" counts from: the player, in one's house its portal outside. */
+    WorldPoint near()
+    {
+        return player != null && HousePlan.contains(player.getX(), player.getY()) ? outside : player;
+    }
+
+    void setOutside(WorldPoint outside)
+    {
+        this.outside = outside;
+    }
+
+    void setHome(boolean home)
+    {
+        this.home = home;
+        repaint();
     }
 
     static final double PLAYER_ZOOM = 3;
@@ -1280,7 +1307,7 @@ final class MapView extends JComponent
         }
     }
 
-    private final java.util.LinkedHashSet<TileCache.Key> standIns = new java.util.LinkedHashSet<>();
+    private final LinkedHashSet<TileCache.Key> standIns = new LinkedHashSet<>();
     private int drawnTiles;
     private static final int FIRST_FRAME_DISK_TILES = 24;
     private static final long FIRST_FRAME_DISK_NANOS = 60_000_000L;
@@ -1429,12 +1456,12 @@ final class MapView extends JComponent
         g.draw(lines);
     }
 
-    private static final Map<String, BasicStroke> LINK_STROKES = new java.util.concurrent.ConcurrentHashMap<>();
-    private static final Map<Color, Color> LINK_COLORS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, BasicStroke> LINK_STROKES = new ConcurrentHashMap<>();
+    private static final Map<Color, Color> LINK_COLORS = new ConcurrentHashMap<>();
 
     private static BasicStroke linkStroke(float width, float[] dash)
     {
-        return LINK_STROKES.computeIfAbsent(width + (dash == null ? "" : java.util.Arrays.toString(dash)),
+        return LINK_STROKES.computeIfAbsent(width + (dash == null ? "" : Arrays.toString(dash)),
             key -> new BasicStroke(width, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10f, dash, 0f));
     }
 
@@ -1504,7 +1531,7 @@ final class MapView extends JComponent
     }
 
     private final LongSet occupied = new LongSet();
-    private final Map<Poi, WorldPoint> shownCache = new java.util.IdentityHashMap<>();
+    private final Map<Poi, WorldPoint> shownCache = new IdentityHashMap<>();
     private BaseMap shownCacheMap;
 
     private WorldPoint shownCached(Poi poi)
@@ -1551,7 +1578,7 @@ final class MapView extends JComponent
         {
             if (size > 0)
             {
-                java.util.Arrays.fill(used, false);
+                Arrays.fill(used, false);
                 size = 0;
             }
         }
@@ -1704,7 +1731,7 @@ final class MapView extends JComponent
         double y = screenY(at.getY() + 0.5);
         if (!(x < -4 || y < -4 || x > getWidth() + 4 || y > getHeight() + 4))
         {
-            PlayerMarker.paint(g, x, y, zoom, at.getPlane() != plane);
+            PlayerMarker.paint(g, x, y, zoom, at.getPlane() != plane, home);
             return;
         }
         // Out of view: a pointer at the edge.
@@ -1939,14 +1966,25 @@ final class MapView extends JComponent
     private void paintBack(Graphics2D g, List<Control> painted)
     {
         paintToast(g);
+        g.setFont(CONTROL_FONT);
+        FontMetrics metrics = g.getFontMetrics();
+        double x = MARGIN + backOffset;
+        // Off the world map: a button to it first, then Back (unless Back goes there).
         BaseMap to = backMap();
+        BaseMap world = maps == null || map == null || map.id == BaseMap.SURFACE || map.id == BaseMap.FULL ? null
+            : maps.byId(BaseMap.SURFACE);
+        if (world != null && world != to)
+        {
+            int width = metrics.stringWidth("World map") + 24;
+            double wy = control(g, painted, x, MARGIN, width, () -> toWorld(world), "Open the world map").shape.getCenterY();
+            g.setColor(Color.WHITE);
+            g.drawString("World map", (float) (x + 12), (float) (wy + metrics.getAscent() / 2.0 - 2));
+            x += width + 6;
+        }
         if (to == null)
         {
             return;
         }
-        g.setFont(CONTROL_FONT);
-        FontMetrics metrics = g.getFontMetrics();
-        double x = MARGIN + backOffset;
         double cy = control(g, painted, x, MARGIN, metrics.stringWidth(to.name) + 40, this::goBack, "Back to " + to.name
             + " (or the mouse's back button)").shape.getCenterY();
         double ax = x + 15;
@@ -2007,12 +2045,6 @@ final class MapView extends JComponent
         return path;
     }
 
-    /** Development benchmarks. */
-    void hoverAt(Point p)
-    {
-        updateHover(p);
-    }
-
     /** Repaints only when what is highlighted changes: a full repaint per mouse move is expensive. */
     private void updateHover(Point p)
     {
@@ -2057,7 +2089,7 @@ final class MapView extends JComponent
     }
 
     private static final int MAX_BACK = 12;
-    private final java.util.ArrayDeque<Back> back = new java.util.ArrayDeque<>();
+    private final ArrayDeque<Back> back = new ArrayDeque<>();
 
     /** Before the player opens another map: Back returns here. Automatic changes call {@link #showMap} alone. */
     void rememberForBack(BaseMap next)
@@ -2077,6 +2109,14 @@ final class MapView extends JComponent
     {
         Back top = back.peek();
         return top == null || top.map == map ? null : top.map;
+    }
+
+    private void toWorld(BaseMap world)
+    {
+        setFollowing(false);
+        rememberForBack(world);
+        WorldPoint me = player != null && world == mapOf(player) ? shownOn(world, player) : null;
+        showMap(world, me, me != null ? PLAYER_ZOOM : Math.min(targetZoom, 1));
     }
 
     void goBack()

@@ -6,6 +6,7 @@ import java.util.*;
 import lombok.*;
 
 /** One-way passages ({@code one_way.tsv}, e.g. a slide): a passage of any source going back between the areas is left out. */
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class OneWay
 {
     @RequiredArgsConstructor
@@ -18,10 +19,6 @@ public final class OneWay
 
     private final List<Rule> rules;
 
-    private OneWay(List<Rule> rules)
-    {
-        this.rules = rules;
-    }
 
     public static OneWay load()
     {

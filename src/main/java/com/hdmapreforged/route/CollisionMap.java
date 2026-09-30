@@ -8,7 +8,8 @@ import java.util.zip.*;
 
 /**
  * Where one can walk, from the bundled collision.zip: per region and floor, bitsets of walkable tiles and of walls and
- * doors on the north and east edges, plus ground-floor water. Immutable after loading, so any thread may read it.
+ * doors on the north and east edges, plus ground-floor water. Immutable after loading but for one's own house
+ * ({@link #setHouse}, replaced whole), so any thread may read it.
  */
 public final class CollisionMap
 {
@@ -28,6 +29,8 @@ public final class CollisionMap
     /** By packed tile: "Chop-down Vines (bring an axe)". */
     private final Map<Integer, String> obstacles;
     private final boolean[] obstacleRegions = new boolean[1 << 16];
+    /** One's own house, where no map of the game lies; replaced whole. */
+    private volatile HousePlan house;
 
     private CollisionMap(List<Transition> transitions, Map<Integer, String> obstacles)
     {
@@ -181,7 +184,19 @@ public final class CollisionMap
     private long[] layers(int x, int y, int z)
     {
         int region = region(x, y);
-        return region < 0 || z < 0 || z > 3 ? null : floors[region << 2 | z];
+        long[] found = region < 0 || z < 0 || z > 3 ? null : floors[region << 2 | z];
+        HousePlan plan = found == null && region >= 0 && z >= 0 && z <= 3 ? house : null;
+        return plan != null ? plan.layers(region, z) : found;
+    }
+
+    public void setHouse(HousePlan plan)
+    {
+        house = plan;
+    }
+
+    public HousePlan house()
+    {
+        return house;
     }
 
     private static boolean bit(long[] layers, int offset, int x, int y)
@@ -193,11 +208,6 @@ public final class CollisionMap
     public boolean walkable(int x, int y, int z)
     {
         return edge(x, y, z, WALK);
-    }
-
-    public boolean hasFloor(int region, int z)
-    {
-        return region >= 0 && region < 1 << 16 && z >= 0 && z < 4 && floors[region << 2 | z] != null;
     }
 
     public boolean hasWater(int region)

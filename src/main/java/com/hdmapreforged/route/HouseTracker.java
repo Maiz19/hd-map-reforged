@@ -23,17 +23,28 @@ public final class HouseTracker
         {1422, 2963}, // Aldarin
     };
     private static final int PORTAL_RADIUS = 12;
+    /** How long a choice at a house portal is kept: the walk to the portal, not a later visit. */
+    private static final int CHOICE_TICKS = 30;
 
     private boolean inside;
     private int lastOutside = -1;
     private int exit = -1;
     private boolean own;
+    /** Varbit 2187: the town of one's own house. */
+    private int location;
+    /** The scene is to be looked through: the house's objects load before the tick that finds the player inside. */
+    private boolean scan;
+    /** Building mode shows empty hotspots (door and stair spaces): not looked through then. */
+    private boolean building;
+    /** Chosen at a house portal: above 0 one's own house, below 0 a friend's; counts down to 0 every tick. */
+    private int chosen;
     private final Set<String> features = new LinkedHashSet<>();
     private boolean featuresChanged;
 
     public static boolean isTemplate(int x, int y)
     {
-        return x >= 1856 && x <= 2047 && y >= 5696 && y <= 5775;
+        // Where the game copies its rooms from; moved north on 2026-09-29 (it was y 5696 to 5775).
+        return x >= 1856 && x <= 2047 && y >= 7040 && y <= 7119;
     }
 
     public static int portal(int location)
@@ -57,22 +68,30 @@ public final class HouseTracker
     /** Every tick. */
     public void update(int node, boolean instance, int houseLocation, boolean buildingMode)
     {
+        location = houseLocation;
+        building = buildingMode;
         boolean nowInside = instance && node >= 0 && isTemplate(Tiles.x(node), Tiles.y(node));
         if (nowInside && !inside)
         {
             int entered = lastOutside >= 0 ? portalNear(lastOutside) : 0;
-            // Through a house portal: maybe a friend's house.
-            own = entered <= 0;
+            // Through a house portal: maybe a friend's house, unless the player chose their own there. Not known
+            // where from (started in a house): not taken for one's own, or a friend's house would be kept as it.
+            own = lastOutside >= 0 && (entered <= 0 || chosen > 0);
             exit = portal(own ? houseLocation : entered);
+            scan = true;
+            // A choice counts for one entry: back at the portal, a friend's house may be next.
+            chosen = 0;
         }
-        if (nowInside && buildingMode)
+        if (nowInside && buildingMode && !own)
         {
             own = true;
+            scan = true;
         }
         if (!nowInside && node >= 0 && !instance)
         {
             lastOutside = node;
         }
+        chosen -= Integer.signum(chosen);
         inside = nowInside;
     }
 
@@ -91,10 +110,47 @@ public final class HouseTracker
         return exit;
     }
 
-    /** Remembered only in the player's own house; true when this added something. */
+    /** The portal of one's own house, -1 while its town is not known. */
+    public int portal()
+    {
+        return portal(location);
+    }
+
+    /** Whether to look through the scene for the house's features now: once per visit or reload of one's own house. */
+    public boolean takeScan()
+    {
+        boolean due = scan && own() && !building;
+        scan &= !due;
+        return due;
+    }
+
+    /** At a house portal: "Home", "Build mode" or "Go to your house" (true), or a friend's house (false). */
+    public void chose(boolean ownHouse)
+    {
+        chosen = ownHouse ? CHOICE_TICKS : -CHOICE_TICKS;
+    }
+
+    /** Looked through too early (building mode's spaces still there): again next tick. */
+    public void scanAgain()
+    {
+        scan = true;
+    }
+
+    /** The scene loaded again: building mode, or a teleport from a friend's house (only one's own is reached so). */
+    public void reloaded()
+    {
+        if (inside && !own)
+        {
+            own = true;
+            exit = portal(location);
+        }
+        scan = inside;
+    }
+
+    /** Remembered only in the player's own house, not in building mode (its empty spaces); true when this added one. */
     public boolean seen(String objectName)
     {
-        if (!own() || objectName == null)
+        if (!own() || building || objectName == null)
         {
             return false;
         }
@@ -107,10 +163,20 @@ public final class HouseTracker
         return false;
     }
 
-    static String feature(String objectName)
+    public static String feature(String objectName)
     {
         String n = objectName.trim();
         String lower = n.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(" space"))
+        {
+            // Building mode's empty spaces ("Jewellery box space"): nothing built there.
+            return null;
+        }
+        if (lower.startsWith("portal nexus: "))
+        {
+            // A place of the nexus, as the scan names it: apart from the portals.
+            return "nexus:" + n.substring("portal nexus: ".length()).trim();
+        }
         if (lower.endsWith(" portal") && !lower.startsWith("exit") && !lower.equals("portal") && !lower.contains("nexus"))
         {
             return "portal:" + n.substring(0, n.length() - " portal".length()).trim();
@@ -134,7 +200,7 @@ public final class HouseTracker
         features.clear();
         for (String f : saved)
         {
-            if (f.startsWith("portal:") || f.startsWith("box:")
+            if (f.startsWith("portal:") || f.startsWith("nexus:") || f.startsWith("box:")
                 || Set.of("fairy ring", "spirit tree", "spirit tree+fairy ring", "glory").contains(f))
             {
                 features.add(f);
@@ -163,6 +229,9 @@ public final class HouseTracker
         lastOutside = -1;
         exit = -1;
         own = false;
+        location = 0;
+        scan = false;
+        chosen = 0;
         replaceFeatures(Collections.emptySet());
     }
 }

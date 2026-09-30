@@ -28,62 +28,6 @@ public interface HdMapReforgedConfig extends Config
         position = 4)
     String friends = "friends";
 
-    @ConfigSection(name = "Your house", description = "What your player-owned house has, for routes. Filled in when "
-        + "you are in your own house; change it here when that is not seen yet", position = 5, closedByDefault = true)
-    String house = "house";
-
-    enum JewelleryBox
-    {
-        NONE,
-        BASIC,
-        FANCY,
-        ORNATE;
-
-        /** "Ornate". */
-        @Override
-        public String toString()
-        {
-            return name().charAt(0) + name().substring(1).toLowerCase(java.util.Locale.ROOT);
-        }
-    }
-
-    @ConfigItem(keyName = "houseJewelleryBox", name = "Jewellery box", position = 0, section = house,
-        description = "The jewellery box in your house: basic (duelling, games), fancy (also combat, skills) or ornate "
-            + "(also glory)")
-    default JewelleryBox houseJewelleryBox()
-    {
-        return JewelleryBox.NONE;
-    }
-
-    @ConfigItem(keyName = "houseGlory", name = "Mounted amulet of glory", position = 1, section = house,
-        description = "An amulet of glory mounted in your house")
-    default boolean houseGlory()
-    {
-        return false;
-    }
-
-    @ConfigItem(keyName = "houseFairyRing", name = "Fairy ring", position = 2, section = house,
-        description = "A fairy ring in your house's garden")
-    default boolean houseFairyRing()
-    {
-        return false;
-    }
-
-    @ConfigItem(keyName = "houseSpiritTree", name = "Spirit tree", position = 3, section = house,
-        description = "A spirit tree in your house's garden")
-    default boolean houseSpiritTree()
-    {
-        return false;
-    }
-
-    @ConfigItem(keyName = "housePortals", name = "Portals", position = 4, section = house,
-        description = "Where the portals in your portal chamber or nexus lead, separated by commas: the places of the "
-            + "spellbooks' teleports, such as \"Varrock, Falador, Ardougne, Kharyrdaq\"")
-    default String housePortals()
-    {
-        return "";
-    }
-
     @ConfigItem(keyName = "showTeleports", name = "Teleports", position = 0, section = icons,
         description = "Destinations of spells, jewellery, other teleport items and minigame teleports")
     default boolean showTeleports()
@@ -157,15 +101,6 @@ public interface HdMapReforgedConfig extends Config
     default int iconSize()
     {
         return 18;
-    }
-
-    @ConfigItem(keyName = "mapInGameWindow", name = "Map inside the game window", position = -2,
-        description = "The map over the game view is part of RuneLite's own window (on) or a window of its own (off). "
-            + "Inside it, the desktop sees one window: the taskbar and alt-tab keep working as usual. Takes effect the "
-            + "next time the map opens")
-    default boolean mapInGameWindow()
-    {
-        return true;
     }
 
     @ConfigItem(keyName = "orbOpensMap", name = "World map orb opens this map", position = -3,
@@ -331,14 +266,6 @@ public interface HdMapReforgedConfig extends Config
         return true;
     }
 
-    @ConfigItem(keyName = "partyAskOnLogin", name = "Remind me to rejoin my party", position = 5,
-        section = friends, description = "Out of any party after you log in, but in one before: a small Rejoin party "
-            + "button over the game. Nothing is joined without that click")
-    default boolean partyAskOnLogin()
-    {
-        return false;
-    }
-
     @ConfigItem(keyName = "partyFavourites", name = "Favourite friends", position = 6, section = friends,
         description = "Character names, separated by commas. Always shown with their name and a star, on top of others")
     default String partyFavourites()
@@ -378,7 +305,8 @@ public interface HdMapReforgedConfig extends Config
 
     @ConfigItem(keyName = "routePlanner", name = "Route planner", position = -2, section = route,
         description = "Who plans \"Path to here\": this plugin (shown on this map and in the game), or the Shortest Path "
-            + "plugin, if you have it (it shows the route in the game)")
+            + "plugin, if you have it (it shows the route in the game). With this plugin chosen and Shortest Path on, "
+            + "both plan and both routes are drawn")
     default RoutePlanner routePlanner()
     {
         return RoutePlanner.OWN;

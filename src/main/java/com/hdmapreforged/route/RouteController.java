@@ -9,9 +9,9 @@ import lombok.extern.slf4j.*;
 
 /**
  * When to search, so it never happens too often: one search at a time; when the player strays, automatic searches
- * with a doubling pause, at most {@link #MAX_AUTOMATIC} per target, none for a target proved unreachable (until a user
- * action) and none in instances other than the house (their positions are template copies). Called on one thread
- * (Swing); results come back through {@code callbacks}, also when a search fails.
+ * with a doubling pause, at most {@link #MAX_AUTOMATIC} in a row (again once the player walked on), none for a target
+ * proved unreachable (until a user action) and none in instances other than the house (their positions are template
+ * copies). Called on one thread (Swing); results come back through {@code callbacks}, also when a search fails.
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -20,8 +20,8 @@ public final class RouteController
     public static final long FIRST_BACKOFF_MS = 3_000;
     public static final long MAX_BACKOFF_MS = 60_000;
     public static final int MAX_AUTOMATIC = 6;
-    /** Tiles from the route before the player counts as having left it. */
-    public static final int STRAY = 12;
+    /** Tiles from the route before the player counts as having left it: 10 away, as Shortest Path. */
+    public static final int STRAY = 9;
 
     private final Executor searches;
     private final Executor callbacks;
@@ -39,6 +39,9 @@ public final class RouteController
     private int automatic;
     private long backoff = FIRST_BACKOFF_MS;
     private long nextAutomatic;
+    /** Where the player was at the last automatic search, and the tick before; -1 none. */
+    private int searchedAt = -1;
+    private int lastPlayer = -1;
     /** Targets proved unreachable, with where that search started from. */
     private final Map<Integer, Integer> unreachable = new HashMap<>();
     private int searchesStarted;
@@ -102,6 +105,13 @@ public final class RouteController
     private void userAction()
     {
         unreachable.clear();
+        searchedAt = -1;
+        freshWaits();
+    }
+
+    /** Automatic searches may start at once again, and wait as for the first. */
+    private void freshWaits()
+    {
         automatic = 0;
         backoff = FIRST_BACKOFF_MS;
         nextAutomatic = 0;
@@ -110,6 +120,8 @@ public final class RouteController
     /** {@code player} packed or -1; starts a search when the player left the route. */
     public void playerMoved(int player, boolean automaticAllowed)
     {
+        int before = lastPlayer;
+        lastPlayer = player;
         if (target >= 0 && running == null && route == null && noStart && player >= 0 && automaticAllowed)
         {
             // Asked for where the position was unknown: retried now and then once it is known.
@@ -135,6 +147,12 @@ public final class RouteController
             return;
         }
         long now = clock.getAsLong();
+        if (searchedAt >= 0 && before >= 0 && near(player, before, 4) && !near(player, searchedAt, STRAY))
+        {
+            // Walked on past where the last search began (its route came too late to be on): a new stray, no wait.
+            // Jumping about (a position that glitches) keeps the waits.
+            freshWaits();
+        }
         // Unreachable from where that search started; from elsewhere (past a door) it may not be.
         Integer from = unreachable.get(target);
         boolean stillUnreachable = from != null && (from < 0 || near(player, from, STRAY));
@@ -143,6 +161,7 @@ public final class RouteController
             return;
         }
         automatic++;
+        searchedAt = player;
         nextAutomatic = now + backoff;
         backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
         start(false);
@@ -286,20 +305,10 @@ public final class RouteController
         return route;
     }
 
-    public boolean searching()
-    {
-        return running != null;
-    }
-
     /** A message instead of a route, or null. */
     public String status()
     {
         return status;
-    }
-
-    public boolean isUnreachable(int target)
-    {
-        return unreachable.containsKey(target);
     }
 
     /** For tests. */

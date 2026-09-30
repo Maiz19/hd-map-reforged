@@ -1,5 +1,6 @@
 package com.hdmapreforged.route;
 
+import java.util.*;
 import lombok.*;
 
 /** A ladder, staircase, trapdoor or entrance from the game cache: an object's footprint and where it leads. */
@@ -62,7 +63,7 @@ public final class Transition
 
     private static int[] numbers(String cell)
     {
-        return java.util.Arrays.stream(cell.trim().split("\\s+")).mapToInt(Integer::parseInt).toArray();
+        return Arrays.stream(cell.trim().split("\\s+")).mapToInt(Integer::parseInt).toArray();
     }
 
     private static boolean valid(int x, int y, int z)

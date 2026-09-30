@@ -4,7 +4,7 @@
 
 An OSRS Wiki world map for RuneLite with route planning, dungeon maps and Sailing routes. Search for places, monsters and items, check travel requirements, and see your RuneLite party on the map. Supports routes with multiple stops and optional Shortest Path integration.
 
-Open it from the sidebar or a configured hotkey. You can also enable it on the world map orb. Scroll to zoom, drag to move, and right-click a destination to plan a route. Routes can appear on the map, game view and minimap. The plugin shows the way; it never walks or clicks for you.
+Open it from the sidebar or a configured hotkey. You can also enable it on the world map orb. Scroll to zoom, drag to move, and right-click a destination to plan a route. Routes can appear on the map, game view and minimap. Once you have been in your player-owned house, routes use its portals, nexus, jewellery box and more, and the map draws it at its edge; this is kept on your computer, per account. The plugin shows the way; it never walks or clicks for you.
 
 Map tiles and searches use `maps.runescape.wiki` and `oldschool.runescape.wiki`. These sites receive your IP address. Tiles and wiki answers are cached locally (wiki answers are asked again after a week), and the plugin checks for map updates.
 

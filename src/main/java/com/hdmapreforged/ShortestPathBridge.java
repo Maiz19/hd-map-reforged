@@ -22,13 +22,31 @@ final class ShortestPathBridge
 
     static PluginMessage path(WorldPoint target)
     {
+        return path(target, Map.of());
+    }
+
+    /**
+     * Asks it to tell which transports its path uses, so we can draw the route too (it keeps that until a clear);
+     * {@code target} null keeps its route. {@code config}: overrides another plugin gave, kept.
+     */
+    static PluginMessage path(WorldPoint target, Map<?, ?> config)
+    {
         Map<String, Object> data = new HashMap<>();
-        data.put(TARGET, target);
-        // Ask it to tell which transports its path uses, so we can draw the route too.
-        Map<String, Object> config = new HashMap<>();
-        config.put("postTransports", true);
-        data.put("config", config);
+        if (target != null)
+        {
+            data.put(TARGET, target);
+        }
+        Map<Object, Object> wanted = new HashMap<>(config);
+        wanted.put("postTransports", true);
+        data.put("config", wanted);
         return new PluginMessage(NAMESPACE, PATH, data);
+    }
+
+    /** The config overrides a path message carries; empty when none. */
+    static Map<?, ?> config(PluginMessage message)
+    {
+        Object config = message.getData() == null ? null : message.getData().get("config");
+        return config instanceof Map<?, ?> ? (Map<?, ?>) config : Map.of();
     }
 
     static final String TRANSPORTS = "transports";

@@ -9,7 +9,7 @@ import java.util.stream.*;
 /**
  * A* over tiles, sea blocks and jumps ({@link Edge}); costs in half ticks. The heuristic stays a lower bound by folding
  * underground y onto the surface (y − 6400) and bounding far/cheap jumps with a backward search over the jumps alone.
- * Thread-safe: each search keeps its own state; the maps are immutable.
+ * Thread-safe: each search keeps its own state; the maps are immutable (one's house is swapped whole).
  */
 public final class Pathfinder
 {
@@ -23,12 +23,12 @@ public final class Pathfinder
     static final int STAIRS = 5;
     /** Through a solid object found by shape: only when no known way is much shorter. */
     static final int THROUGH = 30;
+    static final String UNKNOWN_NEEDS = "May need a quest, level or item the map does not know";
     static final int SNAP_RADIUS = 12;
     private static final int LONG_JUMP = 24;
     private static final int BLOCK = 8;
     static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
     static final int[] DY = {0, 0, 1, -1, 1, -1, 1, -1};
-    static final int[] NO_EDGES = {};
 
     final CollisionMap map;
     final SeaMap sea;
@@ -56,7 +56,7 @@ public final class Pathfinder
             String name = t.action + (t.name.isEmpty() ? "" : " " + t.name);
             Fees.Fee fee = Fees.at(t.x, t.y, t.plane);
             String detail = fee != null ? "Needs: " + fee.text
-                : t.through ? "May need a quest, level or item the map does not know" : null;
+                : t.through ? UNKNOWN_NEEDS : null;
             int cost = STAIRS + (fee == null ? 0 : fee.cost) + (t.through ? THROUGH : 0);
             for (int origin : t.origins)
             {
@@ -78,7 +78,9 @@ public final class Pathfinder
             {
                 if (shortcut.stands(e))
                 {
-                    atShortcuts.add(new ShortcutPassage(e, shortcut));
+                    // Its needs are the wiki's, used only when met: no toll for needs the map would not know.
+                    atShortcuts.add(new ShortcutPassage(UNKNOWN_NEEDS.equals(e.detail)
+                        ? new Edge(e.from, e.to, e.kind, e.name, null, e.cost - THROUGH) : e, shortcut));
                     return true;
                 }
             }

@@ -113,7 +113,9 @@ public final class Route
                 // Nearer where it starts (a gate, a door): not crossed yet.
                 boolean before = from >= 0 && !Tiles.isSea(from) && sameLevel(player, from)
                     && Tiles.distance(player, from) < Tiles.distance(player, landing);
-                if (sameLevel(player, landing) && Tiles.distance(player, landing) <= 2 && !before)
+                // Into one's house (a teleport, its portal): anywhere in it, it was taken, wherever the game put one.
+                boolean entered = from >= 0 && !inHouse(from) && inHouse(landing) && inHouse(player);
+                if (sameLevel(player, landing) && (Tiles.distance(player, landing) <= 2 || entered) && !before)
                 {
                     bestStep = s + 1;
                     bestIndex = 0;
@@ -167,6 +169,11 @@ public final class Route
             left.add(step);
         }
         return new Route(outcome, left, cost, target, end, exhausted, limited, nodes);
+    }
+
+    private static boolean inHouse(int node)
+    {
+        return HousePlan.contains(Tiles.x(node), Tiles.y(node));
     }
 
     private static boolean sameLevel(int a, int b)

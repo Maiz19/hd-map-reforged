@@ -1,5 +1,6 @@
 package com.hdmapreforged;
 
+import java.util.stream.*;
 import java.awt.image.*;
 import java.io.*;
 import java.util.*;
@@ -26,13 +27,13 @@ final class RegionResolver
         return doubtful(maps(maps, map -> map.contains(x, y)));
     }
 
-    private static List<BaseMap> maps(BaseMaps maps, java.util.function.Predicate<BaseMap> claims)
+    private static List<BaseMap> maps(BaseMaps maps, Predicate<BaseMap> claims)
     {
         return maps.all().stream().filter(map -> map.id != BaseMap.FULL && claims.test(map))
-            .collect(java.util.stream.Collectors.toList());
+            .collect(Collectors.toList());
     }
 
-    private static boolean doubtful(List<BaseMap> found)
+    static boolean doubtful(List<BaseMap> found)
     {
         return found.size() > 1 || found.size() == 1 && found.get(0).id != BaseMap.SURFACE;
     }
@@ -69,51 +70,7 @@ final class RegionResolver
         return added;
     }
 
-    int resolveAll(String version, BaseMaps maps, RegionTable table, BooleanSupplier cancelled)
-    {
-        int minX = Integer.MAX_VALUE;
-        int minY = Integer.MAX_VALUE;
-        int maxX = Integer.MIN_VALUE;
-        int maxY = Integer.MIN_VALUE;
-        for (BaseMap map : maps.all())
-        {
-            if (map.id != BaseMap.FULL)
-            {
-                minX = Math.min(minX, map.minX);
-                minY = Math.min(minY, map.minY);
-                maxX = Math.max(maxX, map.maxX);
-                maxY = Math.max(maxY, map.maxY);
-            }
-        }
-        Map<TileCache.Key, BufferedImage> images = new HashMap<>();
-        int added = 0;
-        for (int rx = minX & ~63; rx < maxX; rx += REGION)
-        {
-            for (int ry = minY & ~63; ry < maxY; ry += REGION)
-            {
-                if (cancelled.getAsBoolean())
-                {
-                    return added;
-                }
-                if (table.isResolved(RegionTable.regionId(rx, ry)) || candidatesIn(maps, rx, ry).isEmpty()
-                    || !needsCheck(maps, rx, ry) && !doubtful(candidatesIn(maps, rx, ry)))
-                {
-                    continue;
-                }
-                if (resolveRegion(version, maps, table, rx, ry, images))
-                {
-                    added++;
-                }
-            }
-            if (images.size() > 256)
-            {
-                images.clear();
-            }
-        }
-        return added;
-    }
-
-    private static List<BaseMap> candidatesIn(BaseMaps maps, int rx, int ry)
+    static List<BaseMap> candidatesIn(BaseMaps maps, int rx, int ry)
     {
         return maps(maps, map -> map.minX < rx + REGION && rx < map.maxX && map.minY < ry + REGION && ry < map.maxY);
     }
@@ -122,7 +79,7 @@ final class RegionResolver
      * Which candidate maps draw a region (all floors), and each 8×8 zone. False when a tile could not be read. With no
      * tile at all the answer is kept for this session only: the wiki may have been missing them briefly.
      */
-    private boolean resolveRegion(String version, BaseMaps maps, RegionTable table, int rx, int ry,
+    boolean resolveRegion(String version, BaseMaps maps, RegionTable table, int rx, int ry,
         Map<TileCache.Key, BufferedImage> images)
     {
         List<BaseMap> candidates = candidatesIn(maps, rx, ry);

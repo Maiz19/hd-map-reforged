@@ -1,5 +1,6 @@
 package com.hdmapreforged;
 
+import com.hdmapreforged.route.*;
 import com.google.gson.*;
 import com.google.inject.*;
 import java.awt.event.*;
@@ -128,6 +129,7 @@ public class HdMapReforgedPlugin extends Plugin
     private MapWindow window;
     private NavigationButton button;
     private WorldPoint lastPlayer;
+    private boolean atHome;
     private BaseMaps bundledMaps;
     private volatile BaseMaps currentMaps;
     private volatile String currentVersion = BUNDLED_VERSION;
@@ -177,7 +179,7 @@ public class HdMapReforgedPlugin extends Plugin
         fullScreen = new MapScreen(tiles, config, wiki, itemNames, () -> fullMap.close());
         fullMap = new FullMapWindow(client, fullScreen, config.fullMapBounds(),
             bounds -> configManager.setConfiguration(HdMapReforgedConfig.GROUP, "fullMapBounds", bounds),
-            key -> config.openMapKey().matches(key), config::mapInGameWindow);
+            key -> config.openMapKey().matches(key));
         keyManager.registerKeyListener(escape);
         keyManager.registerKeyListener(mapKey);
         panel = new MapPanel(() -> fullMap.open(), this::togglePopOut, this::showOnMap, party.sidebar(),
@@ -190,6 +192,7 @@ public class HdMapReforgedPlugin extends Plugin
             .build();
         clientToolbar.addNavigation(button);
         party.start(screen.view(), fullScreen.view());
+        route.setHouseFiles(home.joinSegment("house"), io);
         route.start(screen, fullScreen);
         route.setRouteLog(new RouteLog(home.joinSegment("routes.log"), io, config::routeLog));
         route.setSidebar(panel::showRoute, this::showOnMap);
@@ -321,11 +324,21 @@ public class HdMapReforgedPlugin extends Plugin
         WorldPoint location = playerLocation(player);
         party.tick(location, ticks);
         route.tick(location);
-        if (location != null && !location.equals(lastPlayer))
+        WorldPoint home = route.home();
+        WorldPoint shown = home != null ? home : location;
+        // On the house's plan, or in a box at its portal while that plan is not known (a friend's house).
+        boolean boxed = home != null && !HousePlan.contains(home.getX(), home.getY());
+        WorldPoint outside = route.outside();
+        if (shown != null && (!shown.equals(lastPlayer) || boxed != atHome))
         {
-            lastPlayer = location;
-            screens(s -> s.setPlayer(location));
-            checkRegion(location);
+            lastPlayer = shown;
+            atHome = boxed;
+            screens(s -> {
+                s.view().setHome(boxed);
+                s.view().setOutside(outside);
+                s.setPlayer(shown);
+            });
+            checkRegion(shown);
         }
         updateUnlocks();
     }
@@ -550,7 +563,9 @@ public class HdMapReforgedPlugin extends Plugin
     @Subscribe
     public void onConfigChanged(ConfigChanged event)
     {
-        if (!HdMapReforgedConfig.GROUP.equals(event.getGroup()) || "fullMapBounds".equals(event.getKey()))
+        // The house (per account) is written as it is seen: nothing for the map's tiles.
+        if (!HdMapReforgedConfig.GROUP.equals(event.getGroup())
+            || Set.of("fullMapBounds", RouteFeature.HOUSE_KEY, RouteFeature.PLAN_KEY).contains(event.getKey()))
         {
             return;
         }

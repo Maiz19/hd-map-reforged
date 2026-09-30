@@ -384,3 +384,7 @@
 2824 3508 0	2824 9908 0	Climb-down Ladder
 2827 3511 0	2828 9910 0	Climb-down Ladder
 2828 9910 0	2827 3511 0	Climb-up Ladder
+# Stepping stone (Mort Myre Swamp), object 13504 (wiki: Stepping stone (Mort Myre Swamp)): from the island of fairy
+# ring BIP in the River Salve to the swamp's side and back; its 50 Agility comes from shortcuts.tsv, as a shortcut
+3417 3325 0	3422 3325 0	Cross Stepping stone
+3422 3325 0	3417 3325 0	Cross Stepping stone

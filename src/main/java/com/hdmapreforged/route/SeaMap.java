@@ -9,6 +9,7 @@ import lombok.*;
  * Where a boat can sail: ground floor water in CELL×CELL blocks, open sea when mostly water (boats keep off rivers
  * and shores). Each block takes the hazard level of the nearest named wiki sea (approximate near borders). Immutable.
  */
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class SeaMap
 {
     public static final String AREAS = "/com/hdmapreforged/route/sea_areas.tsv";
@@ -35,10 +36,6 @@ public final class SeaMap
     private final byte[][] blocks = new byte[1 << 15][];
     private final List<Area> areas;
 
-    private SeaMap(List<Area> areas)
-    {
-        this.areas = areas;
-    }
 
     public static SeaMap build(CollisionMap collision) throws IOException
     {
@@ -115,7 +112,7 @@ public final class SeaMap
                     if (cells == null)
                     {
                         cells = new byte[256];
-                        java.util.Arrays.fill(cells, NONE);
+                        Arrays.fill(cells, NONE);
                     }
                     Area area = sea.nearest(baseX + cx * Tiles.CELL + 2, baseY + cy * Tiles.CELL + 2);
                     cells[cx << 4 | cy] = area == null ? 0 : (byte) Math.max(CLOSED, Math.min(120, area.level));

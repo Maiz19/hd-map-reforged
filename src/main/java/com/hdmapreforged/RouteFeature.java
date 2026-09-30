@@ -5,6 +5,10 @@ import com.hdmapreforged.route.Route.*;
 import com.hdmapreforged.route.Route.Step.*;
 import java.awt.*;
 import java.awt.geom.*;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
@@ -12,6 +16,8 @@ import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.regex.*;
 import java.util.stream.*;
+import javax.imageio.*;
+import javax.imageio.stream.*;
 import javax.inject.*;
 import javax.swing.*;
 import javax.swing.Timer;
@@ -27,6 +33,7 @@ import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.widgets.*;
 import net.runelite.api.worldmap.*;
 import net.runelite.client.callback.*;
+import net.runelite.client.chat.*;
 import net.runelite.client.config.*;
 import net.runelite.client.eventbus.*;
 import net.runelite.client.events.*;
@@ -34,6 +41,7 @@ import net.runelite.client.plugins.*;
 import net.runelite.client.ui.*;
 import net.runelite.client.ui.overlay.*;
 import net.runelite.client.ui.overlay.worldmap.*;
+import net.runelite.client.util.*;
 
 /**
  * "Path to here": our own route search; only shows a way, never walks, clicks or sends anything.
@@ -44,7 +52,9 @@ import net.runelite.client.ui.overlay.worldmap.*;
 @RequiredArgsConstructor(onConstructor_ = @Inject)
 public final class RouteFeature
 {
+    /** Per account: the house's features ("box:ornate,glory,portal:Varrock") and its plan. */
     static final String HOUSE_KEY = "routeHouse";
+    static final String PLAN_KEY = "housePlan";
     private static final int[] BOAT_PORTS = {VarbitID.SAILING_BOAT_1_PORT, VarbitID.SAILING_BOAT_2_PORT,
         VarbitID.SAILING_BOAT_3_PORT, VarbitID.SAILING_BOAT_4_PORT, VarbitID.SAILING_BOAT_5_PORT};
     private static final int[] POUCH_TYPES = {VarbitID.RUNE_POUCH_TYPE_1, VarbitID.RUNE_POUCH_TYPE_2,
@@ -102,12 +112,24 @@ public final class RouteFeature
         return new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.max(0, Math.min(255, Math.round(alpha))));
     }
 
+    /**
+     * Where a route tile is in the scene: the plan of one's house lies at {@link HousePlan#X}/{@link HousePlan#Y}
+     * plus the house's own place, moved to where it is loaded now; null outside the scene.
+     */
+    private LocalPoint local(WorldView view, int point)
+    {
+        int x = Tiles.x(point);
+        int y = Tiles.y(point);
+        return !HousePlan.contains(x, y) ? LocalPoint.fromWorld(view, x, y)
+            : house.own() ? LocalPoint.fromScene(x - HousePlan.X + houseX, y - HousePlan.Y + houseY, view) : null;
+    }
+
     private static Ellipse2D circle(double x, double y, double r)
     {
         return new Ellipse2D.Double(x - r, y - r, r * 2, r * 2);
     }
 
-    /** A route tile for HD Tile Markers; {@code alpha}: how visible (fading). */
+    /** A route tile for HD Tile Markers; {@code alpha}: how visible (fading). Client thread. */
     private HdTileMarkersBridge.Tile hdTile(int point, float alpha, Color walk)
     {
         int border = config.routeTileBorder();
@@ -122,8 +144,10 @@ public final class RouteFeature
     private final ConfigManager configManager;
     private final OverlayManager overlayManager;
     private final EventBus eventBus;
+    private final ChatMessageManager chatMessageManager;
     private final HouseTracker house = new HouseTracker();
-    private final List<Overlay> overlays = List.of(new GameOverlay(), new MinimapOverlay(), new WorldMapRoute());
+    // Nothing on the game's own world map: projecting a long route there every frame made it heavy.
+    private final List<Overlay> overlays = List.of(new GameOverlay(), new MinimapOverlay());
     private final MapView.Overlay mapOverlay = this::paintMap;
     private final MapView.MenuContributor menu = this::contribute;
 
@@ -133,90 +157,6 @@ public final class RouteFeature
     private volatile RouteController controller;
     private volatile RouteSource source;
     private volatile Pathfinder walker;
-    private volatile List<int[]> spWalks = List.of();
-    /** Changed together with {@link #spWalks}, under {@link #spLock}. */
-    private final AtomicInteger spGeneration = new AtomicInteger();
-    private final Object spLock = new Object();
-
-    /** Forgets the walks and cancels any filling in; returns the new generation. */
-    private int dropWalks()
-    {
-        synchronized (spLock)
-        {
-            spWalks = List.of();
-            return spGeneration.incrementAndGet();
-        }
-    }
-
-    /** Shortest Path only tells its transports; the walks between them are found here, in the background. */
-    private void fillInWalks(List<ShortestPathBridge.Jump> jumps, WorldPoint from, WorldPoint target)
-    {
-        RouteSource s = source;
-        Pathfinder p = walker;
-        ExecutorService pool = background;
-        int generation = dropWalks();
-        if (s == null || p == null || pool == null || from == null || target == null)
-        {
-            return;
-        }
-        List<WorldPoint[]> legs = new ArrayList<>();
-        WorldPoint at = from;
-        for (ShortestPathBridge.Jump j : jumps)
-        {
-            legs.add(new WorldPoint[]{at, j.from});
-            at = j.to;
-        }
-        legs.add(new WorldPoint[]{at, target});
-        try
-        {
-            pool.execute(() -> fillIn(legs, s, p, generation));
-        }
-        catch (RejectedExecutionException e)
-        {
-            // stopping
-        }
-    }
-
-    private void fillIn(List<WorldPoint[]> legs, RouteSource s, Pathfinder p, int generation)
-    {
-        List<int[]> walks = new ArrayList<>();
-        for (WorldPoint[] leg : legs)
-        {
-            if (generation != spGeneration.get())
-            {
-                return;
-            }
-            RouteRequest request = s.request(pack(leg[0]), pack(leg[1]), Collections.emptyList(), null,
-                PlayerState.UNKNOWN, new RouteSource.Options(false, false), 400_000);
-            Route walk;
-            try
-            {
-                walk = request == null ? null : p.find(request, () -> generation != spGeneration.get());
-            }
-            catch (Throwable e)
-            {
-                log.warn("Could not fill in Shortest Path's walks", e);
-                return;
-            }
-            for (Step step : walk == null ? List.<Step>of() : walk.steps)
-            {
-                if (step.kind == Kind.WALK)
-                {
-                    walks.add(step.points);
-                }
-            }
-        }
-        synchronized (spLock)
-        {
-            if (generation != spGeneration.get())
-            {
-                return;
-            }
-            spWalks = walks;
-        }
-        SwingUtilities.invokeLater(this::repaint);
-    }
-
     private void repaint()
     {
         for (MapScreen screen : screens)
@@ -254,7 +194,6 @@ public final class RouteFeature
     private volatile Consumer<WorldPoint> sidebarFocus = point -> { };
     private volatile Runnable sidebarTours = () -> { };
     private final ClientThread clientThread;
-    private final WorldMapOverlay worldMapOverlay;
     /** The target handed to Shortest Path, or null. */
     private volatile WorldPoint handedOver;
     private volatile WorldPoint lastLocation;
@@ -283,8 +222,37 @@ public final class RouteFeature
         return false;
     }
 
+    /** Client thread. */
+    private boolean warned;
+
+    /** Both planners on is not meant to be: said once after a start, and again when either is switched on. */
+    private void warnBoth(boolean again)
+    {
+        clientThread.invokeLater(() -> {
+            warned &= !again;
+            if (warned || client.getGameState() != GameState.LOGGED_IN || shortestPathPlanner() || !shortestPathOn())
+            {
+                return;
+            }
+            warned = true;
+            chatMessageManager.queue(QueuedMessage.builder().type(ChatMessageType.CONSOLE).value("HD Map Reforged: its "
+                + "route planner is on, and so is the Shortest Path plugin. The map draws both routes; pick one "
+                + "(HD Map Reforged settings, Route planner).").build());
+        });
+    }
+
+    @Subscribe
+    public void onPluginChanged(PluginChanged event)
+    {
+        if (event.isLoaded() && ShortestPathBridge.PLUGIN_NAME.equals(event.getPlugin().getName()))
+        {
+            warnBoth(true);
+        }
+    }
+
     /** Whether HD Tile Markers draws the ground tiles now (checked every 10 ticks). */
     private volatile boolean hdTiles;
+    private boolean hdHome;
     private Route[] sentLegs;
     private int lastHdTilesCheck = Integer.MIN_VALUE / 2;
     private Route sentAhead;
@@ -306,7 +274,9 @@ public final class RouteFeature
         {
             return;
         }
-        WorldPoint point = WorldPoint.fromLocalInstance(client, tile.getLocalLocation());
+        LocalPoint at = tile.getLocalLocation();
+        WorldPoint point = plan != null && house.own() ? worldPoint(planNode(at, view.getPlane()))
+            : WorldPoint.fromLocalInstance(client, at);
         if (point == null)
         {
             return;
@@ -330,12 +300,12 @@ public final class RouteFeature
 
     private long lastFadeSend;
 
-    /** While tiles fade, HD Tile Markers gets them again every few frames (it does not animate what it was sent). */
+    /** While tiles fade, HD Tile Markers gets them again ten times a second (it does not animate what it was sent). */
     @Subscribe
     public void onClientTick(ClientTick event)
     {
         long now = System.currentTimeMillis();
-        if (!hdTiles || fading.isEmpty() && appearing.isEmpty() && !fadedLast || now - lastFadeSend < 50)
+        if (!hdTiles || fading.isEmpty() && appearing.isEmpty() && !fadedLast || now - lastFadeSend < 100)
         {
             return;
         }
@@ -346,10 +316,14 @@ public final class RouteFeature
 
     private void updateHdTiles(int player)
     {
-        if (ticks - lastHdTilesCheck >= 10)
+        boolean home = house.own();
+        if (ticks - lastHdTilesCheck >= 10 || home != hdHome)
         {
+            hdHome = home;
             lastHdTilesCheck = ticks;
-            boolean on = config.routeHdTiles() && config.routeInGame() && pluginOn(HdTileMarkersBridge.PLUGIN_NAME);
+            // In one's house our own overlay draws them: HD Tile Markers puts an instance's tile in every room built
+            // alike (the ring's garden and the tree's).
+            boolean on = !home && config.routeHdTiles() && config.routeInGame() && pluginOn(HdTileMarkersBridge.PLUGIN_NAME);
             if (!on && hdTiles)
             {
                 eventBus.post(HdTileMarkersBridge.clear());
@@ -383,6 +357,7 @@ public final class RouteFeature
         List<HdTileMarkersBridge.Tile> tiles = new ArrayList<>();
         Set<Integer> taken = new HashSet<>();
         int blocked = RouteText.blockedFrom(route);
+        long now = System.currentTimeMillis();
         List<Step> steps = route == null ? Collections.<Step>emptyList() : route.steps;
         for (int index = 0; index < steps.size(); index++)
         {
@@ -395,11 +370,11 @@ public final class RouteFeature
                     if (player < 0 || Tiles.distance(point, player) <= 40)
                     {
                         taken.add(point);
-                        tiles.add(hdTile(point, fadeIn(point, System.currentTimeMillis()), color));
+                        tiles.add(hdTile(point, fadeIn(point, now), color));
                     }
                 }
             }
-            else if (step.isJump() && step.name != null && !Tiles.isSea(step.first()) && step.kind != Kind.TELEPORT)
+            else if (step.isJump() && step.name != null && !Tiles.isSea(step.first()) && step.first() != step.last())
             {
                 int at = step.first();
                 if (player < 0 || Tiles.distance(at, player) <= 40)
@@ -410,7 +385,6 @@ public final class RouteFeature
             }
         }
         // Fading tiles last: HD Tile Markers takes 1000, and the route near the player matters more.
-        long now = System.currentTimeMillis();
         for (Map.Entry<Integer, Long> entry : fading.entrySet())
         {
             float alpha = fadeAlpha(entry.getValue(), now);
@@ -438,54 +412,120 @@ public final class RouteFeature
         eventBus.post(HdTileMarkersBridge.tiles(tiles));
     }
 
-    /** Directions other plugins send to Shortest Path. Only read, never answered. */
-    @Subscribe
+    /** The last message we sent Shortest Path, not taken for another plugin's. */
+    private volatile PluginMessage sent;
+
+    /**
+     * Directions other plugins (Quest Helper, clues) send to Shortest Path: its route is drawn whichever planner is
+     * chosen, and ours plans them too (setting). We only ask it to tell its transports, after it took the message:
+     * a config in it replaces its overrides.
+     */
+    @Subscribe(priority = -1)
     public void onPluginMessage(PluginMessage message)
+    {
+        if (ShortestPathBridge.isTransports(message) && handedOver != null)
+        {
+            spJumps = ShortestPathBridge.jumps(message);
+            walkShortestPath(spJumps, handedOver);
+            SwingUtilities.invokeLater(() -> showShortestPath(false));
+            return;
+        }
+        boolean path = ShortestPathBridge.isPath(message);
+        WorldPoint target = path ? ShortestPathBridge.nearest(ShortestPathBridge.targets(message), lastLocation) : null;
+        if (message == sent || (path ? target == null : !ShortestPathBridge.isClear(message)))
+        {
+            return;
+        }
+        if (target == null && handedOver != null)
+        {
+            forgetHandOver();
+            SwingUtilities.invokeLater(() -> showShortestPath(false));
+        }
+        else if (target != null && shortestPathOn())
+        {
+            forgetHandOver();
+            handedOver = target;
+            eventBus.post(sent = ShortestPathBridge.path(null, ShortestPathBridge.config(message)));
+            SwingUtilities.invokeLater(() -> showShortestPath(false));
+        }
+        if (shortestPathPlanner() || !config.routeFollowPlugins())
+        {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            RouteController c = controller;
+            if (c != null && target != null)
+            {
+                fromPlugin = true;
+                routeAvoid.clear();
+                c.setTarget(pack(target));
+            }
+            else if (c != null && fromPlugin)
+            {
+                fromPlugin = false;
+                c.clear();
+            }
+        });
+    }
+
+    /** As the planner, Shortest Path's route has the card; else it is only drawn, under ours. */
+    private void showShortestPath(boolean up)
     {
         if (shortestPathPlanner())
         {
-            if (ShortestPathBridge.isTransports(message) && handedOver != null)
-            {
-                spJumps = ShortestPathBridge.jumps(message);
-                fillInWalks(spJumps, lastLocation, handedOver);
-                SwingUtilities.invokeLater(() -> showHandedOver(this::handedOverPanel, false));
-            }
-            return;
+            showHandedOver(handedOver == null ? null : this::handedOverPanel, up);
         }
-        if (!config.routeFollowPlugins())
+        else
         {
-            return;
-        }
-        if (ShortestPathBridge.isPath(message))
-        {
-            WorldPoint target = ShortestPathBridge.nearest(ShortestPathBridge.targets(message), lastLocation);
-            if (target != null)
-            {
-                SwingUtilities.invokeLater(() -> {
-                    RouteController c = controller;
-                    if (c != null)
-                    {
-                        fromPlugin = true;
-                        routeAvoid.clear();
-                        c.setTarget(pack(target));
-                    }
-                });
-            }
-        }
-        else if (ShortestPathBridge.isClear(message))
-        {
-            SwingUtilities.invokeLater(() -> {
-                RouteController c = controller;
-                if (c != null && fromPlugin)
-                {
-                    fromPlugin = false;
-                    c.clear();
-                }
-            });
+            repaint();
         }
     }
 
     private volatile List<ShortestPathBridge.Jump> spJumps = List.of();
+    /** Its walks, looked for here on foot between the points it told (it tells no tiles); per its message. */
+    private volatile List<int[]> spWalks = List.of();
+    private final AtomicInteger spAsked = new AtomicInteger();
+
+    /**
+     * From the player to its first transport, between its transports, from the last to its target: walking only (no
+     * shortcut or transport of ours), as its own path walks between the transports it takes.
+     */
+    private void walkShortestPath(List<ShortestPathBridge.Jump> jumps, WorldPoint target)
+    {
+        int asked = spAsked.incrementAndGet();
+        WorldPoint from = lastLocation;
+        Pathfinder pf = walker;
+        ExecutorService work = background;
+        if (from == null || pf == null || work == null)
+        {
+            return;
+        }
+        List<WorldPoint> ends = new ArrayList<>(List.of(from));
+        jumps.forEach(j -> ends.addAll(List.of(j.from, j.to)));
+        ends.add(target);
+        work.execute(() -> {
+            List<int[]> walks = new ArrayList<>();
+            for (int i = 0; i + 1 < ends.size() && asked == spAsked.get(); i += 2)
+            {
+                RouteRequest request = new RouteRequest(pack(ends.get(i)), pack(ends.get(i + 1)), List.of(), List.of(),
+                    1, true, RouteRequest.DEFAULT_NODE_LIMIT);
+                try
+                {
+                    pf.find(request, () -> asked != spAsked.get()).steps.stream().filter(s -> s.kind == Kind.WALK)
+                        .forEach(s -> walks.add(s.points));
+                }
+                catch (RuntimeException e)
+                {
+                    log.debug("No walk found for Shortest Path's route", e);
+                }
+            }
+            if (asked == spAsked.get())
+            {
+                spWalks = walks;
+                SwingUtilities.invokeLater(this::repaint);
+            }
+        });
+    }
 
     private void paintHandedOver(Graphics2D g, MapView.Projection p)
     {
@@ -495,26 +535,18 @@ public final class RouteFeature
             return;
         }
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        float[] walk = {2f, 5f};
         float[] jump = {9f, 6f};
-        List<int[]> walks = spWalks;
-        WorldPoint at = lastLocation;
+        // Beside our route (both planners on): white and dashed, to tell the two apart.
+        boolean beside = !shortestPathPlanner();
+        Color walked = beside ? Color.WHITE : SP_WALK;
+        // Its teleports and transports as it told them, and the walks between them as found here on foot.
+        for (int[] walk : spWalks)
+        {
+            shadowed(g, RouteText.path(p, walk, false), 2.5f, beside ? new float[]{6f, 5f} : null, walked);
+        }
         for (ShortestPathBridge.Jump j : spJumps)
         {
-            if (at != null && walks.isEmpty())
-            {
-                line(g, p, at, j.from, walk, SP_WALK);
-            }
-            line(g, p, j.from, j.to, jump, new Color(180, 120, 255));
-            at = j.to;
-        }
-        if (at != null && walks.isEmpty())
-        {
-            line(g, p, at, target, walk, SP_WALK);
-        }
-        for (int[] points : walks)
-        {
-            shadowed(g, RouteText.path(p, points, true), 3f, null, SP_WALK);
+            line(g, p, j.from, j.to, jump, beside ? Color.WHITE : new Color(180, 120, 255));
         }
         if (p.shows(target))
         {
@@ -522,7 +554,7 @@ public final class RouteFeature
             double y = RouteText.y(p, pack(target));
             g.setColor(new Color(0, 0, 0, 160));
             g.fill(circle(x, y, 7));
-            g.setColor(SP_WALK);
+            g.setColor(walked);
             g.fill(circle(x, y, 5));
         }
     }
@@ -561,10 +593,10 @@ public final class RouteFeature
         {
             panel.add(tourHeader(running, width));
         }
-        panel.add(label("Route to " + target.getX() + ", " + target.getY(), width, Font.BOLD, Color.WHITE));
+        panel.add(label("Route by Shortest Path", width, Font.BOLD, Color.WHITE));
         boolean on = shortestPathOn();
-        panel.add(label(on ? "Planned by Shortest Path (shown in the game). On this map: its teleports and transports, "
-            + "with the walks between them as this map finds them."
+        panel.add(label(on ? "Planned by Shortest Path, which draws it in the game. On this map: the teleports and "
+            + "transports it takes, and the walks between them as found here on foot."
             : "The Shortest Path plugin is not on. Install or switch it on, or set Route planner to HD Map Reforged.",
             width, Font.PLAIN, on ? ColorScheme.LIGHT_GRAY_COLOR : NOTE));
         int number = 1;
@@ -578,12 +610,23 @@ public final class RouteFeature
 
     private void handOver(WorldPoint target)
     {
+        forgetHandOver();
         handedOver = target;
-        spJumps = List.of();
-        fillInWalks(List.of(), lastLocation, target);
         // Shortest Path reads the player's position when a message arrives: client thread.
-        clientThread.invokeLater(() -> eventBus.post(ShortestPathBridge.path(target)));
-        showHandedOver(this::handedOverPanel, true);
+        PluginMessage path = ShortestPathBridge.path(target);
+        clientThread.invokeLater(() -> eventBus.post(sent = path));
+        showShortestPath(true);
+    }
+
+    /** Shortest Path plans it as the planner (true), or also when both are on: drawn under ours, to compare. */
+    private boolean toShortestPath(WorldPoint target)
+    {
+        boolean planner = shortestPathPlanner();
+        if (planner || shortestPathOn())
+        {
+            handOver(target);
+        }
+        return planner;
     }
 
     private void showHandedOver(IntFunction<JComponent> panel, boolean up)
@@ -598,16 +641,16 @@ public final class RouteFeature
     private void handOverClear()
     {
         forgetHandOver();
-        clientThread.invokeLater(() -> eventBus.post(ShortestPathBridge.clear()));
-        showHandedOver(null, false);
+        clientThread.invokeLater(() -> eventBus.post(sent = ShortestPathBridge.clear()));
+        showShortestPath(false);
     }
-
 
     private void forgetHandOver()
     {
         handedOver = null;
         spJumps = List.of();
-        dropWalks();
+        spWalks = List.of();
+        spAsked.incrementAndGet();
     }
 
     void start(MapScreen... on)
@@ -640,6 +683,11 @@ public final class RouteFeature
                         return; // stopped (maybe restarted) while loading
                     }
                     ports = loadedPorts;
+                    synchronized (this)
+                    {
+                        collision = map;
+                        map.setHouse(plan);
+                    }
                     source = new RouteSource(map, sea);
                     for (MapScreen screen : screens)
                     {
@@ -657,13 +705,14 @@ public final class RouteFeature
                 log.warn("Could not load the route data", e);
             }
         });
-        // Started while logged in: the house from the "Your house" settings, as at login.
+        // Started while logged in: this account's house, as at login.
         clientThread.invokeLater(() -> {
             if (client.getGameState() == GameState.LOGGED_IN && generation == loads.get())
             {
-                house.restore(houseSettings());
+                loadHouse();
             }
         });
+        warnBoth(false);
     }
 
     private static ExecutorService daemon(String name, int priority)
@@ -723,10 +772,14 @@ public final class RouteFeature
         shown = null;
         source = null;
         walker = null;
+        collision = null;
         ports = Collections.emptyMap();
         // Client thread state: reset there, before any start's own work there.
         clientThread.invokeLater(() -> {
             house.reset();
+            houseOf = Long.MIN_VALUE;
+            houseLook = new BufferedImage[4];
+            setPlan(null);
             bank = null;
             bankItems = null;
             bankChanged = true;
@@ -738,6 +791,7 @@ public final class RouteFeature
             sentFrom = -1;
             fadedLast = false;
             lastHdTilesCheck = Integer.MIN_VALUE / 2;
+            warned = false;
         });
         // Work still on the extras thread finds it is not wanted.
         tour = null;
@@ -766,6 +820,77 @@ public final class RouteFeature
 
     // ---- client thread ----
 
+    /**
+     * In a house, where the map shows the player: on its plan in one's own house once seen, else where it stands on the
+     * surface (its portal); the house itself is a copy far from its town.
+     */
+    /** In one's house, its portal outside: where "nearest" counts from. */
+    WorldPoint outside()
+    {
+        int exit = house.exit();
+        return exit < 0 ? null : worldPoint(exit);
+    }
+
+    private WorldPoint nearFrom(int node)
+    {
+        return node < 0 ? null : HousePlan.contains(Tiles.x(node), Tiles.y(node)) ? outside() : worldPoint(node);
+    }
+
+    WorldPoint home()
+    {
+        int at = inHouse();
+        int portal = at >= 0 ? at : !house.inside() ? -1 : house.exit() >= 0 ? house.exit() : house.portal();
+        return portal < 0 ? null : worldPoint(portal);
+    }
+
+    /**
+     * Tiles from the plan to the scene as loaded now. The game centres the scene on where one stood as it loaded (a
+     * teleport in, building mode), so the house lies elsewhere in it each time; the plan keeps its south-west room at
+     * chunk 2. Client thread writes.
+     */
+    private volatile int houseX;
+    private volatile int houseY;
+
+    private void placeHouse(WorldView view)
+    {
+        int[][][] chunks = view == null ? null : view.getInstanceTemplateChunks();
+        int west = 13;
+        int south = 13;
+        for (int[][] plane : chunks == null ? new int[0][][] : chunks)
+        {
+            for (int x = 0; x < plane.length; x++)
+            {
+                for (int y = 0; y < plane[x].length; y++)
+                {
+                    // A room of the house: copied from the game's house templates.
+                    int data = plane[x][y];
+                    if (data != -1 && HouseTracker.isTemplate((data >> 14 & 0x3ff) * 8, (data >> 3 & 0x7ff) * 8))
+                    {
+                        west = Math.min(west, x);
+                        south = Math.min(south, y);
+                    }
+                }
+            }
+        }
+        houseX = west < 13 ? (west - 2) * 8 : 0;
+        houseY = south < 13 ? (south - 2) * 8 : 0;
+    }
+
+    /** The player's tile on the plan of their own house once seen; else -1 (the route starts from its ways out). */
+    private int inHouse()
+    {
+        Player player = client.getLocalPlayer();
+        LocalPoint local = player == null ? null : player.getLocalLocation();
+        WorldView view = client.getTopLevelWorldView();
+        return plan == null || !house.own() || local == null || view == null ? -1 : planNode(local, view.getPlane());
+    }
+
+    /** A scene tile of one's house on its plan. */
+    private int planNode(LocalPoint local, int plane)
+    {
+        return HousePlan.node(local.getSceneX() - houseX, local.getSceneY() - houseY, plane);
+    }
+
     void tick(WorldPoint location)
     {
         ticks++;
@@ -781,13 +906,23 @@ public final class RouteFeature
         int node = location == null ? -1 : pack(location);
         house.update(node, instance, client.getVarbitValue(VarbitID.POH_HOUSE_LOCATION),
             client.getVarbitValue(VarbitID.POH_BUILDING_MODE) == 1);
+        if (house.inside())
+        {
+            placeHouse(client.getTopLevelWorldView());
+        }
+        if (house.takeScan())
+        {
+            scanHouse();
+        }
         if (house.takeChanged())
         {
             writeHouse(house.features());
         }
-        int from = location == null ? -2 : house.inside() ? -1
+        int from = location == null ? -2 : house.inside() ? inHouse()
             : onBoat ? Tiles.seaAt(location.getX(), location.getY()) : node;
         start = from;
+        // Not in other instances (their tiles are copies); in one's own house its plan tells where one is.
+        boolean replans = !instance || house.inside() && from >= 0;
         updateHdTiles(from);
         if (ticks % STATE_TICKS == 0 || state == PlayerState.UNKNOWN)
         {
@@ -811,7 +946,7 @@ public final class RouteFeature
                     c.clear();
                     return;
                 }
-                c.playerMoved(from >= 0 ? from : -1, !instance);
+                c.playerMoved(from >= 0 ? from : -1, replans);
                 updateAhead(c, from);
             }
         });
@@ -864,13 +999,29 @@ public final class RouteFeature
     private void fadeStep()
     {
         long now = System.currentTimeMillis();
+        // Tiles fade all the while a route is walked: a map is painted again only while it shows one of them.
+        for (MapScreen screen : screens)
+        {
+            if (showsFading(screen.view()))
+            {
+                screen.view().repaint();
+            }
+        }
         fading.values().removeIf(since -> now - since >= FADE_MS);
         appearing.values().removeIf(since -> now - since >= FADE_IN_MS);
         if (fading.isEmpty() && appearing.isEmpty())
         {
             fadeTimer.stop();
         }
-        repaint();
+    }
+
+    /** Whether the map shows a passed tile that fades (appearing tiles fade in the game only). */
+    private boolean showsFading(MapView view)
+    {
+        MapView.Projection p = view.projection();
+        Rectangle seen = new Rectangle(p.width(), p.height());
+        return view.isShowing() && fading.keySet().stream().map(RouteFeature::worldPoint).filter(p::shows).map(p::shown)
+            .anyMatch(at -> at.getPlane() == p.plane() && seen.contains(p.screenX(at.getX() + 0.5), p.screenY(at.getY() + 0.5)));
     }
 
     private static void eachWalked(Route route, IntConsumer tile)
@@ -933,6 +1084,11 @@ public final class RouteFeature
         return aheadWalked;
     }
 
+    private static long jumps(Route route)
+    {
+        return route.steps.stream().filter(Step::isJump).count();
+    }
+
     private void updateAhead(RouteController c, int player)
     {
         Route route = effective(c);
@@ -945,11 +1101,12 @@ public final class RouteFeature
         }
         Set<Integer> walkedBefore = walkedAhead(before);
         Set<Integer> walkedNow = now == before ? walkedBefore : walked(now);
-        if (route != null && route == aheadOf && before != null && now != null && player >= 0
-            && walkedNow.size() > walkedBefore.size() && !now.steps.isEmpty()
-            && Tiles.distance(player, now.steps.get(0).first()) > 2)
+        if (route != null && route == aheadOf && before != null && now != null && player >= 0 && !Tiles.isSea(player)
+            && !now.steps.isEmpty() && jumps(now) >= jumps(before) && Tiles.distance(player, now.steps.get(0).first()) > 2)
         {
-            // Off the way (a new search is coming): what was passed stays gone instead of fading back in.
+            // Off the way: the route stays as it was, nothing passed (walking away beside it is not walking it) and
+            // nothing back, until the player is on it again or a new search's route fades in. A teleport or
+            // transport just taken is passed, wherever it put the player.
             return;
         }
         aheadOf = route;
@@ -1046,7 +1203,8 @@ public final class RouteFeature
             bankChanged = false;
         }
         return new PlayerState(ItemSnapshot.withBankOf(carried, unlimited, bankItems), client.getRealSkillLevel(Skill.SAILING),
-            pandemonium, boatTiles, config.routeRunning(), house.inside(), house.exit(), house.own(), house.features());
+            pandemonium, boatTiles, config.routeRunning(), house.inside(), house.inside() ? house.exit() : house.portal(),
+            house.own(), house.features(), client.getVarbitValue(VarbitID.POH_TELE_TOGGLE) == 0);
     }
 
     @Subscribe
@@ -1076,19 +1234,427 @@ public final class RouteFeature
     @Subscribe
     public void onGameObjectSpawned(GameObjectSpawned event)
     {
-        if (!house.own())
+        // Not while a scene loads: the scan sees those, and going into building mode its spaces load before it shows.
+        if (house.own() && client.getGameState() == GameState.LOGGED_IN)
         {
-            return;
+            house.seen(name(event.getGameObject().getId()));
         }
-        ObjectComposition object = client.getObjectDefinition(event.getGameObject().getId());
+    }
+
+    private String name(int id)
+    {
+        ObjectComposition object = client.getObjectDefinition(id);
         if (object != null && object.getImpostorIds() != null)
         {
             object = object.getImpostor();
         }
-        if (object != null)
+        return object == null || "null".equals(object.getName()) ? null : object.getName();
+    }
+
+    /** The game's list of portal nexus teleports (an enum of structs), and the param naming each. */
+    private static final int NEXUS_TELEPORTS = 1377;
+    private static final int NEXUS_NAME = 660;
+    /** The nexus' 45 slots: runs of varbits one after another, from each run's first. */
+    private static final int[][] NEXUS_SLOTS = {{VarbitID.POH_NEXUS_TELE_1, 15}, {VarbitID.POH_NEXUS_TELE_16, 3},
+        {VarbitID.POH_NEXUS_TELE_19, 12}, {VarbitID.POH_NEXUS_TELE_31, 5}, {VarbitID.POH_NEXUS_TELE_36, 10}};
+    private static final Pattern STAIRS = Pattern.compile(".*(tair|adder|rapdoor).*");
+
+    /**
+     * One's own house, looked through once per visit (its objects spawn while it loads, before a tick finds the player
+     * inside): its portals, nexus and such for routes, and its plan, drawn at the surface map's edge. Kept per account.
+     */
+    private void scanHouse()
+    {
+        WorldView view = client.getTopLevelWorldView();
+        Player player = client.getLocalPlayer();
+        LocalPoint me = player == null ? null : player.getLocalLocation();
+        if (view == null || me == null)
         {
-            house.seen(object.getName());
+            house.scanAgain();
+            return;
         }
+        int size = HousePlan.SIZE;
+        int dx = houseX;
+        int dy = houseY;
+        Tile[][][] scene = view.getScene().getTiles();
+        CollisionData[] collision = view.getCollisionMaps();
+        // Moved to the house's own place (houseX/houseY): the scene is centred on where one stood as it loaded.
+        byte[][] placed = new byte[4][size * size];
+        Map<Integer, String> things = new LinkedHashMap<>();
+        List<String> names = new ArrayList<>();
+        for (int z = 0; z < 4; z++)
+        {
+            int[][] flags = collision == null || collision[z] == null ? new int[0][] : collision[z].getFlags();
+            for (int x = Math.max(0, dx); x < Math.min(size, size + dx); x++)
+            {
+                for (int y = Math.max(0, dy); y < Math.min(size, size + dy); y++)
+                {
+                    Tile tile = scene[z][x][y];
+                    // No ground (the void round the house) is no floor, though the game sets no flag there.
+                    int f = tile == null || tile.getSceneTilePaint() == null && tile.getSceneTileModel() == null
+                        || x >= flags.length || y >= flags[x].length ? CollisionDataFlag.BLOCK_MOVEMENT_FULL : flags[x][y];
+                    int node = HousePlan.node(x - dx, y - dy, z);
+                    placed[z][(x - dx) * size + y - dy] = (byte) (((f & CollisionDataFlag.BLOCK_MOVEMENT_FULL) == 0 ? 1 : 0)
+                        | ((f & CollisionDataFlag.BLOCK_MOVEMENT_NORTH) != 0 ? 2 : 0)
+                        | ((f & CollisionDataFlag.BLOCK_MOVEMENT_EAST) != 0 ? 4 : 0));
+                    List<TileObject> objects = new ArrayList<>(tile == null ? List.of() : Arrays.asList(tile.getGameObjects()));
+                    if (tile != null)
+                    {
+                        // A mounted glory hangs on a wall.
+                        objects.add(tile.getWallObject());
+                        objects.add(tile.getDecorativeObject());
+                    }
+                    for (TileObject object : objects)
+                    {
+                        // Once per object, at its south-west tile.
+                        Point base = object instanceof GameObject ? ((GameObject) object).getSceneMinLocation() : null;
+                        String name = object == null || base != null && (base.getX() != x || base.getY() != y) ? null
+                            : name(object.getId());
+                        if (name == null)
+                        {
+                            continue;
+                        }
+                        String lower = name.toLowerCase(Locale.ROOT);
+                        if (lower.endsWith(" space"))
+                        {
+                            // Building mode's empty spaces (its varbit can come before the normal house loads).
+                            house.scanAgain();
+                            return;
+                        }
+                        names.add(name);
+                        if (object instanceof WallObject && lower.contains("door"))
+                        {
+                            door(placed[z], x - dx, y - dy, ((WallObject) object).getOrientationA());
+                        }
+                        else if (lower.contains("nexus") || name.equals("Portal") || HouseTracker.feature(name) != null
+                            || STAIRS.matcher(name).matches())
+                        {
+                            things.put(node, lower.contains("nexus") ? RouteSource.NEXUS : name);
+                        }
+                    }
+                }
+            }
+        }
+        house.replaceFeatures(Set.of());
+        names.forEach(house::seen);
+        things.replaceAll((node, name) -> name.equals(RouteSource.NEXUS) ? nexus() : name);
+        int arrival = HousePlan.node(me.getSceneX() - dx, me.getSceneY() - dy, view.getPlane());
+        List<Integer> from = new ArrayList<>(List.of(arrival));
+        things.forEach((node, name) -> {
+            for (int d = 0; STAIRS.matcher(name).matches() && d < 9; d++)
+            {
+                // From where the player stands; stairs lead to the floors above and below.
+                from.add(Tiles.pack(Tiles.x(node) + d / 3 - 1, Tiles.y(node) + d % 3 - 1, Tiles.z(node)));
+            }
+        });
+        HousePlan.keepReachable(placed, from);
+        String exit = "Portal";
+        for (Map.Entry<Integer, String> thing : things.entrySet())
+        {
+            for (int d = 1; exit.equals(thing.getValue()) && d <= 3; d++)
+            {
+                int north = thing.getKey() + d;
+                int y = Tiles.y(north) - HousePlan.Y;
+                if (y < size && (placed[Tiles.z(north)][(Tiles.x(north) - HousePlan.X) * size + y] & 1) != 0)
+                {
+                    arrival = north;
+                    exit = "";
+                }
+            }
+        }
+        // One of fairy ring, spirit tree and spiritual fairy tree: the one nearest where one arrives.
+        int spawn = arrival;
+        things.entrySet().stream().filter(t -> garden(t.getValue()))
+            .min(Comparator.comparingInt(t -> Tiles.distance(t.getKey(), spawn))).map(Map.Entry::getKey).ifPresent(at -> {
+                String centre = things.get(at);
+                things.keySet().removeIf(node -> node != at && garden(things.get(node)));
+                Set<String> kept = new LinkedHashSet<>(house.features());
+                kept.removeIf(Arrays.asList(HouseSettings.GARDENS)::contains);
+                kept.add(HouseTracker.feature(centre));
+                house.replaceFeatures(kept);
+            });
+        HousePlan seen = new HousePlan(placed, things, arrival);
+        // The game's own minimap of each floor.
+        BufferedImage[] look = new BufferedImage[4];
+        for (int z = 0; z < 4; z++)
+        {
+            // Only floors the house has: each picture is drawn for the whole scene.
+            byte[] floor = placed[z];
+            SpritePixels drawn = IntStream.range(0, floor.length).anyMatch(i -> (floor[i] & 1) != 0)
+                ? client.drawInstanceMap(z) : null;
+            look[z] = drawn == null ? null : sceneOf(drawn.toBufferedImage(), floor, dx, dy);
+        }
+        keepLook(look);
+        String text = seen.encode();
+        if (text != null)
+        {
+            configManager.setRSProfileConfiguration(HdMapReforgedConfig.GROUP, PLAN_KEY, text);
+        }
+        setPlan(seen);
+        writeHouse(house.features());
+    }
+
+    private static boolean garden(String thing)
+    {
+        String feature = HouseTracker.feature(thing);
+        return feature != null && Arrays.asList(HouseSettings.GARDENS).contains(feature);
+    }
+
+    /** A door counts as open (orientation 1 west, 2 north, 4 east, 8 south): its wall's bit becomes a door's. */
+    private static void door(byte[] tiles, int x, int y, int orientation)
+    {
+        int wall = orientation == 2 || orientation == 8 ? 2 : orientation == 1 || orientation == 4 ? 4 : 0;
+        int tx = orientation == 1 ? x - 1 : x;
+        int ty = orientation == 8 ? y - 1 : y;
+        int i = tx * HousePlan.SIZE + ty;
+        if (wall != 0 && tx >= 0 && ty >= 0)
+        {
+            tiles[i] = (byte) (tiles[i] & ~wall | wall * 4);
+        }
+    }
+
+    static int nexusSlot(int slot)
+    {
+        for (int[] run : NEXUS_SLOTS)
+        {
+            if (slot < run[1])
+            {
+                return run[0] + slot;
+            }
+            slot -= run[1];
+        }
+        return -1;
+    }
+
+    /** "Portal Nexus: Varrock, Falador": its places from the game's varbits (slot, teleport, its name). */
+    private String nexus()
+    {
+        List<String> places = new ArrayList<>();
+        EnumComposition teleports = client.getEnum(NEXUS_TELEPORTS);
+        for (int slot = 0; slot < 45 && teleports != null; slot++)
+        {
+            int id = client.getVarbitValue(nexusSlot(slot));
+            int struct = id <= 0 ? -1 : teleports.getIntValue(id);
+            StructComposition teleport = struct < 0 ? null : client.getStructComposition(struct);
+            String name = teleport == null ? null : teleport.getStringValue(NEXUS_NAME);
+            String place = name == null ? null : Text.removeTags(name);
+            if (place != null && !place.isEmpty())
+            {
+                places.add(place);
+                house.seen(RouteSource.NEXUS + ": " + place);
+            }
+        }
+        return RouteSource.NEXUS + (places.isEmpty() ? "" : ": " + String.join(", ", places));
+    }
+
+    /** Which house a house portal leads to, as the player chose it there. */
+    @Subscribe
+    public void onMenuOptionClicked(MenuOptionClicked event)
+    {
+        Widget widget = event.getWidget();
+        String what = (event.getMenuOption() + " " + Text.removeTags(event.getMenuTarget()) + " " + (widget == null
+            || widget.getText() == null ? "" : Text.removeTags(widget.getText()))).toLowerCase(Locale.ROOT);
+        // Also a tablet, the spell or a cape into it (not their Outside): at a portal that would look like a friend's.
+        if (what.startsWith("home ") || what.startsWith("build mode ") || what.contains("your house")
+            || what.startsWith("tele to poh") || what.matches("(break|inside|cast) teleport to house.*"))
+        {
+            house.chose(true);
+        }
+        else if (what.contains("friend's house"))
+        {
+            house.chose(false);
+        }
+    }
+
+    /**
+     * The house per floor as the game's minimap draws it, 4 pixels a tile over the scene's 104, north up; null where
+     * not seen. Kept per account as one picture in the plugin's folder, the floors one under another.
+     */
+    private volatile BufferedImage[] houseLook = new BufferedImage[4];
+    private static final int LOOK = HousePlan.SIZE * 4;
+    private volatile Filepath houseFolder;
+    private volatile Executor houseIo;
+
+    void setHouseFiles(Filepath folder, Executor io)
+    {
+        houseFolder = folder;
+        houseIo = io;
+    }
+
+    private Filepath lookFile(long account)
+    {
+        Filepath folder = houseFolder;
+        return folder == null || houseIo == null ? null : folder.joinSegment(Long.toHexString(account) + ".png");
+    }
+
+    /**
+     * The house in a minimap picture that may cover an expanded scene, moved as the plan is ({@code dx}, {@code dy}
+     * tiles from the plan to the scene): of the margins a chunk apart, the one where the plan's walls are the
+     * picture's white lines (else its floor is painted); null when none fits. Black (no ground) becomes clear.
+     */
+    static BufferedImage sceneOf(BufferedImage all, byte[] floor, int dx, int dy)
+    {
+        BufferedImage best = null;
+        int most = 0;
+        for (int margin = 0; margin + LOOK <= Math.min(all.getWidth(), all.getHeight()); margin += 32)
+        {
+            int painted = 0;
+            for (int i = 0; i < floor.length; i++)
+            {
+                int x = (i / HousePlan.SIZE + dx) * 4;
+                int y = (HousePlan.SIZE - 1 - i % HousePlan.SIZE - dy) * 4;
+                boolean in = x >= 0 && y >= 0 && x + 4 <= LOOK && y + 4 <= LOOK;
+                int rgb = in ? all.getRGB(margin + x + 2, margin + y + 2) : 0;
+                painted += (floor[i] & 1) != 0 && rgb >>> 24 != 0 && (rgb & 0xffffff) != 0 ? 1 : 0;
+                // A wall on the tile's north or east edge: white there.
+                painted += in && (floor[i] & 2) != 0 && white(all.getRGB(margin + x + 1, margin + y)) ? 16 : 0;
+                painted += in && (floor[i] & 4) != 0 && white(all.getRGB(margin + x + 3, margin + y + 1)) ? 16 : 0;
+            }
+            if (painted > most)
+            {
+                // A copy: the rest of the picture (four times its size) is not kept with it.
+                most = painted;
+                int[] pixels = new int[LOOK * LOOK];
+                for (int i = 0; i < pixels.length; i++)
+                {
+                    int x = i % LOOK + dx * 4;
+                    int y = i / LOOK - dy * 4;
+                    int rgb = x < 0 || y < 0 || x >= LOOK || y >= LOOK ? 0 : all.getRGB(margin + x, margin + y);
+                    pixels[i] = (rgb & 0xffffff) == 0 ? 0 : rgb;
+                }
+                best = new BufferedImage(LOOK, LOOK, BufferedImage.TYPE_INT_ARGB);
+                best.setRGB(0, 0, LOOK, LOOK, pixels, 0, LOOK);
+            }
+        }
+        return best;
+    }
+
+    private static boolean white(int rgb)
+    {
+        return (rgb >> 16 & 255) > 180 && (rgb >> 8 & 255) > 180 && (rgb & 255) > 180;
+    }
+
+    /** Shown at once; written on the file thread. */
+    private void keepLook(BufferedImage[] look)
+    {
+        houseLook = look;
+        Filepath file = lookFile(houseOf);
+        if (file == null)
+        {
+            return;
+        }
+        houseIo.execute(() -> {
+            BufferedImage all = new BufferedImage(LOOK, LOOK * 4, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = all.createGraphics();
+            for (int z = 0; z < 4; z++)
+            {
+                g.drawImage(look[z], 0, z * LOOK, null);
+            }
+            g.dispose();
+            // In memory: ImageIO would cache through a temporary file of its own.
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            try
+            {
+                try (ImageOutputStream out = new MemoryCacheImageOutputStream(bytes))
+                {
+                    ImageIO.write(all, "png", out);
+                }
+                TileCache.writeAtomically(file, bytes.toByteArray());
+            }
+            catch (IOException | RuntimeException e)
+            {
+                log.debug("Could not keep the house's look", e);
+            }
+        });
+    }
+
+    /** The account's kept look, read on the file thread; our own drawing of the plan until then. */
+    private void readLook(long account)
+    {
+        BufferedImage[] none = new BufferedImage[4];
+        houseLook = none;
+        Filepath file = lookFile(account);
+        if (file == null)
+        {
+            return;
+        }
+        houseIo.execute(() -> {
+            BufferedImage[] look = new BufferedImage[4];
+            try (ImageInputStream in = file.isFile() ? new MemoryCacheImageInputStream(new ByteArrayInputStream(
+                TileCache.read(file))) : null)
+            {
+                BufferedImage all = in == null ? null : ImageIO.read(in);
+                for (int z = 0; all != null && all.getWidth() == LOOK && all.getHeight() == LOOK * 4 && z < 4; z++)
+                {
+                    look[z] = all.getSubimage(0, z * LOOK, LOOK, LOOK);
+                }
+            }
+            catch (IOException | RuntimeException e)
+            {
+                log.debug("Could not read the house's look", e);
+            }
+            // Not over a scan made meanwhile, nor for another account.
+            if (houseLook == none && houseOf == account)
+            {
+                houseLook = look;
+                SwingUtilities.invokeLater(this::repaint);
+            }
+        });
+    }
+
+    /** The account whose house is loaded (client thread); none after a log out. */
+    private volatile long houseOf = Long.MIN_VALUE;
+    /** For Swing: the features as last written. */
+    private volatile Set<String> houseFeatures = Set.of();
+    private volatile HousePlan plan;
+    private volatile CollisionMap collision;
+
+    /** The plan and the route data (loaded meanwhile) are joined under this lock. */
+    private synchronized void setPlan(HousePlan seen)
+    {
+        plan = seen;
+        if (collision != null)
+        {
+            collision.setHouse(seen);
+        }
+        houseChanged();
+    }
+
+    /** This account's house; not before RuneLite knows the account's profile: that may come just after the login. */
+    private void loadHouse()
+    {
+        if (configManager.getRSProfileKey() == null)
+        {
+            return;
+        }
+        houseOf = client.getAccountHash();
+        String saved = configManager.getRSProfileConfiguration(HdMapReforgedConfig.GROUP, HOUSE_KEY);
+        Set<String> features = new LinkedHashSet<>(Arrays.asList(saved == null ? new String[0] : saved.split(",")));
+        features.remove("");
+        house.reset();
+        house.restore(features);
+        readLook(houseOf);
+        writeHouse(house.features());
+        String text = configManager.getRSProfileConfiguration(HdMapReforgedConfig.GROUP, PLAN_KEY);
+        setPlan(text == null ? null : HousePlan.decode(text));
+    }
+
+    private void writeHouse(Set<String> features)
+    {
+        houseFeatures = Set.copyOf(features);
+        configManager.setRSProfileConfiguration(HdMapReforgedConfig.GROUP, HOUSE_KEY, String.join(",", features));
+        houseChanged();
+    }
+
+    @Subscribe
+    public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
+    {
+        clientThread.invokeLater(() -> {
+            if (client.getGameState() == GameState.LOGGED_IN)
+            {
+                loadHouse();
+            }
+        });
     }
 
     @Subscribe
@@ -1096,52 +1662,28 @@ public final class RouteFeature
     {
         if (event.getGameState() == GameState.LOGGED_IN)
         {
-            // The "Your house" settings (once migrated from the per-account key of earlier versions).
-            String saved = configManager.getRSProfileConfiguration(HdMapReforgedConfig.GROUP, HOUSE_KEY);
-            Set<String> features = houseSettings();
-            if (saved != null && !saved.isEmpty() && features.isEmpty())
+            if (client.getAccountHash() != houseOf)
             {
-                features.addAll(Arrays.asList(saved.split(",")));
-                writeHouse(features);
-            }
-            if (saved != null)
-            {
-                configManager.unsetRSProfileConfiguration(HdMapReforgedConfig.GROUP, HOUSE_KEY);
-            }
-            if (!features.equals(house.features()))
-            {
-                house.reset();
-                house.restore(features);
+                loadHouse();
             }
             pandemonium = null;
+            warnBoth(false);
+        }
+        else if (event.getGameState() == GameState.LOADING)
+        {
+            house.reloaded();
         }
         else if (event.getGameState() == GameState.LOGIN_SCREEN)
         {
             house.reset();
+            houseOf = Long.MIN_VALUE;
+            houseLook = new BufferedImage[4];
+            setPlan(null);
             bank = null;
             bankChanged = true;
             start = -2;
             state = PlayerState.UNKNOWN;
         }
-    }
-
-    private Set<String> houseSettings()
-    {
-        return HouseSettings.features(config.houseJewelleryBox(), config.houseGlory(), config.houseFairyRing(),
-            config.houseSpiritTree(), config.housePortals());
-    }
-
-    private void writeHouse(Set<String> features)
-    {
-        if (features.equals(houseSettings()))
-        {
-            return;
-        }
-        set("houseJewelleryBox", HouseSettings.box(features));
-        set("houseGlory", features.contains("glory"));
-        set("houseFairyRing", HouseSettings.fairyRing(features));
-        set("houseSpiritTree", HouseSettings.spiritTree(features));
-        set("housePortals", HouseSettings.portals(features));
     }
 
     private String get(String key)
@@ -1162,20 +1704,6 @@ public final class RouteFeature
         {
             return;
         }
-        if (key.startsWith("house"))
-        {
-            clientThread.invokeLater(() -> {
-                Set<String> features = houseSettings();
-                if (features.equals(house.features()))
-                {
-                    return;
-                }
-                house.replaceFeatures(features);
-                state = capture();
-                SwingUtilities.invokeLater(this::settingsChanged);
-            });
-            return;
-        }
         if (!key.startsWith("route") || HOUSE_KEY.equals(key) || "routeLog".equals(key)
             || "routePlannerChosen".equals(key))
         {
@@ -1183,6 +1711,7 @@ public final class RouteFeature
         }
         if ("routePlanner".equals(key))
         {
+            warnBoth(true);
             // The other planner's route would stay with no way to clear it. Our own hand-over (the first route
             // choosing Shortest Path) is kept.
             SwingUtilities.invokeLater(() -> {
@@ -1275,9 +1804,8 @@ public final class RouteFeature
     void routeTo(WorldPoint point)
     {
         stopTour();
-        if (shortestPathPlanner())
+        if (toShortestPath(point))
         {
-            handOver(point);
             return;
         }
         RouteController now = controller;
@@ -1306,20 +1834,19 @@ public final class RouteFeature
             .setToolTipText("Adds this spot as a stop of \"" + editingName() + "\"");
         item(popup, "Custom routes...", this::editTours)
             .setToolTipText("Your own routes with several stops: order them, let the planner find the fastest order, run");
-        String clear = tour != null ? "Stop custom route" : "Clear path";
+        item(popup, "Your house...", this::openHouse)
+            .setToolTipText("What your house has for routes (this account), and its plan once you have been in it");
         if (shortestPathPlanner())
         {
             item(popup, "Path to here (Shortest Path)", () -> routeTo(point));
-            if (handedOver != null)
-            {
-                item(popup, clear, this::endTour);
-            }
-            return;
         }
-        item(popup, c == null ? "Path to here (loading…)" : "Path to here", () -> routeTo(point)).setEnabled(c != null);
-        if (c != null && c.target() >= 0)
+        else
         {
-            item(popup, clear, this::clearRoute);
+            item(popup, c == null ? "Path to here (loading…)" : "Path to here", () -> routeTo(point)).setEnabled(c != null);
+        }
+        if (handedOver != null || c != null && c.target() >= 0)
+        {
+            item(popup, tour != null ? "Stop custom route" : "Clear path", this::clearRoute);
         }
     }
 
@@ -1331,6 +1858,7 @@ public final class RouteFeature
     static final String TOURS_KEY = "customRoutes";
     static final String EDITING_KEY = "customRouteEditing";
 
+    @RequiredArgsConstructor
     private static final class Running
     {
         final Tour tour;
@@ -1340,11 +1868,9 @@ public final class RouteFeature
         int[] points = new int[0];
         /** The way to each stop from the one before, planned at the start; null until found. */
         volatile Route[] legs = new Route[0];
+        /** Stops skipped one after another, having no place. */
+        int skipped;
 
-        Running(Tour tour)
-        {
-            this.tour = tour;
-        }
     }
 
     /** Set on Swing; read on the client and extras threads too. */
@@ -1411,8 +1937,13 @@ public final class RouteFeature
                     return poi.name;
                 }
             }
+            String place = screens[0].placeName(point);
+            if (place != null)
+            {
+                return "Near " + place;
+            }
         }
-        return point.getX() + ", " + point.getY();
+        return "A spot on the map";
     }
 
     private void editTours()
@@ -1472,7 +2003,7 @@ public final class RouteFeature
         @Override
         public void stop()
         {
-            endTour();
+            clearRoute();
         }
     };
 
@@ -1494,7 +2025,7 @@ public final class RouteFeature
         // A stop right after the same one is skipped.
         Running running = new Running(chosen.withoutRepeats());
         tour = running;
-        List<WorldPoint> at = resolve(running.tour.stops, start >= 0 ? worldPoint(start) : null);
+        List<WorldPoint> at = resolve(running.tour.stops, nearFrom(start));
         running.points = at.stream().mapToInt(p -> p == null ? -1 : pack(p)).toArray();
         running.legs = new Route[at.size()];
         goToStop(start);
@@ -1590,7 +2121,7 @@ public final class RouteFeature
         return later;
     }
 
-    /** Stops a custom route and clears the route. */
+    /** Stops a custom route and clears the route, also Shortest Path's. */
     private void clearRoute()
     {
         RouteController c = controller;
@@ -1599,11 +2130,6 @@ public final class RouteFeature
         {
             c.clear();
         }
-    }
-
-    private void endTour()
-    {
-        clearRoute();
         if (handedOver != null)
         {
             handOverClear();
@@ -1628,14 +2154,24 @@ public final class RouteFeature
             return;
         }
         running.index++;
-        if (running.index >= running.tour.stops.size())
+        if (running.index >= running.tour.stops.size() && running.index > 1 && loops(running))
+        {
+            running.index = 0;
+        }
+        else if (running.index >= running.tour.stops.size())
         {
             fadeOut(walkedAhead(ahead));
-            endTour();
+            clearRoute();
             toast("\"" + running.tour.name + "\" done");
             return;
         }
         goToStop(at);
+    }
+
+    /** As saved, so ticking Loop counts for the route already running. */
+    private boolean loops(Running running)
+    {
+        return tours().stream().anyMatch(t -> t.loop && t.name.equals(running.tour.name));
     }
 
     /** Routes to the current stop; a kind becomes the one nearest {@code from}. */
@@ -1649,17 +2185,22 @@ public final class RouteFeature
         }
         int planned = running.index < running.points.length ? running.points[running.index] : -1;
         WorldPoint to = planned >= 0 ? worldPoint(planned)
-            : resolve(running.tour.stops.get(running.index), from >= 0 ? worldPoint(from) : null);
+            : resolve(running.tour.stops.get(running.index), nearFrom(from));
         if (to == null)
         {
-            // A kind with no place yet (icons not loaded): skipped.
+            // A kind with no place yet (icons not loaded): skipped. A loop of only such stops ends.
+            if (++running.skipped > running.tour.stops.size())
+            {
+                clearRoute();
+                return;
+            }
             nextStop(from);
             return;
         }
+        running.skipped = 0;
         running.target = pack(to);
-        if (shortestPathPlanner())
+        if (toShortestPath(to))
         {
-            handOver(to);
             return;
         }
         newRoute();
@@ -1736,7 +2277,8 @@ public final class RouteFeature
         JPanel header = column();
         header.setAlignmentX(Component.LEFT_ALIGNMENT);
         List<Tour.Stop> stops = running.tour.stops;
-        header.add(label("\u25B6 " + running.tour.name + ": stop " + (running.index + 1) + " of " + stops.size(), width,
+        header.add(label("\u25B6 " + running.tour.name + (loops(running) ? " (loop)" : "") + ": stop "
+            + (running.index + 1) + " of " + stops.size(), width,
             Font.BOLD, legColor(running.index)));
         for (int i = 0; i < stops.size(); i++)
         {
@@ -1746,9 +2288,10 @@ public final class RouteFeature
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         buttons.setOpaque(false);
         buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
-        buttons.add(button(running.index + 1 < stops.size() ? "Next stop" : "Finish", () -> nextStop(start)));
+        buttons.add(button(running.index + 1 < stops.size() || stops.size() > 1 && loops(running) ? "Next stop" : "Finish",
+            () -> nextStop(start)));
         buttons.add(Box.createHorizontalStrut(4));
-        buttons.add(button("Stop route", this::endTour));
+        buttons.add(button("Stop route", this::clearRoute));
         header.add(buttons);
         header.add(Box.createVerticalStrut(6));
         return header;
@@ -2048,11 +2591,19 @@ public final class RouteFeature
         }
         Route route = c == null ? null : effective(c);
         Route before = ahead;
-        ahead = route == null ? null : route.ahead(start);
-        aheadOf = route;
-        if (before != null && before != ahead)
+        // Cut again only for another route: the same one follows the player each tick (and stays while they are off it).
+        if (route != aheadOf)
         {
-            fadeOut(minus(walkedAhead(before), walkedAhead(ahead)));
+            ahead = route == null ? null : route.ahead(start);
+            aheadOf = route;
+            if (before != null && before != ahead)
+            {
+                // The old way fades out as the new one fades in.
+                Set<Integer> was = walkedAhead(before);
+                Set<Integer> now = walkedAhead(ahead);
+                fadeOut(minus(was, now));
+                fadeInTiles(minus(now, was));
+            }
         }
         shown = config.routeInGame() ? ahead : null;
         boolean up = bringUp;
@@ -2177,6 +2728,11 @@ public final class RouteFeature
         if (running != null)
         {
             panel.add(tourHeader(running, width), 0);
+        }
+        if (handedOver != null)
+        {
+            panel.add(label("Dashed white on the map: Shortest Path's route", width, Font.PLAIN,
+                ColorScheme.MEDIUM_GRAY_COLOR), 1);
         }
         PlayerState planned = state;
         if (route != null && route.has(Kind.SAIL) && planned != null)
@@ -2388,11 +2944,143 @@ public final class RouteFeature
         }
     }
 
+    /** One's house at the surface map's edge: its picture per floor, and what stands where. */
+    private void paintHouse(Graphics2D g, MapView.Projection p)
+    {
+        HousePlan seen = plan;
+        g.setFont(FontManager.getRunescapeSmallFont());
+        if (seen == null)
+        {
+            return;
+        }
+        // One picture a floor, the game's minimap of it: not thousands of shapes a frame.
+        BufferedImage look = houseLook[Math.max(0, Math.min(3, p.plane()))];
+        // At the surface map's edge, where the map draws the house.
+        int left = (int) Math.round(p.screenX(HousePlan.DRAWN_X));
+        int top = (int) Math.round(p.screenY(HousePlan.DRAWN_Y + HousePlan.SIZE));
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        g.drawImage(look, left, top, (int) Math.round(p.screenX(HousePlan.DRAWN_X
+            + HousePlan.SIZE)) - left, (int) Math.round(p.screenY(HousePlan.DRAWN_Y)) - top, null);
+        seen.things.forEach((node, name) -> {
+            String label = name.split(":")[0];
+            float x = (float) RouteText.x(p, node) - g.getFontMetrics().stringWidth(label) / 2f;
+            float y = (float) RouteText.y(p, node);
+            if (Tiles.z(node) == p.plane())
+            {
+                g.setColor(Color.BLACK);
+                g.drawString(label, x + 1, y + 1);
+                g.setColor(Color.WHITE);
+                g.drawString(label, x, y);
+            }
+        });
+    }
+
+    /** "Your house" for this account: what it has for routes, set here, and its plan. Swing thread. */
+    private JComponent housePanel(int width)
+    {
+        JPanel panel = column();
+        panel.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
+        panel.add(label("Your house", width, Font.BOLD, Color.WHITE));
+        HousePlan seen = plan;
+        Set<String> now = houseFeatures;
+        if (collision == null || houseOf == Long.MIN_VALUE)
+        {
+            panel.add(label("Log in to see and set this account's house.", width, Font.PLAIN, NOTE));
+            return panel;
+        }
+        Color gray = ColorScheme.LIGHT_GRAY_COLOR;
+        panel.add(label(seen == null ? "Teleport into it once: its rooms, portals, nexus and jewellery box are read "
+            + "then. Or set them here." : "As seen last time you were in it, for this account. Routes walk through it; "
+            + "right-click in it for a route there.", width, Font.PLAIN, gray));
+        JComboBox<String> box = new JComboBox<>(new String[]{"No jewellery box", "Basic jewellery box",
+            "Fancy jewellery box", "Ornate jewellery box"});
+        box.setSelectedIndex(Arrays.asList(HouseSettings.BOXES).indexOf(HouseSettings.box(now)));
+        JCheckBox glory = new JCheckBox("Mounted amulet of glory", now.contains("glory"));
+        // A superior garden has one of these.
+        JComboBox<String> garden = new JComboBox<>(new String[]{"No fairy ring or spirit tree", "Fairy ring",
+            "Spirit tree", "Spiritual fairy tree (both)"});
+        garden.setSelectedIndex(HouseSettings.garden(now));
+        JTextField portals = new JTextField(HouseSettings.places(now, HouseSettings.PORTAL));
+        JTextField nexus = new JTextField(HouseSettings.places(now, HouseSettings.NEXUS));
+        long account = houseOf;
+        Runnable save = () -> editHouse(account, HouseSettings.features(HouseSettings.BOXES[box.getSelectedIndex()],
+            glory.isSelected(), garden.getSelectedIndex(), portals.getText(), nexus.getText()));
+        box.addActionListener(e -> save.run());
+        glory.addActionListener(e -> save.run());
+        garden.addActionListener(e -> save.run());
+        for (JTextField places : new JTextField[]{portals, nexus})
+        {
+            places.setToolTipText("Where they lead, as the spellbooks name them, with commas; Enter saves");
+            FullMapWindow.typable(places);
+            places.addActionListener(e -> save.run());
+        }
+        for (JComponent part : new JComponent[]{box, glory, garden, label("Portals:", width, Font.PLAIN, gray), portals,
+            label("Portal nexus:", width, Font.PLAIN, gray), nexus})
+        {
+            part.setAlignmentX(Component.LEFT_ALIGNMENT);
+            part.setOpaque(part instanceof JTextField);
+            part.setMaximumSize(new Dimension(width, part.getPreferredSize().height));
+            panel.add(part);
+        }
+        if (seen != null)
+        {
+            panel.add(Box.createVerticalStrut(6));
+            panel.add(button("Show its plan", () -> {
+                for (MapScreen screen : screens)
+                {
+                    screen.view().focus(worldPoint(seen.arrival));
+                }
+            }));
+        }
+        return panel;
+    }
+
+    /** Dropped when another account (or none) is logged in than the panel was made for. */
+    private void editHouse(long account, Set<String> features)
+    {
+        clientThread.invokeLater(() -> {
+            if (houseOf != account)
+            {
+                return;
+            }
+            house.replaceFeatures(features);
+            writeHouse(features);
+            state = capture();
+            SwingUtilities.invokeLater(this::settingsChanged);
+        });
+    }
+
+    private final IntFunction<JComponent> houseSection = this::housePanel;
+
+    private void openHouse()
+    {
+        for (MapScreen screen : screens)
+        {
+            screen.showHouse(houseSection);
+        }
+    }
+
+    /** The maps painted again, and an open house panel built again with what is known now (a scan, the other map). */
+    private void houseChanged()
+    {
+        SwingUtilities.invokeLater(() -> {
+            repaint();
+            for (MapScreen screen : screens)
+            {
+                screen.updateHouse(houseSection);
+            }
+        });
+    }
+
     private void paintMap(Graphics2D g, MapView.Projection p)
     {
+        if (p.map() != null && (p.map().id == BaseMap.SURFACE || p.map().id == BaseMap.FULL))
+        {
+            paintHouse(g, p);
+        }
+        paintHandedOver(g, p);
         if (shortestPathPlanner())
         {
-            paintHandedOver(g, p);
             return;
         }
         Route route = ahead;
@@ -2422,86 +3110,6 @@ public final class RouteFeature
             double r = Math.max(1.5, Math.pow(2, p.zoom()) * 0.35);
             g.setColor(alpha(walk(), alpha * 200));
             g.fill(circle(p.screenX(at.getX() + 0.5), p.screenY(at.getY() + 0.5), r));
-        }
-    }
-
-    private final class WorldMapRoute extends Overlay
-    {
-        WorldMapRoute()
-        {
-            setPosition(OverlayPosition.DYNAMIC);
-            setLayer(OverlayLayer.MANUAL);
-            drawAfterInterface(InterfaceID.WORLDMAP);
-        }
-
-        @Override
-        public Dimension render(Graphics2D g)
-        {
-            Route route = shown;
-            Widget map = client.getWidget(InterfaceID.Worldmap.MAP_CONTAINER);
-            if (route == null || map == null || map.isHidden())
-            {
-                return null;
-            }
-            Shape clip = g.getClip();
-            Rectangle bounds = map.getBounds();
-            g.setClip(bounds);
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            Color walk = walk();
-            Color jump = jump();
-            // Only the tiles in view are projected.
-            WorldMap worldMap = client.getWorldMap();
-            Point center = worldMap == null ? null : worldMap.getWorldMapPosition();
-            float zoom = worldMap == null ? 0 : worldMap.getWorldMapZoom();
-            int rx = zoom > 0 ? (int) (bounds.width / 2 / zoom) + 2 : Integer.MAX_VALUE / 2;
-            int ry = zoom > 0 ? (int) (bounds.height / 2 / zoom) + 2 : Integer.MAX_VALUE / 2;
-            for (Step step : route.steps)
-            {
-                g.setColor(color(step, walk, jump));
-                if (!step.isJump())
-                {
-                    // Every other walked tile keeps it light on a zoomed-out map.
-                    for (int i = 0; i < step.points.length; i += step.kind == Kind.WALK ? 2 : 1)
-                    {
-                        int n = step.points[i];
-                        if (center != null && (Math.abs(Tiles.x(n) - center.getX()) > rx
-                            || Math.abs(Tiles.y(n) - center.getY()) > ry))
-                        {
-                            continue;
-                        }
-                        Point p = onMap(n);
-                        if (p != null)
-                        {
-                            g.fillRect(p.getX() - 1, p.getY() - 1, 3, 3);
-                        }
-                    }
-                }
-                else if (step.points.length >= 2)
-                {
-                    Point a = step.first() >= 0 && step.kind != Kind.TELEPORT ? onMap(step.first()) : null;
-                    Point b = onMap(step.last());
-                    if (a != null && b != null)
-                    {
-                        g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{6f, 5f}, 0f));
-                        g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
-                    }
-                    for (Point p : new Point[]{a, b})
-                    {
-                        if (p != null)
-                        {
-                            g.setStroke(new BasicStroke(2f));
-                            g.drawOval(p.getX() - 5, p.getY() - 5, 10, 10);
-                        }
-                    }
-                }
-            }
-            g.setClip(clip);
-            return null;
-        }
-
-        private Point onMap(int node)
-        {
-            return node < 0 ? null : worldMapOverlay.mapWorldPointToGraphicsPoint(worldPoint(node));
         }
     }
 
@@ -2564,44 +3172,92 @@ public final class RouteFeature
 
     private void paintNextAction(Graphics2D g, Route route, Player player)
     {
-        WorldPoint me = lastLocation;
-        int at = me == null ? -1 : pack(me);
+        int at = start;
+        Step now = nextAction(route, at);
+        // A teleport one walks to (a portal, the box, a fairy ring) is named on it, as HD Tile Markers names it; over
+        // the head only what is cast anywhere, and obstacles on the way.
+        Step jump = route.steps.stream().filter(Step::isJump).findFirst().orElse(null);
+        boolean onIt = jump != null && jump.kind != Kind.TELEPORT && jump.first() >= 0
+            && (jump.kind != Kind.HOUSE || HousePlan.contains(Tiles.x(jump.first()), Tiles.y(jump.first())));
+        WorldView view = client.getTopLevelWorldView();
+        if (onIt && !hdTiles && view != null)
+        {
+            label(g, local(view, jump.first()), RouteText.describe(jump), RouteText.lacks(jump), 0);
+        }
         String text = nextText(route, at);
-        LocalPoint local = player.getLocalLocation();
-        if (text == null || local == null)
+        if (text == null || now != null && now == jump && onIt)
         {
             return;
         }
+        // "Teleport to House → Jewellery box: …": the part to do now.
+        int arrow = now != null && now.kind == Kind.HOUSE ? text.indexOf(" → ") : -1;
+        text = arrow < 0 ? text : house.inside() ? text.substring(arrow + 3) : text.substring(0, arrow);
+        label(g, player.getLocalLocation(), text, now != null && RouteText.lacks(now), player.getLogicalHeight() + 60);
+    }
+
+    private void label(Graphics2D g, LocalPoint at, String text, boolean lacks, int height)
+    {
         // The font first: the text is centred with it.
         g.setFont(FontManager.getRunescapeSmallFont());
-        Point spot = Perspective.getCanvasTextLocation(client, g, local, text, player.getLogicalHeight() + 60);
-        if (spot == null)
+        Point spot = at == null ? null : Perspective.getCanvasTextLocation(client, g, at, text, height);
+        if (spot != null)
         {
-            return;
+            g.setColor(Color.BLACK);
+            g.drawString(text, spot.getX() + 1, spot.getY() + 1);
+            g.setColor(lacks ? CANNOT : jump());
+            g.drawString(text, spot.getX(), spot.getY());
         }
-        int x = spot.getX();
-        int y = spot.getY();
-        g.setColor(Color.BLACK);
-        g.drawString(text, x + 1, y + 1);
-        Step next = nextAction(route, at);
-        g.setColor(next != null && RouteText.lacks(next) ? CANNOT : jump());
-        g.drawString(text, x, y);
     }
 
     private static final int MINIMAP_ALPHA = 150;
+
+    /** Where the player is for the overlays: in one's house its plan's tile. Client thread. */
+    private int near()
+    {
+        int at = start;
+        return house.own() && at >= 0 ? at : pack(client.getLocalPlayer().getWorldLocation());
+    }
+
+    /** The colour last made: tiles side by side share it, so a frame does not make a Color for every tile. */
+    private static final class Tint
+    {
+        private Color base;
+        private int alpha = -1;
+        private Color made;
+
+        Color of(Color c, float a)
+        {
+            int value = Math.max(0, Math.min(255, Math.round(a)));
+            if (c != base || value != alpha)
+            {
+                base = c;
+                alpha = value;
+                made = new Color(c.getRed(), c.getGreen(), c.getBlue(), value);
+            }
+            return made;
+        }
+    }
 
     private interface TileSink
     {
         void tile(int point, Color color, float strength);
     }
 
-    /** The ground tiles of the overlays: later parts of a custom route, the route (fading in), then passed tiles. */
-    private void eachTile(Route route, TileSink sink)
+    /**
+     * The ground tiles of the overlays within {@code reach} of {@code me}: later parts of a custom route, the route
+     * (fading in), then passed tiles. Asked every frame: far tiles are left out before anything is looked up.
+     */
+    private void eachTile(Route route, int me, int reach, TileSink sink)
     {
         for (Map.Entry<Integer, Route> leg : laterLegs())
         {
             Color color = legColor(leg.getKey());
-            eachWalked(leg.getValue(), point -> sink.tile(point, color, 1));
+            eachWalked(leg.getValue(), point -> {
+                if (Tiles.distance(point, me) <= reach)
+                {
+                    sink.tile(point, color, 1);
+                }
+            });
         }
         Color normal = current();
         long now = System.currentTimeMillis();
@@ -2613,7 +3269,7 @@ public final class RouteFeature
             Color walk = blocked >= 0 && index >= blocked ? CANNOT : normal;
             for (int point : step.kind == Kind.WALK ? step.points : new int[0])
             {
-                if (!fading.containsKey(point))
+                if (Tiles.distance(point, me) <= reach && !fading.containsKey(point))
                 {
                     sink.tile(point, walk, fadeIn(point, now));
                 }
@@ -2622,7 +3278,7 @@ public final class RouteFeature
         for (Map.Entry<Integer, Long> entry : fading.entrySet())
         {
             float alpha = fadeAlpha(entry.getValue(), now);
-            if (alpha > 0)
+            if (alpha > 0 && Tiles.distance(entry.getKey(), me) <= reach)
             {
                 sink.tile(entry.getKey(), normal, alpha);
             }
@@ -2632,6 +3288,8 @@ public final class RouteFeature
     /** Dots on the minimap: above the widgets, or the minimap would cover them. */
     private final class MinimapOverlay extends Overlay
     {
+        private final Tint tint = new Tint();
+
         MinimapOverlay()
         {
             setPosition(OverlayPosition.DYNAMIC);
@@ -2647,19 +3305,19 @@ public final class RouteFeature
                 return null;
             }
             WorldView view = client.getTopLevelWorldView();
-            if (view == null || view.isInstance() || client.getLocalPlayer() == null || !config.routeInGame()
+            if (view == null || view.isInstance() && !house.own() || client.getLocalPlayer() == null || !config.routeInGame()
                 || !config.routeMinimap())
             {
                 return null;
             }
             int plane = view.getPlane();
-            eachTile(route, (point, color, strength) -> {
-                LocalPoint local = Tiles.isSea(point) || Tiles.z(point) != plane ? null
-                    : LocalPoint.fromWorld(view, Tiles.x(point), Tiles.y(point));
+            // The minimap shows 20 tiles around the player (Perspective.localToMinimap).
+            eachTile(route, near(), 20, (point, color, strength) -> {
+                LocalPoint local = Tiles.isSea(point) || Tiles.z(point) != plane ? null : local(view, point);
                 Point mini = local == null ? null : Perspective.localToMinimap(client, local);
                 if (mini != null)
                 {
-                    g.setColor(alpha(color, MINIMAP_ALPHA * strength));
+                    g.setColor(tint.of(color, MINIMAP_ALPHA * strength));
                     g.fill(circle(mini.getX(), mini.getY(), 1.25));
                 }
             });
@@ -2669,6 +3327,9 @@ public final class RouteFeature
 
     private final class GameOverlay extends Overlay
     {
+        private final Tint fillTint = new Tint();
+        private final Tint borderTint = new Tint();
+
         GameOverlay()
         {
             setPosition(OverlayPosition.DYNAMIC);
@@ -2692,7 +3353,7 @@ public final class RouteFeature
                 paintNextAction(g, route, player);
             }
             // With the route done its tiles still fade away; HD Tile Markers draws them when it is on.
-            if (route == null && fading.isEmpty() || instance || hdTiles)
+            if (route == null && fading.isEmpty() || instance && !house.own() || hdTiles)
             {
                 return null;
             }
@@ -2703,16 +3364,17 @@ public final class RouteFeature
             double tileWidth = config.routeTileWidth();
             boolean border = borderAlpha > 0 && tileWidth > 0;
             g.setStroke(new BasicStroke((float) Math.max(0.5, Math.min(8, tileWidth))));
-            eachTile(route, (point, color, strength) -> {
-                LocalPoint local = Tiles.z(point) != plane ? null : LocalPoint.fromWorld(view, Tiles.x(point), Tiles.y(point));
+            // No scene, also an expanded one, reaches further.
+            eachTile(route, near(), Constants.EXTENDED_SCENE_SIZE, (point, color, strength) -> {
+                LocalPoint local = Tiles.z(point) != plane ? null : local(view, point);
                 Polygon tile = local == null ? null : Perspective.getCanvasTilePoly(client, local);
                 if (tile != null)
                 {
-                    g.setColor(alpha(color, fill * strength));
+                    g.setColor(fillTint.of(color, fill * strength));
                     g.fill(tile);
                     if (border)
                     {
-                        g.setColor(alpha(color, borderAlpha * strength));
+                        g.setColor(borderTint.of(color, borderAlpha * strength));
                         g.draw(tile);
                     }
                 }

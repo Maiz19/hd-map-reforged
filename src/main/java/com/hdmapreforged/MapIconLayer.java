@@ -1,5 +1,6 @@
 package com.hdmapreforged;
 
+import lombok.*;
 import java.awt.*;
 import java.awt.geom.*;
 import java.awt.image.*;
@@ -13,6 +14,7 @@ import java.util.function.*;
  * left of and above their tile's south-west corner; only levels 0 and up have them; ground floor tiles show every
  * floor's icons, upper floors only their own.
  */
+@RequiredArgsConstructor
 final class MapIconLayer implements MapView.Overlay, MapView.HitLayer
 {
     static final double ICON_PIXELS = 15;
@@ -49,12 +51,6 @@ final class MapIconLayer implements MapView.Overlay, MapView.HitLayer
         this(view, enabled, () -> (int) ICON_PIXELS);
     }
 
-    MapIconLayer(MapView view, BooleanSupplier enabled, IntSupplier size)
-    {
-        this.view = view;
-        this.enabled = enabled;
-        this.size = size;
-    }
 
     /** As large as ours at a zoom, never smaller than the tiles show them; as the tiles show them without sprites. */
     double drawnSize(double zoom)
@@ -111,7 +107,7 @@ final class MapIconLayer implements MapView.Overlay, MapView.HitLayer
         Map<Integer, List<MapIconLoader.Icon>> grid = new HashMap<>();
         Map<Integer, List<MapIconLoader.Icon>> drawnGrid = new HashMap<>();
         Map<Poi, List<MapIconLoader.Icon>> poiIcons = new IdentityHashMap<>();
-        java.util.Set<Long> spots = new java.util.HashSet<>();
+        Set<Long> spots = new HashSet<>();
         for (MapIconLoader.Icon icon : icons)
         {
             // Ours standing on the game's icon for it: the tile shows that one.

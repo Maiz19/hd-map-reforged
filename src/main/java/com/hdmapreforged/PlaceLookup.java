@@ -1,5 +1,7 @@
 package com.hdmapreforged;
 
+import java.io.*;
+import java.nio.charset.*;
 import java.util.*;
 import java.util.regex.*;
 import lombok.*;
@@ -23,13 +25,13 @@ final class PlaceLookup
 
     private static Map<String, Found> bosses()
     {
-        Map<String, Found> bosses = new java.util.HashMap<>();
-        java.io.InputStream in = PlaceLookup.class.getResourceAsStream("data/boss_entrances.tsv");
+        Map<String, Found> bosses = new HashMap<>();
+        InputStream in = PlaceLookup.class.getResourceAsStream("data/boss_entrances.tsv");
         if (in == null)
         {
             return bosses;
         }
-        try (java.io.Reader reader = new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8))
+        try (Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8))
         {
             for (Tsv.Row row : Tsv.parse(reader))
             {
@@ -40,7 +42,7 @@ final class PlaceLookup
                 }
             }
         }
-        catch (java.io.IOException e)
+        catch (IOException e)
         {
             // None known then.
         }
@@ -53,7 +55,7 @@ final class PlaceLookup
         return page == null ? null : BOSSES.get(page.toLowerCase(Locale.ROOT));
     }
 
-    private static final java.util.Set<PoiType> PLACES = java.util.EnumSet.of(PoiType.DUNGEON_ENTRANCE, PoiType.MINIGAME,
+    private static final Set<PoiType> PLACES = EnumSet.of(PoiType.DUNGEON_ENTRANCE, PoiType.MINIGAME,
         PoiType.AGILITY_COURSE, PoiType.RUNECRAFT_ALTAR, PoiType.TELEPORT, PoiType.MAP_EXIT);
 
     static final int MAX_NAMES = 40;

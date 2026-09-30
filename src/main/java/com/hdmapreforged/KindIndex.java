@@ -7,6 +7,7 @@ import lombok.*;
 import net.runelite.api.coords.*;
 
 /** Every place of one kind (herb patches, shark fishing spots, banks) from our icons, game icons and skill spots. */
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 final class KindIndex
 {
     @RequiredArgsConstructor
@@ -44,10 +45,6 @@ final class KindIndex
 
     private final List<Kind> kinds;
 
-    private KindIndex(List<Kind> kinds)
-    {
-        this.kinds = kinds;
-    }
 
     List<Kind> all()
     {

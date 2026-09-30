@@ -1,5 +1,6 @@
 package com.hdmapreforged;
 
+import com.hdmapreforged.route.*;
 import com.google.gson.*;
 import java.io.*;
 import java.util.*;
@@ -146,6 +147,11 @@ final class BaseMaps
     /** The map drawing a game point elsewhere when one does (the Kalphite Lair), else {@link #find(int, int)}. */
     BaseMap find(WorldPoint game)
     {
+        if (HousePlan.contains(game.getX(), game.getY()))
+        {
+            // One's house is drawn at the surface map's edge.
+            return byId(BaseMap.SURFACE);
+        }
         WorldMapMoves.Drawn drawn = WorldMapMoves.drawn(game);
         BaseMap moved = drawn == null ? null : byId(drawn.map);
         // Some moves put a place outside the bounds of the map they name.

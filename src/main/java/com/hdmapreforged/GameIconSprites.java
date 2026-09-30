@@ -42,12 +42,6 @@ final class GameIconSprites
         return id < 0 ? null : ELEMENT_SPRITES.get(id);
     }
 
-    /** For development previews without a client. */
-    static void putElement(int id, BufferedImage sprite)
-    {
-        ELEMENT_SPRITES.put(id, sprite);
-    }
-
     /** Client thread only; false while the game has not loaded its data yet. */
     static boolean loadElements(Client client, Collection<Integer> ids)
     {

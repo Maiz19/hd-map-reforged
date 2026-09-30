@@ -1,10 +1,12 @@
 package com.hdmapreforged;
 
+import lombok.*;
 import java.awt.*;
 import java.awt.geom.*;
 import java.util.function.*;
 
 /** The custom routes button above the floor buttons: toggles the custom routes panel. Swing thread only. */
+@RequiredArgsConstructor
 final class RoutesButton implements MapView.Widget
 {
     private static final int LEFT = 12;
@@ -15,12 +17,6 @@ final class RoutesButton implements MapView.Widget
     private final BooleanSupplier open;
     private final BooleanSupplier shown;
 
-    RoutesButton(Runnable toggle, BooleanSupplier open, BooleanSupplier shown)
-    {
-        this.toggle = toggle;
-        this.open = open;
-        this.shown = shown;
-    }
 
     @Override
     public void paint(Graphics2D g, int width, int height, int bottom, MapView.Clicks clicks)

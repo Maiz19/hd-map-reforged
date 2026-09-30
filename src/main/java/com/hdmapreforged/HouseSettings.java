@@ -3,63 +3,82 @@ package com.hdmapreforged;
 import java.util.*;
 import java.util.stream.*;
 
-/** Converts "Your house" settings to and from the house scan's words ("box:ornate", "glory", "portal:Varrock"). */
+/** The house panel's choices to and from the house scan's words ("box:ornate", "glory", "portal:Varrock"). */
 final class HouseSettings
 {
-    private static final String PORTAL = "portal:";
+    static final String PORTAL = "portal:";
+    static final String NEXUS = "nexus:";
+    /** The jewellery box tiers, as in "box:ornate". */
+    static final String[] BOXES = {"none", "basic", "fancy", "ornate"};
+    /** The superior garden's one centrepiece of these: none, fairy ring, spirit tree, spiritual fairy tree. */
+    static final String[] GARDENS = {"", "fairy ring", "spirit tree", "spirit tree+fairy ring"};
 
     private HouseSettings()
     {
     }
 
-    static Set<String> features(HdMapReforgedConfig.JewelleryBox box, boolean glory, boolean fairyRing,
-        boolean spiritTree, String portals)
+    /** {@code box}: a tier (any case), else none. */
+    static Set<String> features(String box, boolean glory, int garden, String portals, String nexus)
     {
         Set<String> features = new LinkedHashSet<>();
-        if (box != null && box != HdMapReforgedConfig.JewelleryBox.NONE)
+        String tier = box == null ? "none" : box.toLowerCase(Locale.ROOT);
+        if (!tier.equals("none") && Set.of(BOXES).contains(tier))
         {
-            features.add("box:" + box.name().toLowerCase(java.util.Locale.ROOT));
+            features.add("box:" + tier);
         }
         if (glory)
         {
             features.add("glory");
         }
-        if (fairyRing || spiritTree)
+        if (garden > 0 && garden < GARDENS.length)
         {
-            features.add(!fairyRing ? "spirit tree" : spiritTree ? "spirit tree+fairy ring" : "fairy ring");
+            features.add(GARDENS[garden]);
         }
-        for (String portal : portals == null ? new String[0] : portals.split("[,;\\n]"))
-        {
-            String place = portal.trim();
-            if (!place.isEmpty())
-            {
-                features.add(PORTAL + place);
-            }
-        }
+        add(features, PORTAL, portals);
+        add(features, NEXUS, nexus);
         return features;
     }
 
-    static HdMapReforgedConfig.JewelleryBox box(Set<String> features)
+    static String box(Set<String> features)
     {
-        return features.contains("box:ornate") ? HdMapReforgedConfig.JewelleryBox.ORNATE
-            : features.contains("box:fancy") ? HdMapReforgedConfig.JewelleryBox.FANCY
-            : features.contains("box:basic") ? HdMapReforgedConfig.JewelleryBox.BASIC : HdMapReforgedConfig.JewelleryBox.NONE;
+        for (int i = BOXES.length - 1; i > 0; i--)
+        {
+            if (features.contains("box:" + BOXES[i]))
+            {
+                return BOXES[i];
+            }
+        }
+        return BOXES[0];
     }
 
-    static boolean fairyRing(Set<String> features)
+    private static void add(Set<String> features, String prefix, String places)
     {
-        return features.contains("fairy ring") || features.contains("spirit tree+fairy ring");
+        for (String place : places == null ? new String[0] : places.split("[,;\\n]"))
+        {
+            if (!place.trim().isEmpty())
+            {
+                features.add(prefix + place.trim());
+            }
+        }
     }
 
-    static boolean spiritTree(Set<String> features)
+    /** Which of {@link #GARDENS}. */
+    static int garden(Set<String> features)
     {
-        return features.contains("spirit tree") || features.contains("spirit tree+fairy ring");
+        for (int i = GARDENS.length - 1; i > 0; i--)
+        {
+            if (features.contains(GARDENS[i]))
+            {
+                return i;
+            }
+        }
+        return 0;
     }
 
-    /** As the setting shows them: "Varrock, Falador". */
-    static String portals(Set<String> features)
+    /** As the panel shows them: "Varrock, Falador"; {@code prefix} {@link #PORTAL} or {@link #NEXUS}. */
+    static String places(Set<String> features, String prefix)
     {
-        return features.stream().filter(f -> f.startsWith(PORTAL)).map(f -> f.substring(PORTAL.length()))
+        return features.stream().filter(f -> f.startsWith(prefix)).map(f -> f.substring(prefix.length()))
             .collect(Collectors.joining(", "));
     }
 }

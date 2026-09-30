@@ -14,10 +14,21 @@ final class PlayerMarker
     {
     }
 
-    /** {@code otherFloor}: drawn fainter and dashed. */
-    static void paint(Graphics2D g, double x, double y, double zoom, boolean otherFloor)
+    /** {@code otherFloor}: drawn fainter and dashed; {@code home}: in a box saying so, where the house stands. */
+    static void paint(Graphics2D g, double x, double y, double zoom, boolean otherFloor, boolean home)
     {
         double ring = 12 + Math.max(0, Math.min(3, zoom)) * 1.5;
+        if (home)
+        {
+            RoundRectangle2D box = new RoundRectangle2D.Double(x - ring - 12, y - ring - 26, ring * 2 + 24, ring * 2 + 44,
+                10, 10);
+            g.setColor(SHADOW);
+            g.fill(box);
+            g.setColor(YELLOW);
+            g.setStroke(new BasicStroke(1.5f));
+            g.draw(box);
+            label(g, "Home", x, y - ring - 16);
+        }
         float[] dash = otherFloor ? new float[]{4f, 3f} : null;
         // A glow, so it reads on bright and dark areas alike.
         g.setColor(new Color(255, 214, 64, otherFloor ? 30 : 60));
@@ -65,7 +76,7 @@ final class PlayerMarker
         arrow.closePath();
         AffineTransform at = AffineTransform.getTranslateInstance(x, y);
         at.rotate(angle);
-        java.awt.Shape shape = at.createTransformedShape(arrow);
+        Shape shape = at.createTransformedShape(arrow);
         g.setColor(SHADOW);
         g.setStroke(new BasicStroke(4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         g.draw(shape);

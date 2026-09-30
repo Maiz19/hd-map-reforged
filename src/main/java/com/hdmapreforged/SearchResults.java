@@ -1,5 +1,6 @@
 package com.hdmapreforged;
 
+import java.util.concurrent.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.*;
@@ -178,7 +179,7 @@ final class SearchResults implements MapView.Overlay
         int id = startLoading(name);
         wiki.item(name, found -> SwingUtilities.invokeLater(() -> answer(id, found, found != null && found.isEmpty()
             ? "The wiki lists no spawns, shops with stock, or drops for \"" + found.page + "\"." : null, () -> {
-                show(itemResult(found, view.player()));
+                show(itemResult(found, view.near()));
                 loadDropPictures(found.drops);
             })));
     }
@@ -187,8 +188,8 @@ final class SearchResults implements MapView.Overlay
     {
         previous = null;
         request++;
-        List<NpcSpawns.Group> groups = kindGroups(kind, placeName, view.player());
-        Result shown = new Result(kind.label, kind.page, places(groups.size()) + ", marked with green arrows" + (view.player() != null ? ", nearest first" : "") + ". Click one to go there.",
+        List<NpcSpawns.Group> groups = kindGroups(kind, placeName, view.near());
+        Result shown = new Result(kind.label, kind.page, places(groups.size()) + ", marked with green arrows" + (view.near() != null ? ", nearest first" : "") + ". Click one to go there.",
             groups, null, kind.type == null ? "Skilling spots: RuneLite (BSD 2-Clause)" : null);
         shown.kind = kind.label;
         show(shown);
@@ -275,7 +276,7 @@ final class SearchResults implements MapView.Overlay
         List<NpcSpawns.Group> sorted = new ArrayList<>(groups);
         if (player != null)
         {
-            sorted.sort(java.util.Comparator.comparingLong(g -> distance(g.center(), player)));
+            sorted.sort(Comparator.comparingLong(g -> distance(g.center(), player)));
         }
         return sorted;
     }
@@ -352,7 +353,7 @@ final class SearchResults implements MapView.Overlay
     }
 
     /** Centres already sent to the tile check for the current result. */
-    private final java.util.Set<WorldPoint> checkedCenters = new java.util.HashSet<>();
+    private final Set<WorldPoint> checkedCenters = new HashSet<>();
 
     /**
      * Sends the listed places of the current result (the tab's first {@link #SHOWN}, or all once asked for) not yet
@@ -440,7 +441,7 @@ final class SearchResults implements MapView.Overlay
         boolean shop = SHOPS.equals(group.category);
         Optional<Poi> icon = view.searchExtras().stream().filter(poi -> shop && poi.type == PoiType.SHOP
             && poi.location.getPlane() == c.getPlane() && PoiLoader.chebyshev(poi.location, c) <= SHOP_ICON_RADIUS)
-            .min(java.util.Comparator.comparingInt(poi -> PoiLoader.chebyshev(poi.location, c)));
+            .min(Comparator.comparingInt(poi -> PoiLoader.chebyshev(poi.location, c)));
         if (icon.isPresent())
         {
             return icon.get();
@@ -451,16 +452,6 @@ final class SearchResults implements MapView.Overlay
         String wiki = shop ? group.name : result != null && result.page != null ? result.page : group.name;
         return new Poi(shop ? PoiType.SHOP : PoiType.FOUND, name.equals(title) || shop ? name : title + ": " + name,
             c, map, null, Needs.NONE, wiki, null, facts.isEmpty() ? null : String.join(" · ", facts));
-    }
-
-    void showTab(String tab)
-    {
-        if (result != null && result.tabs.containsKey(tab))
-        {
-            result.tab = tab;
-            refresh();
-            checkListed();
-        }
     }
 
     void lookAtPoint(WorldPoint at)
@@ -557,11 +548,11 @@ final class SearchResults implements MapView.Overlay
         return sprite(14, 14, 1, g -> {
             g.setColor(SHOP);
             g.fill(new Ellipse2D.Double(1.5, 4.5, 11, 9));
-            g.fill(new java.awt.geom.Rectangle2D.Double(5, 2, 4, 4));
+            g.fill(new Rectangle2D.Double(5, 2, 4, 4));
             g.setColor(new Color(90, 60, 10));
             g.setStroke(new BasicStroke(1f));
             g.draw(new Ellipse2D.Double(1.5, 4.5, 11, 9));
-            g.draw(new java.awt.geom.Line2D.Double(4.5, 5, 9.5, 5));
+            g.draw(new Line2D.Double(4.5, 5, 9.5, 5));
         });
     }
 
@@ -726,22 +717,23 @@ final class SearchResults implements MapView.Overlay
     static final int PICTURE = 36;
     private final Map<String, JLabel> dropIcons = new HashMap<>();
 
-    static javax.swing.Icon fitted(BufferedImage picture)
+    static Icon fitted(BufferedImage picture)
     {
         double k = Math.min(1.0, (PICTURE - 2.0) / Math.max(picture.getWidth(), picture.getHeight()));
         return new ImageIcon(k >= 1 ? picture : picture.getScaledInstance(
             (int) Math.round(picture.getWidth() * k), (int) Math.round(picture.getHeight() * k),
-            java.awt.Image.SCALE_SMOOTH));
+            Image.SCALE_SMOOTH));
     }
 
-    /** The square a picture shows in, empty until it has one. */
+    /**
+     * The square a picture shows in, empty until it has one. No background: an opaque see-through one was painted
+     * over itself each time a picture arrived, and flashed until the card was drawn again.
+     */
     static JLabel pictureIcon(BufferedImage picture)
     {
         JLabel icon = new JLabel();
         icon.setPreferredSize(new Dimension(PICTURE, PICTURE));
         icon.setHorizontalAlignment(JLabel.CENTER);
-        icon.setOpaque(true);
-        icon.setBackground(new Color(255, 255, 255, 12));
         if (picture != null)
         {
             icon.setIcon(fitted(picture));
@@ -798,14 +790,14 @@ final class SearchResults implements MapView.Overlay
 
     private JComponent tabs(Result shown)
     {
-        JPanel row = panel(new java.awt.GridLayout(0, 2, 4, 4));
-        javax.swing.ButtonGroup group = new javax.swing.ButtonGroup();
+        JPanel row = panel(new GridLayout(0, 2, 4, 4));
+        ButtonGroup group = new ButtonGroup();
         for (Map.Entry<String, Integer> tab : shown.tabs.entrySet())
         {
-            javax.swing.JToggleButton button = new javax.swing.JToggleButton(tab.getKey() + " (" + tab.getValue() + ")",
+            JToggleButton button = new JToggleButton(tab.getKey() + " (" + tab.getValue() + ")",
                 tab.getKey().equals(shown.tab));
             button.setFocusable(false);
-            button.setMargin(new java.awt.Insets(2, 4, 2, 4));
+            button.setMargin(new Insets(2, 4, 2, 4));
             button.setEnabled(tab.getValue() > 0);
             button.addActionListener(e -> {
                 shown.tab = tab.getKey();
@@ -918,7 +910,7 @@ final class SearchResults implements MapView.Overlay
 
     private NpcSpawns.Group closest()
     {
-        WorldPoint me = view.player();
+        WorldPoint me = view.near();
         return me == null || result == null ? null : closest(result.groups.stream()
             .filter(group -> result.shows(group) && !undrawn(group)).collect(Collectors.toList()), me);
     }
@@ -1097,7 +1089,7 @@ final class SearchResults implements MapView.Overlay
         });
     }
 
-    private static final Map<Color, Color> FADED = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<Color, Color> FADED = new ConcurrentHashMap<>();
 
     @Override
     public void paint(Graphics2D g, MapView.Projection projection)

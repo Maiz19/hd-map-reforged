@@ -1,9 +1,11 @@
 package com.hdmapreforged;
 
+import lombok.*;
 import java.util.*;
 import net.runelite.api.coords.*;
 
 /** An icon on the map. */
+@RequiredArgsConstructor
 final class Poi
 {
     static final class Link
@@ -40,19 +42,6 @@ final class Poi
     /** Other things at the same place this icon stands for. */
     private final List<Poi> nearby = new ArrayList<>();
 
-    Poi(PoiType type, String name, WorldPoint location, BaseMap map, String group, Needs needs, String wikiQuery,
-        BaseMap target, String note)
-    {
-        this.type = type;
-        this.name = name;
-        this.location = location;
-        this.map = map;
-        this.group = group;
-        this.needs = needs;
-        this.wikiQuery = wikiQuery;
-        this.target = target;
-        this.note = note;
-    }
 
     void addLink(Link link)
     {
