@@ -1,14 +1,13 @@
 package com.hdmapreforged;
 
-import java.util.Collection;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.IntFunction;
-import javax.swing.SwingUtilities;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.ItemComposition;
-import net.runelite.client.callback.ClientThread;
-import net.runelite.client.game.ItemManager;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
+import javax.swing.*;
+import lombok.*;
+import net.runelite.api.*;
+import net.runelite.client.callback.*;
+import net.runelite.client.game.*;
 
 /** Item names for requirement lists; looked up on the client thread, read from Swing. */
 @RequiredArgsConstructor

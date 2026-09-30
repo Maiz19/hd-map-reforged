@@ -1,6 +1,6 @@
 package com.hdmapreforged.route;
 
-import java.util.Arrays;
+import java.util.*;
 
 /** A binary min-heap of longs (priority in the high bits, node in the low bits). */
 final class LongHeap

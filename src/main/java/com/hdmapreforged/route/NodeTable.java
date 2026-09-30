@@ -1,6 +1,6 @@
 package com.hdmapreforged.route;
 
-import java.util.Arrays;
+import java.util.*;
 
 /** Search state per node in open addressing arrays: best cost, the node before it and the jump taken. */
 final class NodeTable

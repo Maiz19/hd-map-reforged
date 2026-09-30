@@ -1,14 +1,8 @@
 package com.hdmapreforged;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.Reader;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import net.runelite.api.coords.WorldPoint;
+import java.io.*;
+import java.util.*;
+import net.runelite.api.coords.*;
 
 /** A bundled table: a {@code #}-prefixed header of tab-separated column names, then rows and {@code #} comments. */
 final class Tsv

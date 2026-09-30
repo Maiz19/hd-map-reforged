@@ -1,6 +1,6 @@
 package com.hdmapreforged;
 
-import lombok.RequiredArgsConstructor;
+import lombok.*;
 
 /**
  * A travel table row's requirement columns, kept raw (see {@code plugin/AGENTS.md}). Compared by identity:

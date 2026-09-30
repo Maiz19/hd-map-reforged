@@ -1,8 +1,7 @@
 package com.hdmapreforged;
 
-import java.util.Collection;
-import java.util.Objects;
-import net.runelite.api.coords.WorldPoint;
+import java.util.*;
+import net.runelite.api.coords.*;
 
 /**
  * Party decisions, free of RuneLite services for testing. Joining is always the user's own action: RuneLite rejects

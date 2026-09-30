@@ -1,19 +1,9 @@
 package com.hdmapreforged;
 
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import net.runelite.api.Client;
-import net.runelite.api.Player;
-import net.runelite.api.Quest;
-import net.runelite.api.QuestState;
-import net.runelite.api.Skill;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.regex.*;
+import net.runelite.api.*;
 
 /**
  * The player's levels, finished quests and varbits, taken on the client thread, read from any. What it cannot judge

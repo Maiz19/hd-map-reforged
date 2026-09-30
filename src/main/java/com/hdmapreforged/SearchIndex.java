@@ -1,18 +1,9 @@
 package com.hdmapreforged;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.function.Predicate;
-import java.util.regex.Pattern;
-import net.runelite.api.coords.WorldPoint;
+import java.util.*;
+import java.util.function.*;
+import java.util.regex.*;
+import net.runelite.api.coords.*;
 
 /** The place search: every typed word must fit the name or its place, in any order, a small typo forgiven. */
 final class SearchIndex

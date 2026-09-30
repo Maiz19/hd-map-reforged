@@ -1,18 +1,9 @@
 package com.hdmapreforged;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.Reader;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import java.io.*;
+import java.util.*;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /**
  * The game's own map icons, baked into the wiki tiles, from {@code map_icons.tsv}: each gets something to select, our

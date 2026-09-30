@@ -1,22 +1,10 @@
 package com.hdmapreforged;
 
-import java.io.IOException;
-import java.io.Reader;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.regex.Pattern;
-import lombok.AccessLevel;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import java.io.*;
+import java.util.*;
+import java.util.regex.*;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /** Builds map icons from the bundled travel tables, game map icons and RuneLite lists; same-place rows merge. */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)

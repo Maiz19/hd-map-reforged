@@ -1,14 +1,9 @@
 package com.hdmapreforged;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
-import net.runelite.client.events.PluginMessage;
+import java.util.*;
+import lombok.*;
+import net.runelite.api.coords.*;
+import net.runelite.client.events.*;
 
 /** Talking to the Shortest Path plugin through RuneLite plugin messages (its public message format only). */
 final class ShortestPathBridge

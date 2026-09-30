@@ -1,15 +1,9 @@
 package com.hdmapreforged;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import java.util.*;
+import java.util.regex.*;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /** Where a monster or NPC is, from the {@code {{LocLine}}} templates on its wiki page. */
 final class NpcSpawns

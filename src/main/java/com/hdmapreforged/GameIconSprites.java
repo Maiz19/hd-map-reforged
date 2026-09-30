@@ -1,14 +1,10 @@
 package com.hdmapreforged;
 
-import java.awt.image.BufferedImage;
-import java.util.Collection;
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import net.runelite.api.Client;
-import net.runelite.api.GameState;
-import net.runelite.api.SpritePixels;
-import net.runelite.api.worldmap.MapElementConfig;
+import java.awt.image.*;
+import java.util.*;
+import java.util.concurrent.*;
+import net.runelite.api.*;
+import net.runelite.api.worldmap.*;
 
 /** The game's own world map icons, read from the client, so our icons look like those in the tiles. */
 final class GameIconSprites

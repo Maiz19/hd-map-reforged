@@ -1,14 +1,7 @@
 package com.hdmapreforged;
 
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics2D;
-import java.awt.geom.AffineTransform;
-import java.awt.geom.Ellipse2D;
-import java.awt.geom.Line2D;
-import java.awt.geom.Path2D;
+import java.awt.*;
+import java.awt.geom.*;
 
 /** The local player on the map as a yellow target, or an arrow at the view's edge when out of sight. */
 final class PlayerMarker

@@ -1,11 +1,9 @@
 package com.hdmapreforged;
 
-import com.hdmapreforged.route.Pathfinder;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.function.Predicate;
-import net.runelite.api.coords.WorldPoint;
+import com.hdmapreforged.route.*;
+import java.util.*;
+import java.util.function.*;
+import net.runelite.api.coords.*;
 
 /** The planner's trusted passages, for game "dungeon" icons without a map link. Nothing guessed; see APPROACH.md. */
 final class TrustedPassages

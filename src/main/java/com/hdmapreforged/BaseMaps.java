@@ -1,20 +1,9 @@
 package com.hdmapreforged;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import java.io.Reader;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import net.runelite.api.coords.WorldPoint;
+import com.google.gson.*;
+import java.io.*;
+import java.util.*;
+import net.runelite.api.coords.*;
 
 /** The wiki's {@code basemaps.json}; a region table decides between maps whose bounds overlap. */
 final class BaseMaps

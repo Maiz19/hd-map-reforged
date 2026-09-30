@@ -1,6 +1,6 @@
 package com.hdmapreforged;
 
-import net.runelite.client.party.messages.PartyMemberMessage;
+import net.runelite.client.party.messages.*;
 
 /** A valuable drop a party member just got, sent once to the party. Values from other clients are checked. */
 public class HdMapPartyDrop extends PartyMemberMessage

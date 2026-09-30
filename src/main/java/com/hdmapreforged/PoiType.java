@@ -1,8 +1,7 @@
 package com.hdmapreforged;
 
-import java.awt.Color;
-import java.util.EnumSet;
-import java.util.Set;
+import java.awt.*;
+import java.util.*;
 
 enum PoiType
 {

@@ -1,20 +1,10 @@
 package com.hdmapreforged;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.DoubleSummaryStatistics;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import net.runelite.api.coords.WorldPoint;
+import com.google.gson.*;
+import java.util.*;
+import java.util.regex.*;
+import java.util.stream.*;
+import net.runelite.api.coords.*;
 
 /** Where an item can be had (spawns, shops with stock, drops), parsed from wiki answers; {@link WikiClient#item} asks. */
 final class ItemSources

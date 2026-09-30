@@ -1,9 +1,7 @@
 package com.hdmapreforged.route;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import lombok.RequiredArgsConstructor;
+import java.util.*;
+import lombok.*;
 
 /** Entrance fees the plugin cannot check ({@code fees.tsv}), weighed as extra time so a free way wins. */
 public final class Fees

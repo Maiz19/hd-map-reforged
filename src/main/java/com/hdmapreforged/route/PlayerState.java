@@ -1,8 +1,6 @@
 package com.hdmapreforged.route;
 
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.*;
 
 /** What a route may use, taken on the client thread and read elsewhere. Immutable. */
 public final class PlayerState

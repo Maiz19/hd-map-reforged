@@ -1,7 +1,6 @@
 package com.hdmapreforged.route;
 
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
+import lombok.*;
 
 /** A non-walking jump in the route graph; costs in half game ticks. */
 @AllArgsConstructor(access = AccessLevel.PRIVATE)

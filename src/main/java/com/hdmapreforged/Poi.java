@@ -1,9 +1,7 @@
 package com.hdmapreforged;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import net.runelite.api.coords.WorldPoint;
+import java.util.*;
+import net.runelite.api.coords.*;
 
 /** An icon on the map. */
 final class Poi

@@ -1,12 +1,6 @@
 package com.hdmapreforged.route;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /** Items carried, runes a worn staff gives without limit, and the bank as last seen (null if unseen). Immutable. */
 public final class ItemSnapshot

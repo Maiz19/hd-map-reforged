@@ -1,12 +1,10 @@
 package com.hdmapreforged;
 
-import java.awt.image.BufferedImage;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.coords.WorldPoint;
+import java.awt.image.*;
+import java.io.*;
+import java.util.*;
+import lombok.extern.slf4j.*;
+import net.runelite.api.coords.*;
 
 /** Which overlapping wiki map draws a point, finer than the region table. Background threads: may download tiles. */
 @Slf4j

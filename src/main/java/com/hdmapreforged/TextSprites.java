@@ -1,15 +1,10 @@
 package com.hdmapreforged;
 
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.geom.AffineTransform;
-import java.awt.image.BufferedImage;
-import java.util.LinkedHashMap;
+import java.awt.*;
+import java.awt.geom.*;
+import java.awt.image.*;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
 
 /** Outlined map text, rendered once then copied (each label is nine antialiased strings). Swing thread only. */
 final class TextSprites

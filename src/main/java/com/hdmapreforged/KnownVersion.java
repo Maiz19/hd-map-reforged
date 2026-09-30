@@ -1,10 +1,10 @@
 package com.hdmapreforged;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import net.runelite.client.util.Filepath;
+import java.io.*;
+import java.nio.charset.*;
+import lombok.*;
+import lombok.extern.slf4j.*;
+import net.runelite.client.util.*;
 
 /** The wiki's map version as last seen, and when it was checked, kept on disk between sessions. */
 @Slf4j

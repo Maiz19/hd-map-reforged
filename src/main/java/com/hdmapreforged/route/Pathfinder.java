@@ -1,21 +1,10 @@
 package com.hdmapreforged.route;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.WeakHashMap;
-import java.util.function.BooleanSupplier;
-import java.util.stream.Collectors;
+import java.io.*;
+import java.nio.charset.*;
+import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
 
 /**
  * A* over tiles, sea blocks and jumps ({@link Edge}); costs in half ticks. The heuristic stays a lower bound by folding

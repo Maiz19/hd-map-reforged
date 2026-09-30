@@ -1,13 +1,9 @@
 package com.hdmapreforged;
 
-import java.io.IOException;
-import java.io.Reader;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Locale;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import java.io.*;
+import java.util.*;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /** What the game's Hunter, Fishing, Mining and Rare trees icons stand for, from RuneLite's world map lists. */
 @RequiredArgsConstructor

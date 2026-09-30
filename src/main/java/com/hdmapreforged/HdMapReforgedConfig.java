@@ -1,14 +1,8 @@
 package com.hdmapreforged;
 
-import java.awt.Color;
-import lombok.RequiredArgsConstructor;
-import net.runelite.client.config.Config;
-import net.runelite.client.config.ConfigGroup;
-import net.runelite.client.config.ConfigItem;
-import net.runelite.client.config.ConfigSection;
-import net.runelite.client.config.Keybind;
-import net.runelite.client.config.Range;
-import net.runelite.client.config.Units;
+import java.awt.*;
+import lombok.*;
+import net.runelite.client.config.*;
 
 @ConfigGroup(HdMapReforgedConfig.GROUP)
 public interface HdMapReforgedConfig extends Config

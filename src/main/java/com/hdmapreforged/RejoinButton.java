@@ -1,23 +1,13 @@
 package com.hdmapreforged;
 
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics2D;
-import java.awt.Point;
-import java.awt.Rectangle;
-import java.awt.RenderingHints;
-import java.awt.Shape;
-import java.awt.event.MouseEvent;
-import java.awt.geom.RoundRectangle2D;
-import javax.swing.SwingUtilities;
+import java.awt.*;
+import java.awt.event.*;
+import java.awt.geom.*;
+import javax.swing.*;
+import net.runelite.client.input.*;
 import net.runelite.client.input.MouseAdapter;
-import net.runelite.client.ui.FontManager;
-import net.runelite.client.ui.overlay.Overlay;
-import net.runelite.client.ui.overlay.OverlayLayer;
-import net.runelite.client.ui.overlay.OverlayPosition;
+import net.runelite.client.ui.*;
+import net.runelite.client.ui.overlay.*;
 
 /** "Rejoin party" over the game after login, with a cross to dismiss; clicks on it are consumed, others go to the game. */
 final class RejoinButton extends Overlay

@@ -1,17 +1,12 @@
 package com.hdmapreforged;
 
-import java.awt.image.BufferedImage;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.BooleanSupplier;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.coords.WorldPoint;
+import java.awt.image.*;
+import java.io.*;
+import java.util.*;
+import java.util.function.*;
+import lombok.*;
+import lombok.extern.slf4j.*;
+import net.runelite.api.coords.*;
 
 /** Which wiki map shows a place several maps' bounds contain, by each one's tiles. Blocking; background thread. */
 @Slf4j

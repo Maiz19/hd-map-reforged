@@ -1,13 +1,9 @@
 package com.hdmapreforged.route;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import lombok.RequiredArgsConstructor;
+import java.io.*;
+import java.nio.charset.*;
+import java.util.*;
+import lombok.*;
 
 /** One-way passages ({@code one_way.tsv}, e.g. a slide): a passage of any source going back between the areas is left out. */
 public final class OneWay

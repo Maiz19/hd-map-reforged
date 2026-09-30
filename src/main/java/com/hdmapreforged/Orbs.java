@@ -1,14 +1,11 @@
 package com.hdmapreforged;
 
-import java.awt.Color;
-import java.awt.FontMetrics;
-import java.awt.Graphics2D;
-import java.awt.Shape;
-import java.awt.image.BufferedImage;
-import java.util.function.IntFunction;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.gameval.SpriteID;
-import net.runelite.client.ui.FontManager;
+import java.awt.*;
+import java.awt.image.*;
+import java.util.function.*;
+import lombok.*;
+import net.runelite.api.gameval.*;
+import net.runelite.client.ui.*;
 
 /** The game's minimap orbs drawn from its own sprites: frame, fill to what is left, icon and coloured number. */
 final class Orbs

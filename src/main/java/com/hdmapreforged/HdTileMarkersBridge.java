@@ -1,12 +1,10 @@
 package com.hdmapreforged;
 
-import java.awt.Color;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.awt.*;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import net.runelite.api.coords.WorldPoint;
-import net.runelite.client.events.PluginMessage;
+import net.runelite.api.coords.*;
+import net.runelite.client.events.*;
 
 /** The route's ground tiles via HD Tile Markers' public plugin messages ({@code tiles} and {@code clear}, one owner). */
 final class HdTileMarkersBridge

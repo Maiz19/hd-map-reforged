@@ -1,19 +1,10 @@
 package com.hdmapreforged;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.EnumSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import java.util.*;
+import java.util.regex.*;
+import java.util.stream.*;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /** Every place of one kind (herb patches, shark fishing spots, banks) from our icons, game icons and skill spots. */
 final class KindIndex

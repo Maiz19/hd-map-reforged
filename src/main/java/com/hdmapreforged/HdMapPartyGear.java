@@ -1,8 +1,8 @@
 package com.hdmapreforged;
 
-import java.util.Arrays;
-import java.util.function.IntUnaryOperator;
-import net.runelite.client.party.messages.PartyMemberMessage;
+import java.util.*;
+import java.util.function.*;
+import net.runelite.client.party.messages.*;
 
 /**
  * What a party member carries, wears and can do, sent when it changes. Short field names keep the message small;

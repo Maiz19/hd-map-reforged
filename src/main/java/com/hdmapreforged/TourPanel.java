@@ -1,24 +1,13 @@
 package com.hdmapreforged;
 
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.util.ArrayList;
+import java.awt.*;
+import java.util.*;
 import java.util.List;
-import java.util.function.Consumer;
-import java.util.function.IntFunction;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
-import javax.swing.JButton;
-import javax.swing.JComboBox;
-import javax.swing.JComponent;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.JTextField;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
-import net.runelite.client.ui.ColorScheme;
+import java.util.function.*;
+import javax.swing.*;
+import lombok.*;
+import net.runelite.api.coords.*;
+import net.runelite.client.ui.*;
 
 /** The "Custom routes" panel, where the search results show: pick, name, order and run the player's routes. Swing thread. */
 @RequiredArgsConstructor

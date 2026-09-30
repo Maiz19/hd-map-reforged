@@ -1,25 +1,10 @@
 package com.hdmapreforged;
 
-import com.hdmapreforged.route.CollisionMap;
-import com.hdmapreforged.route.Edge;
-import com.hdmapreforged.route.Fees;
-import com.hdmapreforged.route.ItemSnapshot;
-import com.hdmapreforged.route.PlayerState;
-import com.hdmapreforged.route.RouteRequest;
-import com.hdmapreforged.route.SeaMap;
-import com.hdmapreforged.route.ShortcutPassage;
-import com.hdmapreforged.route.Tiles;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import com.hdmapreforged.route.*;
+import java.util.*;
+import java.util.regex.*;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /** The jumps a route may take for this player. Thread-safe: requests come from Swing and the extras thread. */
 @RequiredArgsConstructor

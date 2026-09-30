@@ -1,7 +1,6 @@
 package com.hdmapreforged.route;
 
-import lombok.AccessLevel;
-import lombok.RequiredArgsConstructor;
+import lombok.*;
 
 /** A ladder, staircase, trapdoor or entrance from the game cache: an object's footprint and where it leads. */
 @RequiredArgsConstructor(access = AccessLevel.PACKAGE)

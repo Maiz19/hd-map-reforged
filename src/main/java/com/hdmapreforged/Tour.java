@@ -1,14 +1,10 @@
 package com.hdmapreforged;
 
-import com.hdmapreforged.route.Tiles;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import com.hdmapreforged.route.*;
+import java.util.*;
+import java.util.stream.*;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /** A custom route: stops (a place, or a kind of place resolved to the nearest one), kept as text in settings. */
 final class Tour

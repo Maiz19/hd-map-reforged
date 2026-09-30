@@ -1,6 +1,6 @@
 package com.hdmapreforged;
 
-import lombok.RequiredArgsConstructor;
+import lombok.*;
 
 /** One of the wiki's maps, in world tile coordinates. */
 @RequiredArgsConstructor

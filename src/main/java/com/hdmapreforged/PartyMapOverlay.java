@@ -1,30 +1,15 @@
 package com.hdmapreforged;
 
-import java.awt.AlphaComposite;
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.Shape;
-import java.awt.geom.Ellipse2D;
-import java.awt.geom.Path2D;
-import java.awt.geom.RoundRectangle2D;
-import java.awt.image.BufferedImage;
-import java.util.Collections;
+import java.awt.*;
+import java.awt.geom.*;
+import java.awt.image.*;
+import java.util.*;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
-import java.util.StringJoiner;
-import java.util.function.BiFunction;
-import java.util.function.IntSupplier;
-import java.util.function.LongFunction;
-import java.util.function.LongPredicate;
-import java.util.function.Supplier;
+import java.util.function.*;
+import javax.swing.*;
 import javax.swing.Timer;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /** Party members on the map: a disc (or avatar) with their initial; name and world when pointed at or clicked. */
 @RequiredArgsConstructor

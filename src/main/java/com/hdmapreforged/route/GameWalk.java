@@ -1,7 +1,6 @@
 package com.hdmapreforged.route;
 
-import java.util.ArrayDeque;
-import java.util.Arrays;
+import java.util.*;
 
 /**
  * Walking the way the game walks: a breadth-first search over 128×128 tiles around the player with directions in a

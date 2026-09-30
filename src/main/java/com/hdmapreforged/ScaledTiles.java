@@ -1,13 +1,10 @@
 package com.hdmapreforged;
 
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.geom.AffineTransform;
-import java.awt.image.BufferedImage;
-import java.lang.ref.WeakReference;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.awt.*;
+import java.awt.geom.*;
+import java.awt.image.*;
+import java.lang.ref.*;
+import java.util.*;
 
 /**
  * Tiles pre-scaled to their drawn size: smooth scaling every frame was the most expensive part of painting. Swing

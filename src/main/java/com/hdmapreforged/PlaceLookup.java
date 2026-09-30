@@ -1,12 +1,9 @@
 package com.hdmapreforged;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.regex.Pattern;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import java.util.*;
+import java.util.regex.*;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /**
  * Finds a place by wiki page name in the map's own data (icon, label, map or teleport). For bosses in instances, the

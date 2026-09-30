@@ -1,16 +1,8 @@
 package com.hdmapreforged;
 
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.Insets;
-import javax.swing.BorderFactory;
-import javax.swing.JButton;
-import javax.swing.JComponent;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import net.runelite.client.ui.ColorScheme;
+import java.awt.*;
+import javax.swing.*;
+import net.runelite.client.ui.*;
 
 /** A panel floating over the map (card, search results, custom routes): a title bar with fold and close buttons. */
 final class Floating extends JPanel

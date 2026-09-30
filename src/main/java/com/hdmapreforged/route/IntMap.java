@@ -1,6 +1,6 @@
 package com.hdmapreforged.route;
 
-import java.util.Arrays;
+import java.util.*;
 
 /** Int keys to int values in open addressing arrays, for the search's hot loop (no boxing). Not thread-safe. */
 final class IntMap

@@ -1,17 +1,12 @@
 package com.hdmapreforged;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import java.io.*;
+import java.nio.charset.*;
+import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /**
  * Where the world map (and the wiki's) draws part of the game elsewhere (the Kalphite Lair beside the desert caves,

@@ -1,20 +1,10 @@
 package com.hdmapreforged.route;
 
-import java.io.BufferedReader;
-import java.io.DataInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.io.*;
+import java.nio.charset.*;
+import java.util.*;
+import java.util.function.*;
+import java.util.zip.*;
 
 /**
  * Where one can walk, from the bundled collision.zip: per region and floor, bitsets of walkable tiles and of walls and

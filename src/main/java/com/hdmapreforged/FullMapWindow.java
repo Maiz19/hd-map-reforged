@@ -1,39 +1,15 @@
 package com.hdmapreforged;
 
-import java.awt.BorderLayout;
-import java.awt.Canvas;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Container;
-import java.awt.Cursor;
-import java.awt.Dimension;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
+import java.awt.*;
 import java.awt.Point;
-import java.awt.Rectangle;
-import java.awt.RenderingHints;
-import java.awt.Window;
-import java.awt.event.ComponentAdapter;
-import java.awt.event.ComponentEvent;
-import java.awt.event.ComponentListener;
-import java.awt.event.KeyEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.geom.Rectangle2D;
-import java.util.Locale;
-import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
-import java.util.function.Predicate;
-import javax.swing.BorderFactory;
-import javax.swing.JComponent;
-import javax.swing.JLayeredPane;
-import javax.swing.JPanel;
-import javax.swing.JWindow;
-import javax.swing.KeyStroke;
-import javax.swing.SwingUtilities;
-import javax.swing.text.JTextComponent;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.Client;
+import java.awt.event.*;
+import java.awt.geom.*;
+import java.util.*;
+import java.util.function.*;
+import javax.swing.*;
+import javax.swing.text.*;
+import lombok.*;
+import net.runelite.api.*;
 
 /**
  * The map over the game view: a panel in the game window's layered pane, or a window of its own. Not drawn in the

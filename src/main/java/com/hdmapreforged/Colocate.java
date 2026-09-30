@@ -1,12 +1,8 @@
 package com.hdmapreforged;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import java.util.*;
+import java.util.regex.*;
+import java.util.stream.*;
 
 /** Things at one place become one icon: teleports landing at a host icon, minigames in one building, twins. */
 final class Colocate

@@ -1,17 +1,11 @@
 package com.hdmapreforged;
 
-import java.io.IOException;
-import java.io.Reader;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.coords.WorldPoint;
+import java.io.*;
+import java.util.*;
+import java.util.regex.*;
+import java.util.stream.*;
+import lombok.extern.slf4j.*;
+import net.runelite.api.coords.*;
 
 /**
  * Everything the map shows and the planner uses, loaded in one place by the plugin and tests. Places and ways in come

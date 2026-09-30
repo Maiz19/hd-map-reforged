@@ -1,10 +1,6 @@
 package com.hdmapreforged.route;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Locale;
-import java.util.Set;
+import java.util.*;
 
 /**
  * The player-owned house is an instance far from its town, so routes start from its ways out: the exit portal and,

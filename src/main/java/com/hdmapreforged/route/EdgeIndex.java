@@ -1,7 +1,6 @@
 package com.hdmapreforged.route;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 /** The jumps starting at each node, as indices into a list of edges; looked up without boxing. Immutable once made. */
 final class EdgeIndex

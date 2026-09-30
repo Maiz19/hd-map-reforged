@@ -1,7 +1,6 @@
 package com.hdmapreforged.route;
 
-import java.util.ArrayDeque;
-import java.util.BitSet;
+import java.util.*;
 
 /** How far a dungeon, cave or room reaches on its floor, to fit the map to the dungeon one enters. */
 public final class WalkableArea

@@ -1,8 +1,7 @@
 package com.hdmapreforged;
 
-import java.util.LinkedHashSet;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.*;
+import java.util.stream.*;
 
 /** Converts "Your house" settings to and from the house scan's words ("box:ornate", "glory", "portal:Varrock"). */
 final class HouseSettings

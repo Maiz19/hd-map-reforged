@@ -1,8 +1,8 @@
 package com.hdmapreforged;
 
-import net.runelite.api.coords.WorldPoint;
-import net.runelite.client.party.messages.PartyMemberMessage;
-import net.runelite.client.util.Text;
+import net.runelite.api.coords.*;
+import net.runelite.client.party.messages.*;
+import net.runelite.client.util.*;
 
 /** Where a party member is. The class name is the message type on the party server; short field names keep it small. */
 public class HdMapPartyLocation extends PartyMemberMessage

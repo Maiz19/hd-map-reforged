@@ -1,11 +1,8 @@
 package com.hdmapreforged.route;
 
-import java.util.Collections;
-import java.util.Arrays;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
-import lombok.AllArgsConstructor;
+import java.util.*;
+import java.util.stream.*;
+import lombok.*;
 
 /** The result of a search: the steps, and how the target was reached (or why not). */
 public final class Route

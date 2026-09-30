@@ -1,14 +1,13 @@
 package com.hdmapreforged;
 
-import com.google.common.hash.Hashing;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import net.runelite.client.util.Filepath;
-import okhttp3.HttpUrl;
+import com.google.common.hash.*;
+import java.io.*;
+import java.nio.charset.*;
+import java.util.*;
+import lombok.*;
+import lombok.extern.slf4j.*;
+import net.runelite.client.util.*;
+import okhttp3.*;
 
 /**
  * Wiki answers kept on disk: the same search within {@link #FRESH_MS} does not ask the wiki again; an older answer is

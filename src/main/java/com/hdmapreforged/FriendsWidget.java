@@ -1,24 +1,13 @@
 package com.hdmapreforged;
 
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics2D;
-import java.awt.geom.Ellipse2D;
-import java.awt.geom.RoundRectangle2D;
-import java.awt.image.BufferedImage;
-import java.util.ArrayList;
-import java.util.HashSet;
+import java.awt.*;
+import java.awt.geom.*;
+import java.awt.image.*;
+import java.util.*;
 import java.util.List;
-import java.util.Set;
-import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
-import java.util.function.IntSupplier;
-import java.util.function.LongFunction;
-import java.util.function.Supplier;
-import lombok.RequiredArgsConstructor;
-import net.runelite.api.coords.WorldPoint;
+import java.util.function.*;
+import lombok.*;
+import net.runelite.api.coords.*;
 
 /** The friends button at the map's bottom left, opening into the party list and a member's details. Swing thread only. */
 final class FriendsWidget implements MapView.Widget

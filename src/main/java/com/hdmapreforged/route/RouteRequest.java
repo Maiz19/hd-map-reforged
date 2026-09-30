@@ -1,7 +1,6 @@
 package com.hdmapreforged.route;
 
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 /** Immutable. */
 public final class RouteRequest

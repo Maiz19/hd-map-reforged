@@ -1,33 +1,14 @@
 package com.hdmapreforged;
 
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.Insets;
-import java.awt.Rectangle;
-import java.awt.image.BufferedImage;
-import java.util.ArrayList;
+import java.awt.*;
+import java.awt.image.*;
+import java.util.*;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.function.IntFunction;
-import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
-import javax.swing.ImageIcon;
-import javax.swing.JButton;
-import javax.swing.JComponent;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.Scrollable;
-import javax.swing.SwingUtilities;
-import net.runelite.api.coords.WorldPoint;
-import net.runelite.client.ui.ColorScheme;
-import net.runelite.client.ui.FontManager;
-import net.runelite.client.util.LinkBrowser;
+import java.util.function.*;
+import javax.swing.*;
+import net.runelite.api.coords.*;
+import net.runelite.client.ui.*;
+import net.runelite.client.util.*;
 
 /** Details of the selected icon (requirements, destinations, links), or the teleports nearest a chosen point. */
 final class InfoCard extends JPanel implements Scrollable
